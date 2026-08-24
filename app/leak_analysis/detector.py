@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from math import sqrt
 from uuid import uuid4
@@ -11,21 +12,29 @@ DETECTOR_VERSION = "leak-detector-v1"
 MINIMUM_COHORT_SUPPORT = 3
 DIMENSION_PRIORITY = {
     "error_reason": 0,
-    "method": 1,
-    "customer_history": 2,
-    "prior_successful_payments": 3,
-    "amount_bucket": 4,
-    "hour_bucket": 5,
-    "day_bucket": 6,
+    "normalized_error_reason": 1,
+    "error_code": 2,
+    "error_step": 3,
+    "error_source": 4,
+    "method": 5,
+    "customer_history": 6,
+    "prior_successful_payments": 7,
+    "amount_bucket": 8,
+    "hour_bucket": 9,
+    "day_bucket": 10,
+    "failure_sequence": 11,
 }
 
 
 def detect_and_store_leaks(session: Session) -> list[LeakFinding]:
-    rows = session.execute(
-        select(PaymentEvent, Customer)
-        .outerjoin(Customer, Customer.customer_id == PaymentEvent.customer_id)
-        .order_by(PaymentEvent.event_id)
-    ).all()
+    rows: list[tuple[PaymentEvent, Customer | None]] = [
+        (event, customer)
+        for event, customer in session.execute(
+            select(PaymentEvent, Customer)
+            .outerjoin(Customer, Customer.customer_id == PaymentEvent.customer_id)
+            .order_by(PaymentEvent.event_id)
+        ).all()
+    ]
     if not rows:
         return []
 
@@ -33,10 +42,11 @@ def detect_and_store_leaks(session: Session) -> list[LeakFinding]:
     outcomes = {outcome.case_id: outcome for outcome in session.scalars(select(Outcome))}
     default_recovery_probability = _calibrated_recovery_probability(list(outcomes.values()))
     baseline_rate = sum(event.status == "failed" for event, _ in rows) / len(rows)
+    failure_sequence = _failure_sequence(rows)
     cohorts: dict[tuple[str, str], list[tuple[PaymentEvent, Customer | None]]] = defaultdict(list)
 
     for event, customer in rows:
-        for dimension, value in _cohort_values(event, customer):
+        for dimension, value in _cohort_values(event, customer, failure_sequence[event.event_id]):
             cohorts[dimension, value].append((event, customer))
 
     findings: list[LeakFinding] = []
@@ -68,10 +78,31 @@ def finding_sort_key(finding: LeakFinding) -> tuple[int, float, int, str]:
     )
 
 
-def _cohort_values(event: PaymentEvent, customer: Customer | None) -> list[tuple[str, str]]:
+def _failure_sequence(rows: list[tuple[PaymentEvent, Customer | None]]) -> dict[str, str]:
+    failures_by_payment: dict[str, list[PaymentEvent]] = defaultdict(list)
+    for event, _ in rows:
+        if event.status == "failed":
+            failures_by_payment[event.payment_id].append(event)
+
+    sequence = {event.event_id: "not_failed" for event, _ in rows}
+    for failures in failures_by_payment.values():
+        failures.sort(key=lambda event: (event.occurred_at, event.event_id))
+        sequence[failures[0].event_id] = "first_failure"
+        for event in failures[1:]:
+            sequence[event.event_id] = "repeated_failure"
+    return sequence
+
+
+def _cohort_values(
+    event: PaymentEvent, customer: Customer | None, failure_sequence: str
+) -> list[tuple[str, str]]:
     return [
         ("method", event.method or "unknown"),
         ("error_reason", event.error_reason or "unknown"),
+        ("normalized_error_reason", _normalize_error_reason(event.error_reason)),
+        ("error_code", event.error_code or "unknown"),
+        ("error_step", event.error_step or "unknown"),
+        ("error_source", event.error_source or "unknown"),
         (
             "customer_history",
             "returning" if customer and customer.successful_payments > 0 else "new",
@@ -80,7 +111,14 @@ def _cohort_values(event: PaymentEvent, customer: Customer | None) -> list[tuple
         ("hour_bucket", _hour_bucket(event.occurred_at.hour)),
         ("day_bucket", event.occurred_at.strftime("%A").lower()),
         ("prior_successful_payments", _prior_successful_payments(customer)),
+        ("failure_sequence", failure_sequence),
     ]
+
+
+def _normalize_error_reason(error_reason: str | None) -> str:
+    if not error_reason:
+        return "unknown"
+    return re.sub(r"[^a-z0-9]+", "_", error_reason.casefold()).strip("_") or "unknown"
 
 
 def _amount_bucket(amount: int) -> str:
