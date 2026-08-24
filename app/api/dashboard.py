@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
+from app.api.evaluations import get_published_evaluation
 from app.db.tables import (
     ActionEvent,
     AuditEvent,
@@ -13,7 +14,6 @@ from app.db.tables import (
     PaymentEvent,
     RecoveryCase,
 )
-from app.evaluation import run_baseline
 from app.leak_analysis import finding_sort_key
 from app.policy import evaluate_policy
 
@@ -48,7 +48,7 @@ def get_dashboard(request: Request) -> dict:
             "investigation": _finding(findings[0]) if findings else None,
             "worklist": worklist,
             "timeline": [_timeline(session, case) for case in cases],
-            "evaluation": run_baseline(7),
+            "evaluation": get_published_evaluation(),
             "mock_inbox": [
                 _action(action)
                 for action in session.scalars(
@@ -231,13 +231,13 @@ function render(data) {
   const top = data.executive.top_leak;
   document.querySelector('#executive-content').innerHTML = [
     `<article class="card estimated"><div class="label">Estimated recoverable value</div><div class="number">${money(data.executive.estimated_value)}</div>${tag('estimated','ESTIMATED')}</article>`,
-    `<article class="card simulated"><div class="label">Simulated baseline recovery</div><div class="number">${money(data.evaluation.recovered_amount)}</div>${tag('simulated','SIMULATED')}</article>`,
+    `<article class="card simulated"><div class="label">Adaptive simulated recovery</div><div class="number">${money(data.evaluation.results.policies.adaptive.recovered_amount)}</div>${tag('simulated','SIMULATED')}</article>`,
     `<article class="card test-mode"><div class="label">Test Mode recovered</div><div class="number">${money(data.executive.test_mode_value)}</div>${tag('test-mode','TEST MODE')}</article>`,
     `<article class="card"><div class="label">Open cases</div><div class="number">${data.executive.open_cases}</div></article>`].join('');
   document.querySelector('#investigation-content').innerHTML = top ? `<article class="card"><h3>${html(top.finding_id)}</h3>${tag('estimated','ESTIMATED RECOVERABLE IMPACT')}<strong>${money(top.recoverable_impact)}</strong><p>Confidence ${Math.round(top.confidence * 100)}%</p><h4>Cohort</h4>${json(top.cohort_filter)}<h4>Evidence</h4>${json(top.evidence)}</article>` : '<p class="muted">No leak finding has been detected.</p>';
   document.querySelector('#worklist-content').innerHTML = `<table><thead><tr><th>Case</th><th>Evidence</th><th>Selected action</th><th>Policy</th><th>Human review</th></tr></thead><tbody>${data.worklist.map(c => `<tr><td>${html(c.case_id)}<br>${money(c.amount_at_risk)}<br><span class="muted">${html(c.state)}</span></td><td>${c.evidence ? `${html(c.evidence.event_type)}<br>${html(c.evidence.error_reason || c.evidence.status)}` : 'No payment event'}</td><td>${html(c.selected_action || 'None')} ${c.expected_value !== null ? `<br>${tag('estimated','EST.')} ${money(c.expected_value)}` : ''}</td><td>${c.policy.allowed_actions.length ? 'Allowed: ' + c.policy.allowed_actions.map(html).join(', ') : '<span class="error">Blocked</span>'}</td><td>${c.human_review.can_execute ? c.human_review.allowed_actions.map(a => `<button class="review" data-case="${html(c.case_id)}" data-action="${html(a)}">Approve ${html(a)}</button>`).join(' ') : 'No action permitted'}</td></tr>`).join('')}</tbody></table>`;
   document.querySelector('#timeline-content').innerHTML = data.timeline.map(t => `<article class="card"><h3>${html(t.case_id)}</h3>${t.events.map(e => `<div class="event">${tag(e.kind === 'outcome' ? 'test-mode' : e.kind === 'decision' ? 'estimated' : 'simulated', e.kind.toUpperCase())}<span class="muted">${html(e.at || 'recorded decision')}</span>${json(e.data)}</div>`).join('') || '<p class="muted">No events.</p>'}</article>`).join('');
-  document.querySelector('#evaluation-content').innerHTML = `<article class="card simulated">${tag('simulated','SIMULATED')}<p>Seed ${data.evaluation.seed}, ${data.evaluation.case_count} cases, recovery rate ${(data.evaluation.recovery_rate * 100).toFixed(1)}%</p>${json(data.evaluation)}</article>`;
+  document.querySelector('#evaluation-content').innerHTML = `<article class="card simulated">${tag('simulated','SIMULATED')}<p>${data.evaluation.results.seeds.length} identical-case seeds, ${data.evaluation.results.cases_per_seed} cases per seed</p>${json(data.evaluation)}</article>`;
   document.querySelector('#inbox-content').innerHTML = data.mock_inbox.length ? data.mock_inbox.map(m => `<article class="card"><h3>${html(m.tool)} for ${html(m.case_id)}</h3>${tag('test-mode','MOCK')}<p>${html(m.status)} at ${html(m.executed_at || 'unknown time')}</p><code>${html(m.provider_reference || 'no provider reference')}</code></article>`).join('') : '<p class="muted">No mock messages have been sent.</p>';
 }
 document.querySelector('nav').addEventListener('click', event => { const view = event.target.dataset.view; if (!view) return; document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === view)); });

@@ -352,8 +352,9 @@ async def test_successful_payment_cancels_pending_retry(app):
         "status": "pending",
     }
     assert captured.status_code == 202
-    assert audit.json()[-1] == {
+    assert audit.json()[-2] == {
         "case_id": "case_001",
         "event_type": "action.cancelled",
         "payload": {"action": "retry", "idempotency_key": "retry-001"},
     }
+    assert audit.json()[-1]["event_type"] == "event.recorded"

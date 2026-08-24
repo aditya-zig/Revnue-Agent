@@ -75,7 +75,23 @@ async def test_verified_failure_creates_one_case_and_audit_record(app):
             "case_id": "case_pay_001",
             "event_type": "case.detected",
             "payload": {"payment_id": "pay_001"},
-        }
+        },
+        {
+            "case_id": "case_pay_001",
+            "event_type": "event.recorded",
+            "payload": {
+                "event_id": f"evt_{hashlib.sha256(body).hexdigest()}",
+                "event_type": "payment.failed",
+            },
+        },
+        {
+            "case_id": "case_pay_001",
+            "event_type": "event.duplicate",
+            "payload": {
+                "event_id": f"evt_{hashlib.sha256(body).hexdigest()}",
+                "event_type": "payment.failed",
+            },
+        },
     ]
 
 

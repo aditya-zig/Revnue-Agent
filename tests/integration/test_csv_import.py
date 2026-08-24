@@ -109,7 +109,17 @@ async def test_csv_import_normalizes_events_and_records_case_transitions(app):
         },
         {
             "case_id": "case_pay_001",
+            "event_type": "event.recorded",
+            "payload": {"event_id": "evt_001", "event_type": "payment.failed"},
+        },
+        {
+            "case_id": "case_pay_001",
             "event_type": "case.recovered",
             "payload": {"payment_id": "pay_001"},
-        }
+        },
+        {
+            "case_id": "case_pay_001",
+            "event_type": "event.recorded",
+            "payload": {"event_id": "evt_002", "event_type": "payment.captured"},
+        },
     ]

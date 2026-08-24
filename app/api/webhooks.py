@@ -3,9 +3,11 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 
 from app.core.requests import read_limited_body
 from app.core.security import verify_razorpay_signature
+from app.db.tables import AuditEvent, RecoveryCase
 from app.domain.models import NormalizedPaymentEvent
 from app.ingestion.record_event import record_event_and_update_case
 
@@ -42,6 +44,18 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
     factory = request.app.state.session_factory
     with factory() as session:
         if not record_event_and_update_case(session, event):
+            case = session.scalar(
+                select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
+            )
+            if case:
+                session.add(
+                    AuditEvent(
+                        case_id=case.case_id,
+                        event_type="event.duplicate",
+                        payload={"event_id": event.event_id, "event_type": event.event_type},
+                    )
+                )
+                session.commit()
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content={"event_id": event.event_id, "status": "duplicate"},

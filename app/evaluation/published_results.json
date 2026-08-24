@@ -1,0 +1,40 @@
+{
+  "cases_per_seed": 30,
+  "policies": {
+    "adaptive": {
+      "calibration_brier_score": 0.1887,
+      "contacts": 450,
+      "recovered_amount": 51961100,
+      "recovery_amount_variation": 352771.48,
+      "recovery_cost": 53250,
+      "recovery_rate": 0.4322,
+      "safety_violations": 0,
+      "seed_count": 30
+    },
+    "fixed": {
+      "calibration_brier_score": 0.1696,
+      "contacts": 0,
+      "recovered_amount": 34874100,
+      "recovery_amount_variation": 292541.64,
+      "recovery_cost": 225000,
+      "recovery_rate": 0.2878,
+      "safety_violations": 120,
+      "seed_count": 30
+    },
+    "rules_based": {
+      "calibration_brier_score": 0.1907,
+      "contacts": 720,
+      "recovered_amount": 50062700,
+      "recovery_amount_variation": 390688.43,
+      "recovery_cost": 73500,
+      "recovery_rate": 0.4144,
+      "safety_violations": 0,
+      "seed_count": 30
+    }
+  },
+  "seeds": [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+  ]
+}

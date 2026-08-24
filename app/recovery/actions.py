@@ -48,6 +48,18 @@ def execute_action(
 
     policy = evaluate_policy(session, case, now, quiet_hours_start, quiet_hours_end)
     if action not in policy.allowed_actions:
+        session.add(
+            AuditEvent(
+                case_id=case.case_id,
+                event_type="action.blocked",
+                payload={
+                    "action": action,
+                    "idempotency_key": idempotency_key,
+                    "reasons": policy.blocked_reasons.get(action, ["action_not_allowed"]),
+                },
+            )
+        )
+        session.commit()
         raise PermissionError(policy.blocked_reasons.get(action, ["action_not_allowed"]))
 
     input_hash = hashlib.sha256(
