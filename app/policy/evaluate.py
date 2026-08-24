@@ -8,7 +8,8 @@ from app.db.tables import ActionEvent, Customer, PaymentEvent, RecoveryCase
 from app.domain.models import PolicyResponse
 
 POLICY_VERSION = "v1"
-RECOVERY_ACTIONS = ["contact", "retry", "escalate"]
+RECOVERY_ACTIONS = ["payment_link", "contact", "retry", "promise", "escalate"]
+CONTACT_ACTIONS = ["contact", "promise"]
 TERMINAL_CASE_STATES = {
     "paid",
     "refunded",
@@ -44,22 +45,26 @@ def evaluate_policy(
     blocked_reasons: dict[str, list[str]] = {}
     customer = session.get(Customer, case.customer_id) if case.customer_id else None
     if customer is None:
-        blocked_reasons["contact"] = ["missing_identity"]
+        for action in CONTACT_ACTIONS:
+            blocked_reasons[action] = ["missing_identity"]
     elif not customer.consent:
-        blocked_reasons["contact"] = ["missing_consent"]
+        for action in CONTACT_ACTIONS:
+            blocked_reasons[action] = ["missing_consent"]
 
     contact_count = session.scalar(
         select(func.count()).select_from(ActionEvent).where(
             ActionEvent.case_id == case.case_id,
-            ActionEvent.tool == "contact",
+            ActionEvent.tool.in_(CONTACT_ACTIONS),
         )
     )
     if (contact_count or 0) >= 3:
-        blocked_reasons.setdefault("contact", []).append("contact_limit")
+        for action in CONTACT_ACTIONS:
+            blocked_reasons.setdefault(action, []).append("contact_limit")
 
     local_hour = now.astimezone(ZoneInfo("Asia/Kolkata")).hour
     if _is_quiet_hour(local_hour, quiet_hours_start, quiet_hours_end):
-        blocked_reasons.setdefault("contact", []).append("quiet_hours")
+        for action in CONTACT_ACTIONS:
+            blocked_reasons.setdefault(action, []).append("quiet_hours")
 
     error_codes = session.scalars(
         select(PaymentEvent.error_code).where(PaymentEvent.payment_id == case.payment_id)

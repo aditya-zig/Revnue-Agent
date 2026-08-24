@@ -1,0 +1,133 @@
+import hashlib
+import json
+from collections.abc import Callable
+from datetime import datetime
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.db.tables import ActionEvent, AuditEvent, RecoveryCase
+from app.domain.enums import CaseState
+from app.domain.models import ActionResponse
+from app.domain.state_machine import transition_case
+from app.policy import evaluate_policy
+
+
+class ProviderError(Exception):
+    pass
+
+
+def execute_action(
+    session: Session,
+    case: RecoveryCase,
+    action: str,
+    idempotency_key: str,
+    now: datetime,
+    quiet_hours_start: int,
+    quiet_hours_end: int,
+    create_payment_link: Callable[[int, str], str],
+) -> tuple[ActionResponse, bool]:
+    existing = session.scalar(
+        select(ActionEvent).where(ActionEvent.idempotency_key == idempotency_key)
+    )
+    if existing:
+        if existing.case_id != case.case_id or existing.tool != action:
+            raise ValueError("idempotency key belongs to another action")
+        return (
+            ActionResponse(
+                action=existing.tool,
+                provider_reference=existing.provider_reference,
+                status=existing.status,
+            ),
+            True,
+        )
+
+    if case.state != CaseState.ELIGIBLE:
+        raise PermissionError(["invalid_state"])
+
+    policy = evaluate_policy(session, case, now, quiet_hours_start, quiet_hours_end)
+    if action not in policy.allowed_actions:
+        raise PermissionError(policy.blocked_reasons.get(action, ["action_not_allowed"]))
+
+    input_hash = hashlib.sha256(
+        json.dumps({"action": action, "amount": case.amount_at_risk}, sort_keys=True).encode()
+    ).hexdigest()
+    action_event = ActionEvent(
+        action_id=f"action_{hashlib.sha256(idempotency_key.encode()).hexdigest()}",
+        case_id=case.case_id,
+        idempotency_key=idempotency_key,
+        tool=action,
+        input_hash=input_hash,
+        status="processing",
+    )
+    session.add(action_event)
+    session.add(
+        AuditEvent(
+            case_id=case.case_id,
+            event_type="action.started",
+            payload={"action": action, "idempotency_key": idempotency_key},
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = session.scalar(
+            select(ActionEvent).where(ActionEvent.idempotency_key == idempotency_key)
+        )
+        if existing and existing.case_id == case.case_id and existing.tool == action:
+            return (
+                ActionResponse(
+                    action=existing.tool,
+                    provider_reference=existing.provider_reference,
+                    status=existing.status,
+                ),
+                True,
+            )
+        raise ValueError("idempotency key belongs to another action")
+
+    status = "pending" if action == "retry" else "completed"
+    provider_reference = f"mock_{action}_{idempotency_key}"
+    if action == "payment_link":
+        try:
+            provider_reference = create_payment_link(case.amount_at_risk, idempotency_key)
+        except Exception as error:
+            action_event.status = "failed"
+            session.add(
+                AuditEvent(
+                    case_id=case.case_id,
+                    event_type="action.failed",
+                    payload={
+                        "action": action,
+                        "idempotency_key": idempotency_key,
+                        "reason": str(error),
+                    },
+                )
+            )
+            session.commit()
+            raise ProviderError(str(error)) from error
+
+    transition_case(session, case, CaseState.ACTION_SELECTED)
+    transition_case(session, case, CaseState.AWAITING_OUTCOME)
+    if action == "escalate":
+        transition_case(session, case, CaseState.ESCALATED)
+
+    action_event.status = status
+    action_event.provider_reference = provider_reference
+    session.add(
+        AuditEvent(
+            case_id=case.case_id,
+            event_type=f"action.{status}",
+            payload={
+                "action": action,
+                "idempotency_key": idempotency_key,
+                "provider_reference": provider_reference,
+            },
+        )
+    )
+    session.commit()
+    return (
+        ActionResponse(action=action, provider_reference=provider_reference, status=status),
+        False,
+    )

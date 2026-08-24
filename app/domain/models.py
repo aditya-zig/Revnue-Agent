@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -54,3 +55,14 @@ class PolicyResponse(BaseModel):
     allowed_actions: list[str]
     blocked_reasons: dict[str, list[str]]
     policy_version: str
+
+
+class ActionRequest(BaseModel):
+    action: Literal["payment_link", "contact", "retry", "promise", "escalate"]
+    idempotency_key: str = Field(min_length=1, max_length=128)
+
+
+class ActionResponse(BaseModel):
+    action: str
+    provider_reference: str | None
+    status: str

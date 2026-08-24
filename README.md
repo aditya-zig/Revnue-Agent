@@ -26,9 +26,11 @@ The health endpoint is available at `GET /health`. The application reads
   case state and its append-only audit trail.
 - `GET /api/v1/cases/{case_id}/policy` returns the permitted recovery actions,
   blocked-action reasons, and policy version.
+- `POST /api/v1/cases/{case_id}/actions` executes a permitted mock action or a
+  Test Mode payment link. The request includes an action and idempotency key.
 
 ## Limits
 
-This project uses synthetic and Razorpay Test Mode data only. The Phase 1
-foundation does not send customer messages, create payment links, or select
-recovery actions. Those functions belong to later phases of the plan.
+This project uses synthetic data and Razorpay Test Mode only. It does not send
+customer messages. The default payment-link provider rejects requests until an
+application injects a Test Mode provider.

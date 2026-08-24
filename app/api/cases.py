@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
 from app.db.tables import AuditEvent, RecoveryCase
-from app.domain.models import PolicyResponse
+from app.domain.models import ActionRequest, ActionResponse, PolicyResponse
 from app.policy import evaluate_policy
+from app.recovery import execute_action
+from app.recovery.actions import ProviderError
 
 router = APIRouter(prefix="/api/v1", tags=["cases"])
 
@@ -54,3 +56,33 @@ def get_policy(case_id: str, request: Request) -> PolicyResponse:
             request.app.state.quiet_hours_start,
             request.app.state.quiet_hours_end,
         )
+
+
+@router.post("/cases/{case_id}/actions", status_code=201)
+def create_action(
+    case_id: str, action: ActionRequest, request: Request, response: Response
+) -> ActionResponse:
+    with request.app.state.session_factory() as session:
+        case = session.get(RecoveryCase, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="case not found")
+        try:
+            result, duplicate = execute_action(
+                session,
+                case,
+                action.action,
+                action.idempotency_key,
+                request.app.state.policy_now(),
+                request.app.state.quiet_hours_start,
+                request.app.state.quiet_hours_end,
+                request.app.state.create_payment_link,
+            )
+        except PermissionError as error:
+            raise HTTPException(status_code=409, detail=list(error.args[0])) from error
+        except ProviderError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        if duplicate:
+            response.status_code = 200
+        return result

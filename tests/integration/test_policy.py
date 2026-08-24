@@ -31,7 +31,7 @@ async def test_policy_allows_recovery_actions_for_an_eligible_case(app):
     assert imported.status_code == 201
     assert response.status_code == 200
     assert response.json() == {
-        "allowed_actions": ["contact", "retry", "escalate"],
+        "allowed_actions": ["payment_link", "contact", "retry", "promise", "escalate"],
         "blocked_reasons": {},
         "policy_version": "v1",
     }
@@ -93,8 +93,14 @@ async def test_policy_blocks_hard_decline_retries_and_contact_without_consent_or
         no_identity = await client.get("/api/v1/cases/case_no_identity/policy")
 
     assert hard_decline.json()["blocked_reasons"] == {"retry": ["hard_decline"]}
-    assert no_consent.json()["blocked_reasons"] == {"contact": ["missing_consent"]}
-    assert no_identity.json()["blocked_reasons"] == {"contact": ["missing_identity"]}
+    assert no_consent.json()["blocked_reasons"] == {
+        "contact": ["missing_consent"],
+        "promise": ["missing_consent"],
+    }
+    assert no_identity.json()["blocked_reasons"] == {
+        "contact": ["missing_identity"],
+        "promise": ["missing_identity"],
+    }
 
 
 @pytest.mark.asyncio
@@ -130,7 +136,10 @@ async def test_policy_enforces_contact_and_daily_action_limits(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         contact_limited = await client.get("/api/v1/cases/case_limits/policy")
 
-    assert contact_limited.json()["blocked_reasons"] == {"contact": ["contact_limit"]}
+    assert contact_limited.json()["blocked_reasons"] == {
+        "contact": ["contact_limit"],
+        "promise": ["contact_limit"],
+    }
 
     with app.state.session_factory() as session:
         session.add(
@@ -152,6 +161,8 @@ async def test_policy_enforces_contact_and_daily_action_limits(app):
     assert action_limited.json()["blocked_reasons"] == {
         "contact": ["contact_limit", "action_limit"],
         "retry": ["action_limit"],
+        "payment_link": ["action_limit"],
+        "promise": ["contact_limit", "action_limit"],
         "escalate": ["action_limit"],
     }
 
@@ -183,7 +194,10 @@ async def test_policy_blocks_contact_during_kolkata_quiet_hours(database_url):
     ) as client:
         response = await client.get("/api/v1/cases/case_quiet/policy")
 
-    assert response.json()["blocked_reasons"] == {"contact": ["quiet_hours"]}
+    assert response.json()["blocked_reasons"] == {
+        "contact": ["quiet_hours"],
+        "promise": ["quiet_hours"],
+    }
 
 
 @pytest.mark.asyncio
@@ -214,6 +228,8 @@ async def test_policy_blocks_every_action_for_terminal_cases(app, state):
         "blocked_reasons": {
             "contact": ["terminal_case"],
             "retry": ["terminal_case"],
+            "payment_link": ["terminal_case"],
+            "promise": ["terminal_case"],
             "escalate": ["terminal_case"],
         },
         "policy_version": "v1",

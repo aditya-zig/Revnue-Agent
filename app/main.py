@@ -12,11 +12,16 @@ from app.core.config import Settings
 from app.db.session import create_session_factory
 
 
+def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
+    raise RuntimeError("payment link provider is not configured")
+
+
 def create_app(
     database_url: str | None = None,
     webhook_secret: str | None = None,
     max_request_body_bytes: int | None = None,
     policy_now: Callable[[], datetime] | None = None,
+    create_payment_link: Callable[[int, str], str] | None = None,
 ) -> FastAPI:
     settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
@@ -32,6 +37,7 @@ def create_app(
     app.state.policy_now = policy_now or (lambda: datetime.now(UTC))
     app.state.quiet_hours_start = settings.quiet_hours_start
     app.state.quiet_hours_end = settings.quiet_hours_end
+    app.state.create_payment_link = create_payment_link or _payment_link_not_configured
     app.include_router(webhooks_router)
     app.include_router(cases_router)
     app.include_router(data_router)
