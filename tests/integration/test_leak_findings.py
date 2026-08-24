@@ -38,7 +38,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "BAD_REQUEST_ERROR",
             "insufficient funds",
             "2026-08-24T04:00:00+00:00",
-            "5",
+            "4",
         ],
         [
             "evt_002",
@@ -66,7 +66,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "BAD_REQUEST_ERROR",
             "insufficient funds",
             "2026-08-24T04:10:00+00:00",
-            "3",
+            "4",
         ],
         [
             "evt_004",
@@ -79,7 +79,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "captured",
             "",
             "",
-            "2026-08-24T12:00:00+00:00",
+            "2026-08-23T12:00:00+00:00",
             "0",
         ],
         [
@@ -93,7 +93,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "captured",
             "",
             "",
-            "2026-08-24T12:05:00+00:00",
+            "2026-08-23T12:05:00+00:00",
             "0",
         ],
         [
@@ -107,7 +107,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "captured",
             "",
             "",
-            "2026-08-24T12:10:00+00:00",
+            "2026-08-23T12:10:00+00:00",
             "0",
         ],
         [
@@ -121,7 +121,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "failed",
             "NETWORK_ERROR",
             "issuer unavailable",
-            "2026-08-24T06:00:00+00:00",
+            "2026-08-25T06:00:00+00:00",
             "0",
         ],
         [
@@ -135,7 +135,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "failed",
             "NETWORK_ERROR",
             "issuer unavailable",
-            "2026-08-24T06:05:00+00:00",
+            "2026-08-25T06:05:00+00:00",
             "0",
         ],
     ]
@@ -143,7 +143,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         imported = await client.post("/api/v1/data/import", content=csv)
-        response = await client.get("/api/v1/leak-findings")
+        response = await client.get("/api/v1/findings")
 
     assert imported.status_code == 201
     assert response.status_code == 200
@@ -152,20 +152,27 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
         "dimension": "error_reason",
         "value": "insufficient funds",
     }
-    assert findings[0]["impact"] == 300000
+    assert findings[0]["impact"] == 112500
+    assert findings[0]["recoverable_impact"] == 112500
     assert findings[0]["evidence"] == {
+        "attempted_value": 300000,
         "data_quality_warnings": [],
         "event_ids": ["evt_001", "evt_002", "evt_003"],
         "failure_count": 3,
+        "failed_value": 300000,
+        "recovery_probability": 1.0,
         "support": 3,
+        "unresolved_value": 300000,
     }
     assert {
         finding["cohort_filter"]["dimension"] for finding in findings
     } == {
         "amount_bucket",
         "customer_history",
+        "day_bucket",
         "error_reason",
         "method",
+        "prior_successful_payments",
         "time_bucket",
     }
     assert all(finding["evidence"]["support"] >= 3 for finding in findings)

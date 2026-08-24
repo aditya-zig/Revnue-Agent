@@ -13,8 +13,10 @@ DIMENSION_PRIORITY = {
     "error_reason": 0,
     "method": 1,
     "customer_history": 2,
-    "amount_bucket": 3,
-    "time_bucket": 4,
+    "prior_successful_payments": 3,
+    "amount_bucket": 4,
+    "time_bucket": 5,
+    "day_bucket": 6,
 }
 
 
@@ -44,7 +46,7 @@ def detect_leaks(session: Session) -> list[LeakFinding]:
             findings.append(finding)
     findings.sort(
         key=lambda finding: (
-            -finding.impact,
+            -finding.recoverable_impact,
             -finding.confidence,
             DIMENSION_PRIORITY[finding.cohort_filter["dimension"]],
             finding.cohort_filter["value"],
@@ -63,6 +65,8 @@ def _cohort_values(event: PaymentEvent, customer: Customer | None) -> list[tuple
         ),
         ("amount_bucket", _amount_bucket(event.amount)),
         ("time_bucket", _time_bucket(event.occurred_at.hour)),
+        ("day_bucket", event.occurred_at.strftime("%A").lower()),
+        ("prior_successful_payments", _prior_successful_payments_bucket(customer)),
     ]
 
 
@@ -84,6 +88,15 @@ def _time_bucket(hour: int) -> str:
     return "evening"
 
 
+def _prior_successful_payments_bucket(customer: Customer | None) -> str:
+    successful_payments = customer.successful_payments if customer else 0
+    if successful_payments == 0:
+        return "0"
+    if successful_payments < 4:
+        return "1_to_3"
+    return "4_or_more"
+
+
 def _create_finding(
     session: Session,
     dimension: str,
@@ -103,8 +116,13 @@ def _create_finding(
         if (case := cases.get(event.payment_id)) is not None
         and case.state not in {"recovered", "stopped"}
     }
-    impact = sum(case.amount_at_risk for case in recoverable_cases.values())
-    if impact == 0:
+    attempted_value = sum(event.amount for event, _ in cohort)
+    failed_value = sum(event.amount for event in failures)
+    unresolved_value = sum(case.amount_at_risk for case in recoverable_cases.values())
+    impact = round((observed_rate - baseline_rate) * attempted_value)
+    recovery_probability = unresolved_value / failed_value if failed_value else 0.0
+    recoverable_impact = round(impact * recovery_probability)
+    if recoverable_impact == 0:
         return None
 
     finding = LeakFinding(
@@ -114,11 +132,16 @@ def _create_finding(
         baseline_rate=baseline_rate,
         observed_rate=observed_rate,
         impact=impact,
+        recoverable_impact=recoverable_impact,
         confidence=_wilson_lower_bound(len(failures), len(cohort)),
         evidence_json={
             "event_ids": [event.event_id for event, _ in cohort],
             "support": len(cohort),
             "failure_count": len(failures),
+            "attempted_value": attempted_value,
+            "failed_value": failed_value,
+            "unresolved_value": unresolved_value,
+            "recovery_probability": recovery_probability,
             "data_quality_warnings": _data_quality_warnings(dimension, value),
         },
     )

@@ -66,6 +66,7 @@ class LeakFinding(Base):
     baseline_rate: Mapped[float] = mapped_column()
     observed_rate: Mapped[float] = mapped_column()
     impact: Mapped[int] = mapped_column(Integer)
+    recoverable_impact: Mapped[int] = mapped_column(Integer)
     confidence: Mapped[float] = mapped_column()
     evidence_json: Mapped[dict] = mapped_column(JSON)
 
