@@ -3,7 +3,7 @@ from collections import defaultdict
 from math import sqrt
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.tables import Customer, LeakFinding, Outcome, PaymentEvent, RecoveryCase
@@ -27,6 +27,9 @@ DIMENSION_PRIORITY = {
 
 
 def detect_and_store_leaks(session: Session) -> list[LeakFinding]:
+    session.execute(
+        delete(LeakFinding).where(LeakFinding.detector_version == DETECTOR_VERSION)
+    )
     rows: list[tuple[PaymentEvent, Customer | None]] = [
         (event, customer)
         for event, customer in session.execute(
@@ -173,6 +176,8 @@ def _create_finding(
     }
     attempted_value = sum(event.amount for event, _ in cohort)
     failed_value = sum(event.amount for event in failures)
+    if failed_value == 0:
+        return None
     unresolved_value = sum(case.amount_at_risk for case in recoverable_cases.values())
     impact = round((observed_rate - baseline_rate) * attempted_value)
     cohort_outcomes = [
@@ -185,7 +190,9 @@ def _create_finding(
         if cohort_outcomes
         else default_recovery_probability
     )
-    recoverable_impact = round(impact * recovery_probability)
+    recoverable_impact = round(
+        impact * unresolved_value / failed_value * recovery_probability
+    )
     if recoverable_impact == 0:
         return None
 

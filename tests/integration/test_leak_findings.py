@@ -1,6 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.evaluation.baseline import generate_leak_scenario_csv
 from app.main import create_app
 
 
@@ -71,8 +72,8 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
         [
             "evt_004",
             "payment.captured",
-            "pay_004",
-            "cust_004",
+            "pay_001",
+            "cust_001",
             "10000",
             "INR",
             "card",
@@ -80,13 +81,13 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "",
             "",
             "2026-08-23T12:00:00+00:00",
-            "0",
+            "4",
         ],
         [
             "evt_005",
             "payment.captured",
-            "pay_005",
-            "cust_005",
+            "pay_002",
+            "cust_002",
             "10000",
             "INR",
             "card",
@@ -94,7 +95,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
             "",
             "",
             "2026-08-23T12:05:00+00:00",
-            "0",
+            "4",
         ],
         [
             "evt_006",
@@ -144,14 +145,16 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         imported = await client.post("/api/v1/data/import", content=csv)
         detected = await client.post("/api/v1/findings/detect")
+        detected_again = await client.post("/api/v1/findings/detect")
         response = await client.get("/api/v1/findings")
         detail = await client.get(f"/api/v1/findings/{response.json()[0]['finding_id']}")
 
     assert imported.status_code == 201
     assert detected.status_code == 200
+    assert detected_again.status_code == 200
     assert response.status_code == 200
     findings = response.json()
-    assert {finding["finding_id"] for finding in detected.json()} == {
+    assert {finding["finding_id"] for finding in detected_again.json()} == {
         finding["finding_id"] for finding in findings
     }
     assert detail.status_code == 200
@@ -167,7 +170,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
         "value": "insufficient funds",
     }
     assert error_reason_finding["impact"] == 112500
-    assert error_reason_finding["recoverable_impact"] == 56250
+    assert error_reason_finding["recoverable_impact"] == 18750
     assert error_reason_finding["evidence"] == {
         "attempted_value": 300000,
         "data_quality_warnings": [],
@@ -176,7 +179,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
         "failed_value": 300000,
         "recovery_probability": 0.5,
         "support": 3,
-        "unresolved_value": 300000,
+        "unresolved_value": 100000,
     }
     assert {
         finding["cohort_filter"]["dimension"] for finding in findings
@@ -340,3 +343,75 @@ async def test_detector_groups_repeated_payment_failures(app):
         for finding in findings.json()
         if finding["cohort_filter"]["dimension"] == "failure_sequence"
     } == {"first_failure", "repeated_failure"}
+
+
+@pytest.mark.asyncio
+async def test_seeded_scenario_ranks_insufficient_funds_first(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        imported = await client.post("/api/v1/data/import", content=generate_leak_scenario_csv(7))
+        findings = await client.post("/api/v1/findings/detect")
+
+    assert imported.status_code == 201
+    assert findings.status_code == 200
+    assert findings.json()[0]["cohort_filter"] == {
+        "dimension": "error_reason",
+        "value": "insufficient funds",
+    }
+
+
+@pytest.mark.asyncio
+async def test_detector_skips_zero_value_failure_cohorts(app):
+    header = [
+        "event_id",
+        "event_type",
+        "payment_id",
+        "customer_id",
+        "amount",
+        "currency",
+        "method",
+        "status",
+        "error_code",
+        "error_reason",
+        "occurred_at",
+    ]
+    failures = [
+        [
+            f"evt_failure_{index}",
+            "payment.failed",
+            f"pay_failure_{index}",
+            f"cust_failure_{index}",
+            "0",
+            "INR",
+            "upi",
+            "failed",
+            "BAD_REQUEST_ERROR",
+            "insufficient funds",
+            f"2026-08-24T04:0{index}:00+00:00",
+        ]
+        for index in range(3)
+    ]
+    captures = [
+        [
+            f"evt_capture_{index}",
+            "payment.captured",
+            f"pay_capture_{index}",
+            f"cust_capture_{index}",
+            "0",
+            "INR",
+            "card",
+            "captured",
+            "",
+            "",
+            f"2026-08-24T05:0{index}:00+00:00",
+        ]
+        for index in range(3)
+    ]
+    csv = "\n".join(",".join(row) for row in [header, *failures, *captures])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        imported = await client.post("/api/v1/data/import", content=csv)
+        findings = await client.post("/api/v1/findings/detect")
+
+    assert imported.status_code == 201
+    assert findings.status_code == 200
+    assert findings.json() == []
