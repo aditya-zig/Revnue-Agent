@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 
 from app.api.cases import router as cases_router
+from app.api.dashboard import router as dashboard_router
 from app.api.data import router as data_router
 from app.api.evaluations import router as evaluations_router
 from app.api.leak_findings import router as leak_findings_router
@@ -47,6 +48,7 @@ def create_app(
     app.include_router(data_router)
     app.include_router(evaluations_router)
     app.include_router(leak_findings_router)
+    app.include_router(dashboard_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
