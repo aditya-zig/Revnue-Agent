@@ -1,0 +1,9 @@
+event_id,event_type,payment_id,customer_id,amount,currency,method,status,error_source,error_step,error_code,error_reason,occurred_at,tenure_days,successful_payments,prior_failures,preferred_method,consent,locale
+demo_failure_001,payment.failed,demo_recover_001,demo_customer_001,100000,INR,upi,failed,gateway,authorization,BAD_REQUEST_ERROR,insufficient funds,2026-08-24T04:00:00+00:00,120,6,1,upi,true,en-IN
+demo_failure_002,payment.failed,demo_recover_002,demo_customer_002,100000,INR,upi,failed,gateway,authorization,BAD_REQUEST_ERROR,insufficient funds,2026-08-24T04:05:00+00:00,180,8,0,upi,true,en-IN
+demo_failure_003,payment.failed,demo_recover_003,demo_customer_003,100000,INR,upi,failed,gateway,authorization,BAD_REQUEST_ERROR,insufficient funds,2026-08-24T04:10:00+00:00,90,4,1,upi,true,en-IN
+demo_capture_001,payment.captured,demo_capture_001,demo_customer_004,10000,INR,card,captured,,,,,2026-08-23T12:00:00+00:00,30,2,0,card,true,en-IN
+demo_capture_002,payment.captured,demo_capture_002,demo_customer_005,10000,INR,card,captured,,,,,2026-08-23T12:05:00+00:00,60,3,0,card,true,en-IN
+demo_capture_003,payment.captured,demo_capture_003,demo_customer_006,10000,INR,card,captured,,,,,2026-08-23T12:10:00+00:00,15,0,0,card,true,en-IN
+demo_hard_decline,payment.failed,demo_hard_decline,demo_customer_007,249900,INR,card,failed,gateway,authorization,HARD_DECLINE,card declined,2026-08-24T04:15:00+00:00,365,12,0,card,true,en-IN
+demo_provider_failure,payment.failed,demo_provider_failure,demo_customer_008,249900,INR,upi,failed,gateway,authorization,BAD_REQUEST_ERROR,insufficient funds,2026-08-24T04:20:00+00:00,240,10,0,upi,true,en-IN
