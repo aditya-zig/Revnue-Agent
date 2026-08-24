@@ -143,12 +143,17 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         imported = await client.post("/api/v1/data/import", content=csv)
+        detected = await client.post("/api/v1/findings/detect")
         response = await client.get("/api/v1/findings")
         detail = await client.get(f"/api/v1/findings/{response.json()[0]['finding_id']}")
 
     assert imported.status_code == 201
+    assert detected.status_code == 200
     assert response.status_code == 200
     findings = response.json()
+    assert {finding["finding_id"] for finding in detected.json()} == {
+        finding["finding_id"] for finding in findings
+    }
     assert detail.status_code == 200
     assert detail.json() == findings[0]
     assert findings[0]["cohort_filter"] == {

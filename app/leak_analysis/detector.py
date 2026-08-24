@@ -55,15 +55,17 @@ def detect_and_store_leaks(session: Session) -> list[LeakFinding]:
         )
         if finding is not None:
             findings.append(finding)
-    findings.sort(
-        key=lambda finding: (
-            -finding.recoverable_impact,
-            -finding.confidence,
-            DIMENSION_PRIORITY[finding.cohort_filter["dimension"]],
-            finding.cohort_filter["value"],
-        )
-    )
+    findings.sort(key=finding_sort_key)
     return findings
+
+
+def finding_sort_key(finding: LeakFinding) -> tuple[int, float, int, str]:
+    return (
+        -finding.recoverable_impact,
+        -finding.confidence,
+        DIMENSION_PRIORITY[finding.cohort_filter["dimension"]],
+        finding.cohort_filter["value"],
+    )
 
 
 def _cohort_values(event: PaymentEvent, customer: Customer | None) -> list[tuple[str, str]]:
