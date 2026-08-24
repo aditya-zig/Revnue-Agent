@@ -1,3 +1,3 @@
-from app.leak_analysis.detector import detect_leaks
+from app.leak_analysis.detector import detect_and_store_leaks
 
-__all__ = ["detect_leaks"]
+__all__ = ["detect_and_store_leaks"]

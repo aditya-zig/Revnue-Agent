@@ -5,7 +5,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.tables import Customer, LeakFinding, PaymentEvent, RecoveryCase
+from app.db.tables import Customer, LeakFinding, Outcome, PaymentEvent, RecoveryCase
 
 DETECTOR_VERSION = "leak-detector-v1"
 MINIMUM_COHORT_SUPPORT = 3
@@ -15,12 +15,12 @@ DIMENSION_PRIORITY = {
     "customer_history": 2,
     "prior_successful_payments": 3,
     "amount_bucket": 4,
-    "time_bucket": 5,
+    "hour_bucket": 5,
     "day_bucket": 6,
 }
 
 
-def detect_leaks(session: Session) -> list[LeakFinding]:
+def detect_and_store_leaks(session: Session) -> list[LeakFinding]:
     rows = session.execute(
         select(PaymentEvent, Customer)
         .outerjoin(Customer, Customer.customer_id == PaymentEvent.customer_id)
@@ -30,6 +30,8 @@ def detect_leaks(session: Session) -> list[LeakFinding]:
         return []
 
     cases = {case.payment_id: case for case in session.scalars(select(RecoveryCase))}
+    outcomes = {outcome.case_id: outcome for outcome in session.scalars(select(Outcome))}
+    default_recovery_probability = _calibrated_recovery_probability(list(outcomes.values()))
     baseline_rate = sum(event.status == "failed" for event, _ in rows) / len(rows)
     cohorts: dict[tuple[str, str], list[tuple[PaymentEvent, Customer | None]]] = defaultdict(list)
 
@@ -41,7 +43,16 @@ def detect_leaks(session: Session) -> list[LeakFinding]:
     for (dimension, value), cohort in cohorts.items():
         if len(cohort) < MINIMUM_COHORT_SUPPORT:
             continue
-        finding = _create_finding(session, dimension, value, cohort, baseline_rate, cases)
+        finding = _create_finding(
+            session,
+            dimension,
+            value,
+            cohort,
+            baseline_rate,
+            cases,
+            outcomes,
+            default_recovery_probability,
+        )
         if finding is not None:
             findings.append(finding)
     findings.sort(
@@ -64,9 +75,9 @@ def _cohort_values(event: PaymentEvent, customer: Customer | None) -> list[tuple
             "returning" if customer and customer.successful_payments > 0 else "new",
         ),
         ("amount_bucket", _amount_bucket(event.amount)),
-        ("time_bucket", _time_bucket(event.occurred_at.hour)),
+        ("hour_bucket", _hour_bucket(event.occurred_at.hour)),
         ("day_bucket", event.occurred_at.strftime("%A").lower()),
-        ("prior_successful_payments", _prior_successful_payments_bucket(customer)),
+        ("prior_successful_payments", _prior_successful_payments(customer)),
     ]
 
 
@@ -78,7 +89,7 @@ def _amount_bucket(amount: int) -> str:
     return "1000_inr_or_more"
 
 
-def _time_bucket(hour: int) -> str:
+def _hour_bucket(hour: int) -> str:
     if hour < 6:
         return "night"
     if hour < 12:
@@ -88,13 +99,9 @@ def _time_bucket(hour: int) -> str:
     return "evening"
 
 
-def _prior_successful_payments_bucket(customer: Customer | None) -> str:
+def _prior_successful_payments(customer: Customer | None) -> str:
     successful_payments = customer.successful_payments if customer else 0
-    if successful_payments == 0:
-        return "0"
-    if successful_payments < 4:
-        return "1_to_3"
-    return "4_or_more"
+    return str(successful_payments)
 
 
 def _create_finding(
@@ -104,6 +111,8 @@ def _create_finding(
     cohort: list[tuple[PaymentEvent, Customer | None]],
     baseline_rate: float,
     cases: dict[str, RecoveryCase],
+    outcomes: dict[str, Outcome],
+    default_recovery_probability: float,
 ) -> LeakFinding | None:
     failures = [event for event, _ in cohort if event.status == "failed"]
     observed_rate = len(failures) / len(cohort)
@@ -120,7 +129,16 @@ def _create_finding(
     failed_value = sum(event.amount for event in failures)
     unresolved_value = sum(case.amount_at_risk for case in recoverable_cases.values())
     impact = round((observed_rate - baseline_rate) * attempted_value)
-    recovery_probability = unresolved_value / failed_value if failed_value else 0.0
+    cohort_outcomes = [
+        outcomes[case.case_id]
+        for case in recoverable_cases.values()
+        if case.case_id in outcomes
+    ]
+    recovery_probability = (
+        _calibrated_recovery_probability(cohort_outcomes)
+        if cohort_outcomes
+        else default_recovery_probability
+    )
     recoverable_impact = round(impact * recovery_probability)
     if recoverable_impact == 0:
         return None
@@ -147,6 +165,12 @@ def _create_finding(
     )
     session.add(finding)
     return finding
+
+
+def _calibrated_recovery_probability(outcomes: list[Outcome]) -> float:
+    if not outcomes:
+        return 0.5
+    return (sum(outcome.recovered for outcome in outcomes) + 1) / (len(outcomes) + 2)
 
 
 def _wilson_lower_bound(successes: int, total: int) -> float:

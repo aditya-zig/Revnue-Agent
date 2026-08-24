@@ -144,23 +144,26 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         imported = await client.post("/api/v1/data/import", content=csv)
         response = await client.get("/api/v1/findings")
+        detail = await client.get(f"/api/v1/findings/{response.json()[0]['finding_id']}")
 
     assert imported.status_code == 201
     assert response.status_code == 200
     findings = response.json()
+    assert detail.status_code == 200
+    assert detail.json() == findings[0]
     assert findings[0]["cohort_filter"] == {
         "dimension": "error_reason",
         "value": "insufficient funds",
     }
     assert findings[0]["impact"] == 112500
-    assert findings[0]["recoverable_impact"] == 112500
+    assert findings[0]["recoverable_impact"] == 56250
     assert findings[0]["evidence"] == {
         "attempted_value": 300000,
         "data_quality_warnings": [],
         "event_ids": ["evt_001", "evt_002", "evt_003"],
         "failure_count": 3,
         "failed_value": 300000,
-        "recovery_probability": 1.0,
+        "recovery_probability": 0.5,
         "support": 3,
         "unresolved_value": 300000,
     }
@@ -173,7 +176,7 @@ async def test_detector_persists_and_returns_ranked_supported_leak_evidence(app)
         "error_reason",
         "method",
         "prior_successful_payments",
-        "time_bucket",
+        "hour_bucket",
     }
     assert all(finding["evidence"]["support"] >= 3 for finding in findings)
     assert all(
