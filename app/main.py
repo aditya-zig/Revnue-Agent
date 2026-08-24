@@ -25,6 +25,7 @@ def create_app(
     policy_now: Callable[[], datetime] | None = None,
     create_payment_link: Callable[[int, str], str] | None = None,
     decide_recovery_action: Callable[[dict], object] | None = None,
+    kill_switch: bool | None = None,
 ) -> FastAPI:
     settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
@@ -40,6 +41,7 @@ def create_app(
     app.state.policy_now = policy_now or (lambda: datetime.now(UTC))
     app.state.quiet_hours_start = settings.quiet_hours_start
     app.state.quiet_hours_end = settings.quiet_hours_end
+    app.state.kill_switch = kill_switch if kill_switch is not None else settings.kill_switch
     app.state.create_payment_link = create_payment_link or _payment_link_not_configured
     app.state.decide_recovery_action = decide_recovery_action
     app.state.recovery_model = RecoveryModel()

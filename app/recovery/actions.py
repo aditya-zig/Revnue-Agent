@@ -27,6 +27,7 @@ def execute_action(
     quiet_hours_start: int,
     quiet_hours_end: int,
     create_payment_link: Callable[[int, str], str],
+    kill_switch: bool = False,
 ) -> tuple[ActionResponse, bool]:
     existing = session.scalar(
         select(ActionEvent).where(ActionEvent.idempotency_key == idempotency_key)
@@ -46,7 +47,7 @@ def execute_action(
     if case.state != CaseState.ELIGIBLE:
         raise PermissionError(["invalid_state"])
 
-    policy = evaluate_policy(session, case, now, quiet_hours_start, quiet_hours_end)
+    policy = evaluate_policy(session, case, now, quiet_hours_start, quiet_hours_end, kill_switch)
     if action not in policy.allowed_actions:
         session.add(
             AuditEvent(

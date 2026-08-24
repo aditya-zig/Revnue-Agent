@@ -7,5 +7,6 @@ class Settings(BaseSettings):
     max_request_body_bytes: int = 1_000_000
     quiet_hours_start: int = 21
     quiet_hours_end: int = 8
+    kill_switch: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="REROUTE_")

@@ -35,7 +35,14 @@ def evaluate_policy(
     now: datetime,
     quiet_hours_start: int,
     quiet_hours_end: int,
+    kill_switch: bool = False,
 ) -> PolicyResponse:
+    if kill_switch:
+        return PolicyResponse(
+            allowed_actions=[],
+            blocked_reasons={action: ["kill_switch"] for action in RECOVERY_ACTIONS},
+            policy_version=POLICY_VERSION,
+        )
     if case.state in TERMINAL_CASE_STATES:
         return PolicyResponse(
             allowed_actions=[],

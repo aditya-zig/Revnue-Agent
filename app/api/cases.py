@@ -16,6 +16,10 @@ from app.recovery.actions import ProviderError
 router = APIRouter(prefix="/api/v1", tags=["cases"])
 
 
+def _kill_switch(request: Request) -> bool:
+    return bool(getattr(request.app.state, "kill_switch", False))
+
+
 @router.get("/cases")
 def list_cases(request: Request) -> list[dict]:
     with request.app.state.session_factory() as session:
@@ -61,6 +65,7 @@ def get_policy(case_id: str, request: Request) -> PolicyResponse:
             request.app.state.policy_now(),
             request.app.state.quiet_hours_start,
             request.app.state.quiet_hours_end,
+            _kill_switch(request),
         )
 
 
@@ -76,6 +81,7 @@ def get_ranked_actions(case_id: str, request: Request) -> dict:
             request.app.state.policy_now(),
             request.app.state.quiet_hours_start,
             request.app.state.quiet_hours_end,
+            _kill_switch(request),
         )
         customer = session.get(Customer, case.customer_id) if case.customer_id else None
         return {
@@ -105,6 +111,7 @@ def create_action(
                 request.app.state.quiet_hours_start,
                 request.app.state.quiet_hours_end,
                 request.app.state.create_payment_link,
+                _kill_switch(request),
             )
         except PermissionError as error:
             raise HTTPException(status_code=409, detail=list(error.args[0])) from error
@@ -136,6 +143,7 @@ def create_decision(
                 request.app.state.create_payment_link,
                 request.app.state.recovery_model,
                 request.app.state.decide_recovery_action,
+                _kill_switch(request),
             )
         except PermissionError as error:
             raise HTTPException(status_code=409, detail=list(error.args[0])) from error
