@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from datetime import UTC, datetime
+
 from fastapi import FastAPI
 
 from app.api.cases import router as cases_router
@@ -13,6 +16,7 @@ def create_app(
     database_url: str | None = None,
     webhook_secret: str | None = None,
     max_request_body_bytes: int | None = None,
+    policy_now: Callable[[], datetime] | None = None,
 ) -> FastAPI:
     settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
@@ -25,6 +29,9 @@ def create_app(
         if max_request_body_bytes is not None
         else settings.max_request_body_bytes
     )
+    app.state.policy_now = policy_now or (lambda: datetime.now(UTC))
+    app.state.quiet_hours_start = settings.quiet_hours_start
+    app.state.quiet_hours_end = settings.quiet_hours_end
     app.include_router(webhooks_router)
     app.include_router(cases_router)
     app.include_router(data_router)

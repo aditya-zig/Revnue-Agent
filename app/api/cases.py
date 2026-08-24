@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import select
 
 from app.db.tables import AuditEvent, RecoveryCase
+from app.domain.models import PolicyResponse
+from app.policy import evaluate_policy
 
 router = APIRouter(prefix="/api/v1", tags=["cases"])
 
@@ -37,3 +39,18 @@ def list_audit_events(case_id: str, request: Request) -> list[dict]:
             {"case_id": event.case_id, "event_type": event.event_type, "payload": event.payload}
             for event in events
         ]
+
+
+@router.get("/cases/{case_id}/policy")
+def get_policy(case_id: str, request: Request) -> PolicyResponse:
+    with request.app.state.session_factory() as session:
+        case = session.get(RecoveryCase, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="case not found")
+        return evaluate_policy(
+            session,
+            case,
+            request.app.state.policy_now(),
+            request.app.state.quiet_hours_start,
+            request.app.state.quiet_hours_end,
+        )

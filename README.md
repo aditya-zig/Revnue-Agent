@@ -24,6 +24,8 @@ The health endpoint is available at `GET /health`. The application reads
   event columns.
 - `GET /api/v1/cases` and `GET /api/v1/audit/{case_id}` expose the current
   case state and its append-only audit trail.
+- `GET /api/v1/cases/{case_id}/policy` returns the permitted recovery actions,
+  blocked-action reasons, and policy version.
 
 ## Limits
 

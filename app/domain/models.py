@@ -48,3 +48,9 @@ class NormalizedPaymentEvent(BaseModel):
             provider="razorpay_test",
             raw_hash=raw_hash,
         )
+
+
+class PolicyResponse(BaseModel):
+    allowed_actions: list[str]
+    blocked_reasons: dict[str, list[str]]
+    policy_version: str
