@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
-from app.db.tables import AuditEvent, RecoveryCase
+from app.db.tables import AuditEvent, Customer, RecoveryCase
 from app.domain.models import ActionRequest, ActionResponse, PolicyResponse
 from app.policy import evaluate_policy
 from app.recovery import execute_action
@@ -56,6 +56,29 @@ def get_policy(case_id: str, request: Request) -> PolicyResponse:
             request.app.state.quiet_hours_start,
             request.app.state.quiet_hours_end,
         )
+
+
+@router.get("/cases/{case_id}/ranked-actions")
+def get_ranked_actions(case_id: str, request: Request) -> dict:
+    with request.app.state.session_factory() as session:
+        case = session.get(RecoveryCase, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="case not found")
+        policy = evaluate_policy(
+            session,
+            case,
+            request.app.state.policy_now(),
+            request.app.state.quiet_hours_start,
+            request.app.state.quiet_hours_end,
+        )
+        customer = session.get(Customer, case.customer_id) if case.customer_id else None
+        return {
+            "model_version": request.app.state.recovery_model.report["model_version"],
+            "policy_version": policy.policy_version,
+            "actions": request.app.state.recovery_model.rank(
+                case, customer, policy.allowed_actions
+            ),
+        }
 
 
 @router.post("/cases/{case_id}/actions", status_code=201)

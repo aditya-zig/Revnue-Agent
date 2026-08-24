@@ -104,6 +104,49 @@ async def test_policy_blocks_hard_decline_retries_and_contact_without_consent_or
 
 
 @pytest.mark.asyncio
+async def test_ranked_actions_exclude_policy_blocked_actions(app):
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Customer(customer_id="cust_ranked", consent=False),
+                RecoveryCase(
+                    case_id="case_ranked",
+                    customer_id="cust_ranked",
+                    payment_id="pay_ranked",
+                    amount_at_risk=249900,
+                    state="eligible",
+                    attempts=0,
+                ),
+                PaymentEvent(
+                    event_id="evt_ranked",
+                    provider_event_id="provider_evt_ranked",
+                    event_type="payment.failed",
+                    payment_id="pay_ranked",
+                    customer_id="cust_ranked",
+                    amount=249900,
+                    currency="INR",
+                    method="card",
+                    status="failed",
+                    error_code="hard_decline",
+                    occurred_at=NOW,
+                    provider="test",
+                    raw_hash="ranked",
+                ),
+            ]
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/cases/case_ranked/ranked-actions")
+
+    assert response.status_code == 200
+    assert {action["action"] for action in response.json()["actions"]} == {
+        "payment_link",
+        "escalate",
+    }
+
+
+@pytest.mark.asyncio
 async def test_policy_enforces_contact_and_daily_action_limits(app):
     with app.state.session_factory() as session:
         session.add_all(

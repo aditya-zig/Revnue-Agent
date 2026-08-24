@@ -1,3 +1,4 @@
 from app.recovery.actions import execute_action
+from app.recovery.scoring import RecoveryModel
 
-__all__ = ["execute_action"]
+__all__ = ["RecoveryModel", "execute_action"]

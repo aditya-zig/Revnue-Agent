@@ -10,6 +10,7 @@ from app.api.leak_findings import router as leak_findings_router
 from app.api.webhooks import router as webhooks_router
 from app.core.config import Settings
 from app.db.session import create_session_factory
+from app.recovery import RecoveryModel
 
 
 def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
@@ -38,6 +39,7 @@ def create_app(
     app.state.quiet_hours_start = settings.quiet_hours_start
     app.state.quiet_hours_end = settings.quiet_hours_end
     app.state.create_payment_link = create_payment_link or _payment_link_not_configured
+    app.state.recovery_model = RecoveryModel()
     app.include_router(webhooks_router)
     app.include_router(cases_router)
     app.include_router(data_router)

@@ -79,6 +79,37 @@ async def test_payment_link_uses_the_outstanding_amount_and_idempotency_key(app)
 
 
 @pytest.mark.asyncio
+async def test_ranked_actions_include_scores_for_every_policy_allowed_action(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        ranked = await client.get("/api/v1/cases/case_001/ranked-actions")
+        report = await client.get("/api/v1/evaluations/recovery-model")
+
+    assert ranked.status_code == 200
+    body = ranked.json()
+    assert body["model_version"] == "v1"
+    assert {action["action"] for action in body["actions"]} == {
+        "payment_link",
+        "contact",
+        "promise",
+        "retry",
+        "escalate",
+    }
+    assert all(
+        set(action) == {"action", "recovery_probability", "cost", "expected_net_value"}
+        for action in body["actions"]
+    )
+    assert all(0 <= action["recovery_probability"] <= 1 for action in body["actions"])
+    assert body["actions"] == sorted(
+        body["actions"], key=lambda action: action["expected_net_value"], reverse=True
+    )
+    assert report.status_code == 200
+    assert report.json()["train_customers"]
+    assert report.json()["holdout_customers"]
+    assert report.json()["customer_overlap"] == 0
+    assert set(report.json()) >= {"calibration", "top_k_precision", "net_value"}
+
+
+@pytest.mark.asyncio
 async def test_actions_require_an_eligible_case(app):
     with app.state.session_factory() as session:
         session.add(
