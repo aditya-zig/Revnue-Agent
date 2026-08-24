@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.cases import router as cases_router
 from app.api.data import router as data_router
+from app.api.leak_findings import router as leak_findings_router
 from app.api.webhooks import router as webhooks_router
 from app.core.config import Settings
 from app.db.session import create_session_factory
@@ -26,6 +27,7 @@ def create_app(
     app.include_router(webhooks_router)
     app.include_router(cases_router)
     app.include_router(data_router)
+    app.include_router(leak_findings_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
