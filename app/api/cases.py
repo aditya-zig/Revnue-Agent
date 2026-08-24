@@ -2,9 +2,15 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
 from app.db.tables import AuditEvent, Customer, RecoveryCase
-from app.domain.models import ActionRequest, ActionResponse, PolicyResponse
+from app.domain.models import (
+    ActionRequest,
+    ActionResponse,
+    DecisionRequest,
+    DecisionResponse,
+    PolicyResponse,
+)
 from app.policy import evaluate_policy
-from app.recovery import execute_action
+from app.recovery import execute_action, run_decision
 from app.recovery.actions import ProviderError
 
 router = APIRouter(prefix="/api/v1", tags=["cases"])
@@ -106,6 +112,37 @@ def create_action(
             raise HTTPException(status_code=502, detail=str(error)) from error
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+        if duplicate:
+            response.status_code = 200
+        return result
+
+
+@router.post("/cases/{case_id}/decisions", status_code=201)
+def create_decision(
+    case_id: str, decision: DecisionRequest, request: Request, response: Response
+) -> DecisionResponse:
+    with request.app.state.session_factory() as session:
+        case = session.get(RecoveryCase, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="case not found")
+        try:
+            result, duplicate = run_decision(
+                session,
+                case,
+                decision.idempotency_key,
+                request.app.state.policy_now(),
+                request.app.state.quiet_hours_start,
+                request.app.state.quiet_hours_end,
+                request.app.state.create_payment_link,
+                request.app.state.recovery_model,
+                request.app.state.decide_recovery_action,
+            )
+        except PermissionError as error:
+            raise HTTPException(status_code=409, detail=list(error.args[0])) from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except ProviderError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
         if duplicate:
             response.status_code = 200
         return result

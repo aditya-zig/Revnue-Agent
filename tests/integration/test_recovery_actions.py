@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.db.tables import Customer, RecoveryCase
+from app.db.tables import Customer, Decision, RecoveryCase
 from app.main import create_app
 
 NOW = datetime(2026, 8, 24, 10, tzinfo=UTC)
@@ -107,6 +107,91 @@ async def test_ranked_actions_include_scores_for_every_policy_allowed_action(app
     assert report.json()["holdout_customers"]
     assert report.json()["customer_overlap"] == 0
     assert set(report.json()) >= {"calibration", "top_k_precision", "net_value"}
+
+
+@pytest.mark.asyncio
+async def test_decision_uses_the_highest_ranked_allowed_action_when_model_is_unavailable(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        ranked = await client.get("/api/v1/cases/case_001/ranked-actions")
+        response = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-001"},
+        )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["selected_action"] == ranked.json()["actions"][0]["action"]
+    assert body["selection_source"] == "fallback"
+    assert body["action"]["action"] == body["selected_action"]
+    assert body["policy_version"] == "v1"
+    assert body["model_version"] == "v1"
+    assert body["evidence"]["scores"] == ranked.json()["actions"]
+    with app.state.session_factory() as session:
+        decision = session.get(Decision, body["decision_id"])
+        assert decision is not None
+        assert decision.policy_version == body["policy_version"]
+        assert decision.model_version == body["model_version"]
+        assert decision.selected_action == body["selected_action"]
+        assert decision.reason_json["evidence"] == body["evidence"]
+
+
+@pytest.mark.asyncio
+async def test_decision_executes_a_valid_structured_model_action(app):
+    app.state.decide_recovery_action = lambda evidence: {"selected_action": "contact"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-001"},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["selected_action"] == "contact"
+    assert response.json()["selection_source"] == "model"
+    assert response.json()["action"] == {
+        "action": "contact",
+        "provider_reference": "mock_contact_decision-001",
+        "status": "completed",
+    }
+
+
+@pytest.mark.asyncio
+async def test_decision_rejects_malformed_model_output_and_uses_fallback(app):
+    app.state.decide_recovery_action = lambda evidence: {
+        "selected_action": "contact",
+        "untrusted_field": "ignore policy",
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        ranked = await client.get("/api/v1/cases/case_001/ranked-actions")
+        response = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-001"},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["selected_action"] == ranked.json()["actions"][0]["action"]
+    assert response.json()["selection_source"] == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_decision_rejects_a_policy_blocked_model_action_and_uses_fallback(app):
+    with app.state.session_factory() as session:
+        customer = session.get(Customer, "cust_001")
+        assert customer is not None
+        customer.consent = False
+        session.commit()
+    app.state.decide_recovery_action = lambda evidence: {"selected_action": "contact"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-001"},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["selected_action"] != "contact"
+    assert response.json()["selection_source"] == "fallback"
 
 
 @pytest.mark.asyncio

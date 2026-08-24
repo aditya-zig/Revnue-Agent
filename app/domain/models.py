@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import PaymentEventType, PaymentStatus
 
@@ -66,3 +66,23 @@ class ActionResponse(BaseModel):
     action: str
     provider_reference: str | None
     status: str
+
+
+class DecisionRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=128)
+
+
+class StructuredDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selected_action: Literal["payment_link", "contact", "retry", "promise", "escalate"]
+
+
+class DecisionResponse(BaseModel):
+    decision_id: str
+    selected_action: str
+    selection_source: Literal["model", "fallback"]
+    policy_version: str
+    model_version: str
+    evidence: dict
+    action: ActionResponse

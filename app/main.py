@@ -23,6 +23,7 @@ def create_app(
     max_request_body_bytes: int | None = None,
     policy_now: Callable[[], datetime] | None = None,
     create_payment_link: Callable[[int, str], str] | None = None,
+    decide_recovery_action: Callable[[dict], object] | None = None,
 ) -> FastAPI:
     settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
@@ -39,6 +40,7 @@ def create_app(
     app.state.quiet_hours_start = settings.quiet_hours_start
     app.state.quiet_hours_end = settings.quiet_hours_end
     app.state.create_payment_link = create_payment_link or _payment_link_not_configured
+    app.state.decide_recovery_action = decide_recovery_action
     app.state.recovery_model = RecoveryModel()
     app.include_router(webhooks_router)
     app.include_router(cases_router)
