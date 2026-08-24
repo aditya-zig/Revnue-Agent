@@ -79,13 +79,19 @@ def finding_sort_key(finding: LeakFinding) -> tuple[int, float, int, str]:
 
 
 def _failure_sequence(rows: list[tuple[PaymentEvent, Customer | None]]) -> dict[str, str]:
-    failures_by_payment: dict[str, list[PaymentEvent]] = defaultdict(list)
-    for event, _ in rows:
-        if event.status == "failed":
-            failures_by_payment[event.payment_id].append(event)
-
+    failures_by_customer: dict[str, list[PaymentEvent]] = defaultdict(list)
     sequence = {event.event_id: "not_failed" for event, _ in rows}
-    for failures in failures_by_payment.values():
+    for event, customer in rows:
+        if event.status == "failed":
+            if customer is None:
+                sequence[event.event_id] = "unknown"
+                continue
+            if customer.prior_failures > 0:
+                sequence[event.event_id] = "repeated_failure"
+                continue
+            failures_by_customer[customer.customer_id].append(event)
+
+    for failures in failures_by_customer.values():
         failures.sort(key=lambda event: (event.occurred_at, event.event_id))
         sequence[failures[0].event_id] = "first_failure"
         for event in failures[1:]:

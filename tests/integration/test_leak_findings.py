@@ -290,12 +290,13 @@ async def test_detector_groups_repeated_payment_failures(app):
         "error_code",
         "error_reason",
         "occurred_at",
+        "prior_failures",
     ]
     rows = [
         [
             f"evt_{payment_id}_{failure_number}",
             "payment.failed",
-            f"pay_{payment_id}",
+            f"pay_{payment_id}_{failure_number}",
             f"cust_{payment_id}",
             "100000",
             "INR",
@@ -304,6 +305,7 @@ async def test_detector_groups_repeated_payment_failures(app):
             "BAD_REQUEST_ERROR",
             "insufficient funds",
             f"2026-08-24T04:0{failure_number}:00+00:00",
+            "0",
         ]
         for payment_id in range(1, 4)
         for failure_number in range(1, 3)
@@ -322,6 +324,7 @@ async def test_detector_groups_repeated_payment_failures(app):
                 "",
                 "",
                 f"2026-08-23T12:0{payment_id}:00+00:00",
+                "0",
             ]
             for payment_id in range(1, 4)
         ]
