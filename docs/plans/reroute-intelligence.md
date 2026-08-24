@@ -113,6 +113,8 @@ Status: completed in commit `6f6a26c`.
 - Provide demo data and a five-minute video.
 - Audit the public repository for secrets and real customer data.
 
+Status: deadline is 4 September 2026. Submission is planned for 4 September 2026. No license file per owner decision.
+
 ## Verification targets
 
 - The detector ranks the expected top leak on the hidden scenario.
