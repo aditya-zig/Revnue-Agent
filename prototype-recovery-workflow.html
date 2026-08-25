@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prototype — Merchant recovery workflow (3 variants via ?variant=)</title>
+<style>
+  :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui; background:#0e141c; color:#e8edf2; }
+  * { box-sizing: border-box; }
+  body { margin:0; }
+  .muted { color:#aebdca; }
+  .tag { display:inline-block; padding:2px 6px; border-radius:4px; font-size:.7rem; letter-spacing:.04em; background:#1e3245; border:1px solid #33414e; }
+  .tag.estimated { color:#f1c46c; border-color:#7a5a1f; }
+  .tag.simulated { color:#a5d1f6; border-color:#2e5a85; }
+  .tag.mock { color:#92e5b7; border-color:#2a6b4a; }
+  .tag.test { color:#f9a8d4; border-color:#7a2f5a; }
+  .tag.blocked { color:#ffaaa4; border-color:#7a3a38; }
+  a { color:#7eb2e0; }
+  header.proto-note { background:#7a5a1f; color:#fff; text-align:center; padding:8px 12px; font-size:.85rem; }
+  header.proto-note strong { letter-spacing:.04em; }
+  /* switcher */
+  #proto-switcher { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); display:flex; align-items:center; gap:10px; background:#0c1117; border:1px solid #4a647a; padding:8px 12px; border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.5); z-index:9999; }
+  #proto-switcher button { background:#1e3245; border:1px solid #426179; color:#e8edf2; border-radius:999px; padding:6px 10px; cursor:pointer; }
+  #proto-switcher button:hover { background:#243d56; }
+  #proto-switcher .label { min-width:220px; text-align:center; font-size:.85rem; }
+  #proto-switcher .label strong { color:#f1c46c; }
+  /* shared card */
+  .card { background:#17212b; border:1px solid #33414e; border-radius:10px; padding:14px; }
+  .grid4 { display:grid; gap:12px; grid-template-columns: repeat(4, minmax(0,1fr)); }
+  @media(max-width:900px){ .grid4{ grid-template-columns: repeat(2,1fr);} }
+  table { width:100%; border-collapse:collapse; }
+  th,td { border-bottom:1px solid #33414e; padding:10px 8px; text-align:left; font-size:.9rem; }
+  th { color:#aebdca; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; }
+  .pill { display:inline-block; padding:2px 7px; border-radius:999px; font-size:.75rem; }
+  .pill.eligible{ background:#1a3a2a; color:#92e5b7; border:1px solid #2a6b4a; }
+  .pill.awaiting{ background:#2e2a1a; color:#f1c46c; border:1px solid #7a5a1f; }
+  .pill.exception{ background:#3a1a1a; color:#ffaaa4; border:1px solid #7a3a38; }
+  .pill.escalated{ background:#2a1a3a; color:#d8b4fe; border:1px solid #5a347a; }
+  /* Variant A: sidebar */
+  .va-layout { display:grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 40px); }
+  .va-nav { background:#111a23; border-right:1px solid #33414e; padding:14px; }
+  .va-nav h2{ font-size:.75rem; color:#aebdca; letter-spacing:.08em; text-transform:uppercase; margin:18px 0 8px; }
+  .va-nav a{ display:block; padding:8px 10px; border-radius:8px; color:#cbd5e1; text-decoration:none; margin:2px 0; }
+  .va-nav a.active{ background:#1e3245; color:#fff; border:1px solid #3a5a75; }
+  .va-main{ padding:18px; }
+  .va-queue td:last-child{ white-space:nowrap; }
+  .va-detail { margin-top:14px; border-top:1px dashed #33414e; padding-top:14px; display:grid; grid-template-columns: 1.4fr .9fr; gap:14px; }
+  /* Variant B: top nav + overview first */
+  .vb-topnav { display:flex; gap:6px; flex-wrap:wrap; padding:12px 18px; background:#111a23; border-bottom:1px solid #33414e; position:sticky; top:0; z-index:5; }
+  .vb-topnav a{ padding:8px 12px; border-radius:999px; text-decoration:none; color:#cbd5e1; border:1px solid transparent; }
+  .vb-topnav a.active{ background:#1e3245; border-color:#3a5a75; color:#fff; }
+  .vb-wrap{ max-width:1100px; margin:0 auto; padding:18px; }
+  .vb-cards .number{ font-size:1.6rem; margin-top:6px; }
+  .vb-detail { display:grid; grid-template-columns: 1fr; gap:14px; }
+  .vb-audit { border-left:2px solid #3a5a75; padding-left:12px; margin-left:6px; }
+  /* Variant C: split pane commander */
+  .vc-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#111a23; border-bottom:1px solid #33414e; }
+  .vc-layout{ display:grid; grid-template-columns: 360px 1fr 280px; gap:0; min-height:calc(100vh - 90px); }
+  .vc-queue{ border-right:1px solid #33414e; overflow:auto; background:#0f1923; }
+  .vc-detail{ overflow:auto; padding:14px; }
+  .vc-rail{ border-left:1px solid #33414e; overflow:auto; background:#111a23; padding:12px; }
+  .vc-queue-item{ padding:10px 12px; border-bottom:1px solid #1e2e3e; cursor:pointer; }
+  .vc-queue-item.active{ background:#1e3245; }
+  .vc-queue-item:hover{ background:#1a2a3a; }
+  @media(max-width:1000px){ .vc-layout{ grid-template-columns: 1fr; } .vc-rail{ border-left:none; border-top:1px solid #33414e; } }
+</style>
+</head>
+<body>
+<header class="proto-note"><strong>PROTOTYPE</strong> — throwaway, not production. Three variants of the merchant workflow via <code>?variant=A</code> / B / C. Source: ADR 0007 screen contracts. Use the pill at the bottom to switch.</header>
+
+<div id="app"></div>
+
+<div id="proto-switcher" role="toolbar" aria-label="Prototype variant switcher">
+  <button id="prev" aria-label="Previous variant">←</button>
+  <div class="label" id="switcher-label"></div>
+  <button id="next" aria-label="Next variant">→</button>
+</div>
+
+<script>
+// Mock data shared across variants
+const mock = {
+  overview: { revenueAtRisk: 8472300, estimatedRecoverable: 3124000, actualRecovered: 420000, simulatedRecovery: 2985000, openCases: 18, escalations: 2, exceptions: 3 },
+  findings: [
+    { id:"LF-241", cohort:"UPI • gateway_timeout • ₹500-2000", impact: 8472300, recoverable:3124000, confidence:0.71, support:14, cohort_rate:"18.4%", baseline:"4.1%" },
+    { id:"LF-189", cohort:"Cards • insufficient_funds • subscription", impact: 4120000, recoverable:890000, confidence:0.52, support:7, cohort_rate:"9.2%", baseline:"3.8%" },
+  ],
+  queue: [
+    { caseId:"RC-0831", amount: 199900, state:"escalated", customer:"CUST-441", method:"UPI", error:"gateway_timeout", age:"2d", expected: 41200, blocked:false, escalationReason:"Customer asked for help" },
+    { caseId:"RC-0824", amount: 49900, state:"exception", customer:"CUST-109", method:"UPI", error:"debit reported", age:"4h", expected: 0, blocked:true, exception:"PaymentException • awaiting evidence" },
+    { caseId:"RC-0829", amount: 99900, state:"eligible", customer:"CUST-882", method:"card", error:"insufficient_funds", age:"5h", expected: 78500, blocked:false, policy:"2 contacts left, consent OK" },
+    { caseId:"RC-0830", amount: 149900, state:"eligible", customer:"CUST-903", method:"UPI", error:"gateway_timeout", age:"1h", expected: 92300, blocked:false, policy:"consent OK, quiet hours OK" },
+    { caseId:"RC-0827", amount: 49900, state:"awaiting_outcome", customer:"CUST-771", method:"card", error:"gateway_timeout", age:"18h", expected: 0, blocked:false, waiting:"payment_link sent 18h ago" },
+    { caseId:"RC-0822", amount: 199900, state:"eligible", customer:"—", method:"UPI", error:"gateway_timeout", age:"3h", expected: 0, blocked:true, policy:"Missing Customer identity — contact blocked" },
+  ],
+  detail: {
+    caseId:"RC-0829", obligation:"ORD-98231 (verified)", customer:"CUST-882 • consent ✓ • tenure 412d", amount:99900, state:"eligible", attempts:"1/3 contacts used",
+    exceptionBanner: null,
+    policy:{ allowed:["payment_link","contact"], blocked:["retry"], reason:"retry blocked — prior provider failure on this obligation" },
+    timeline:[
+      { kind:"PaymentEvent", at:"2026-08-20 14:31 UTC", data:"payment.failed • card • insufficient_funds • provider evt ev_29X • hash a3f9…" },
+      { kind:"LeakFinding", at:"2026-08-20 14:32", data:"Matched LF-241 • recoverable INR 31,240.00 ESTIMATED" },
+      { kind:"Decision", at:"2026-08-20 14:32", data:"Policy v7 allowed [payment_link, contact] • RecoveryModel v2 ranked contact → INR 785.00 expected" },
+      { kind:"AuditEvent", at:"2026-08-20 14:33", data:"Operator (ops) viewed case • Audit #4412" },
+    ],
+    actions:[
+      { tool:"contact", input:"mock email — payment link + help offer", status:"draft (needs human approval)" },
+    ]
+  },
+  exceptions: [
+    { id:"PX-014", obligation:"ORD-99102", customer:"CUST-109", state:"awaiting_evidence", opened:"4h ago", evidence:"Customer says debited INR 499.00 • no provider capture yet", blocks:"RC-0824" },
+    { id:"PX-015", obligation:"ORD-99011", customer:"CUST-203", state:"escalated", opened:"26h ago", evidence:"Provider signal: reversed • bank reversal pending", blocks:"—" },
+  ],
+  policySettings: { killSwitch:false, quietHours:"22:00–08:00 IST", contactCap:"3 per RecoveryCase (permanent)", approvals:"First Action needs human; contact/promise need consent + approval" }
+};
+
+const money = n => 'INR ' + (n/100).toLocaleString('en-IN',{minimumFractionDigits:2});
+
+const variants = {
+  A: { key:"A", name:"Queue-first sidebar" },
+  B: { key:"B", name:"Overview-first top nav" },
+  C: { key:"C", name:"Commander split-pane" },
+};
+
+function getVariant(){
+  const v = new URLSearchParams(location.search).get('variant');
+  return variants[v] ? v : 'A';
+}
+function setVariant(k){
+  const u = new URL(location.href);
+  u.searchParams.set('variant', k);
+  history.replaceState(null,'',u);
+  render();
+}
+
+function pills(state){
+  if(state==="eligible") return '<span class="pill eligible">eligible</span>';
+  if(state==="exception") return '<span class="pill exception">PaymentException — blocked</span>';
+  if(state==="awaiting_outcome") return '<span class="pill awaiting">awaiting outcome</span>';
+  if(state==="escalated") return '<span class="pill escalated">escalated to owner</span>';
+  return `<span class="pill">${state}</span>`;
+}
+
+function renderA(){
+  return `
+  <div class="va-layout">
+    <nav class="va-nav">
+      <div style="font-weight:700">ReRoute — Prototype A</div>
+      <div class="muted" style="font-size:.8rem">Queue-first for ops workers</div>
+      <h2>Primary</h2>
+      <a class="active">Overview</a>
+      <a class="active">Recovery queue ★</a>
+      <a>RecoveryCase detail</a>
+      <a>PaymentExceptions <span style="float:right" class="tag blocked">3</span></a>
+      <a>Policy settings</a>
+      <h2>Secondary</h2>
+      <a>Investigation</a>
+      <a>Evaluation</a>
+      <div class="card" style="margin-top:16px"><div class="muted" style="font-size:.8rem">Why this layout</div><div style="font-size:.85rem;margin-top:6px">Sidebar keeps queue in reach. Detail is a drawer below the selected row so ops never leaves the worklist. Exceptions get a persistent badge and inline block banners.</div></div>
+    </nav>
+    <div class="va-main">
+      <div class="grid4">
+        <div class="card" style="border-left:4px solid #e0a847"><div class="muted" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em">Revenue at risk</div><div style="font-size:1.4rem;margin-top:6px">${money(mock.overview.revenueAtRisk)}</div><span class="tag estimated">ESTIMATED</span></div>
+        <div class="card" style="border-left:4px solid #e0a847"><div class="muted" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em">Estimated recoverable</div><div style="font-size:1.4rem;margin-top:6px">${money(mock.overview.estimatedRecoverable)}</div><span class="tag estimated">ESTIMATED</span><div class="muted" style="font-size:.75rem">top LeakFinding LF-241 only, not summed</div></div>
+        <div class="card" style="border-left:4px solid #61c795"><div class="muted" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em">Actual recovered</div><div style="font-size:1.4rem;margin-top:6px">${money(mock.overview.actualRecovered)}</div><span class="tag test">TEST MODE</span></div>
+        <div class="card" style="border-left:4px solid #7eb2e0"><div class="muted" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em">Simulated recovery</div><div style="font-size:1.4rem;margin-top:6px">${money(mock.overview.simulatedRecovery)}</div><span class="tag simulated">SIMULATED</span></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">Recovery queue</h3><span class="muted" style="font-size:.8rem">Sorted: escalations → aged PaymentExceptions → eligible by expected net value → investigated by age</span></div>
+        <table class="va-queue" style="margin-top:10px">
+          <thead><tr><th>Case • Obligation</th><th>Evidence</th><th>Policy</th><th>Next action</th></tr></thead>
+          <tbody>
+            ${mock.queue.map(q=>`<tr style="${q.blocked?'opacity:.9;background:#1a1a1a':''}">
+              <td><strong>${q.caseId}</strong> <span class="muted">${q.amount?money(q.amount):''}</span><br>${pills(q.state)} <span class="muted" style="font-size:.8rem">${q.age}</span></td>
+              <td><span class="muted">${q.method} • ${q.error}</span><br><span style="font-size:.85rem">${q.customer}</span></td>
+              <td><span style="font-size:.85rem">${q.policy || q.exception || q.escalationReason || q.waiting || '—'}</span></td>
+              <td>${q.blocked?'<span class="tag blocked">BLOCKED</span>': q.state==='eligible'?`<button style="background:#1a3a2a;border:1px solid #2a6b4a;color:#92e5b7;padding:6px 10px;border-radius:6px;cursor:pointer">Approve ${q.caseId==='RC-0829'?'contact':'payment_link'}</button>` : '<span class="muted">View detail</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="va-detail card">
+        <div>
+          <h3 style="margin:0">RecoveryCase ${mock.detail.caseId} — detail drawer</h3>
+          <div class="muted" style="font-size:.85rem">${mock.detail.obligation} • ${mock.detail.customer} • ${mock.detail.attempts}</div>
+          <div style="margin-top:8px">${pills('eligible')} <span class="tag estimated">ESTIMATED expected ${money(78500)}</span></div>
+          <div style="margin-top:10px; padding:10px; background:#1a2e22; border:1px solid #2a6b4a; border-radius:8px"><strong>Policy decision</strong> <span class="tag estimated">Policy v7</span> <span class="tag simulated">RecoveryModel v2</span><br><span style="font-size:.85rem">Allowed: <strong>payment_link, contact</strong> • Blocked: retry (prior provider failure) • Idempotency key required • Human approval required</span></div>
+          <div style="margin-top:10px"><h4 style="margin:0 0 6px">Timeline (audit + evidence)</h4>${mock.detail.timeline.map(t=>`<div style="border-left:2px solid #3a5a75; padding:6px 0 6px 10px; margin:4px 0"><span class="tag">${t.kind}</span> <span class="muted" style="font-size:.8rem">${t.at}</span><br><span style="font-size:.85rem">${t.data}</span></div>`).join('')}</div>
+        </div>
+        <div>
+          <h4 style="margin:0 0 6px">Action</h4>
+          <div class="card" style="background:#0f1923"><div class="muted">Next permitted action</div><div style="font-weight:600">contact — mock email</div><div class="muted" style="font-size:.8rem">Subject: Payment for ORD-98231 — how to complete or ask for help</div><div style="margin-top:8px"><span class="tag mock">MOCK</span><span class="tag">needs approval</span></div><button style="margin-top:10px;width:100%;padding:10px;background:#243d56;border:1px solid #3a5a75;border-radius:8px;color:#fff;cursor:pointer">Approve and queue mock email</button><div class="muted" style="font-size:.75rem;margin-top:6px">Records AuditEvent • idempotent • quiet-hours checked</div></div>
+          <div class="card" style="margin-top:10px"><h4 style="margin:0 0 6px">PaymentException rail</h4><p class="muted" style="font-size:.85rem">This case has no open exception. If one opens, actions block and banner appears.</p><div style="font-size:.8rem"><strong>PX-014</strong> blocks RC-0824 — <span class="tag blocked">awaiting evidence</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderB(){
+  return `
+  <div class="vb-topnav">
+    <a class="active">Overview</a><a>Recovery queue</a><a style="background:#1e3245;border-color:#3a5a75">RecoveryCase detail ★</a><a>PaymentExceptions <span class="tag blocked" style="margin-left:6px">3</span></a><a>Policy settings <span class="muted" style="font-size:.75rem">owner only</span></a><a>Investigation</a><a>Evaluation</a>
+  </div>
+  <div class="vb-wrap">
+    <div class="card" style="background:#111a23"><div class="muted" style="font-size:.75rem; letter-spacing:.06em">PROTOTYPE B — Overview-first for demo and owner sign-off. Stacking tells the money story before the work.</div></div>
+    <div class="vb-cards grid4" style="margin-top:12px">
+      <div class="card estimated" style="border-left:4px solid #e0a847"><div class="muted" style="font-size:.7rem">Revenue at risk</div><div class="number">${money(mock.overview.revenueAtRisk)}</div><span class="tag estimated">ESTIMATED</span><div class="muted" style="font-size:.75rem">sum amount_at_risk where state not recovered</div></div>
+      <div class="card estimated" style="border-left:4px solid #e0a847"><div class="muted" style="font-size:.7rem">Estimated recoverable</div><div class="number">${money(mock.overview.estimatedRecoverable)}</div><span class="tag estimated">ESTIMATED</span><div class="muted" style="font-size:.75rem">LF-241 only, not summed cohorts</div></div>
+      <div class="card test-mode" style="border-left:4px solid #61c795"><div class="muted" style="font-size:.7rem">Actual recovered</div><div class="number">${money(mock.overview.actualRecovered)}</div><span class="tag test">TEST MODE</span><div class="muted" style="font-size:.75rem">Outcome source = razorpay_test only</div></div>
+      <div class="card simulated" style="border-left:4px solid #7eb2e0"><div class="muted" style="font-size:.7rem">Simulated recovery</div><div class="number">${money(mock.overview.simulatedRecovery)}</div><span class="tag simulated">SIMULATED</span><div class="muted" style="font-size:.75rem">EvaluationComparison adaptive, 30×30 identical cases</div></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin:0 0 6px">Recovery queue — filtered to eligible + escalated</h3>
+      <div class="muted" style="font-size:.8rem">Queue shows expected net value and safety limits, not aggregate recovery pressure. Search, bulk, and saved views are out-of-scope for this prototype.</div>
+      <table style="margin-top:10px">
+        <thead><tr><th>Priority</th><th>Case</th><th>Expected</th><th>State</th></tr></thead>
+        <tbody>${mock.queue.map((q,i)=>`<tr><td>#${i+1}</td><td><strong>${q.caseId}</strong> ${money(q.amount)}<br><span class="muted">${q.customer} • ${q.error}</span></td><td>${q.expected?money(q.expected):'—'}</td><td>${pills(q.state)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+
+    <div class="vb-detail">
+      <div class="card" style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:12px">
+          <div><h2 style="margin:0">RecoveryCase ${mock.detail.caseId}</h2><div class="muted">${mock.detail.obligation} • ${mock.detail.customer}</div></div>
+          <div style="text-align:right"><span class="tag estimated">ESTIMATED expected ${money(78500)}</span><br><span class="muted" style="font-size:.75rem">Policy v7 • RecoveryModel v2</span></div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap"><span class="tag">State: eligible — needs human approval</span><span class="tag">Attempts 1/3</span><span class="tag blocked">Kill switch OFF</span></div>
+        <!-- blocking banner example -->
+        <div style="margin-top:12px; padding:10px; background:#1a2e22; border:1px solid #2a6b4a; border-radius:8px"><strong>Policy gate</strong> — Allowed: payment_link, contact. Blocked: retry. Reason: prior provider failure. Quiet hours OK. Consent ✓. First Action needs approval.</div>
+        <div style="margin-top:12px; padding:10px; background:#2a1a1a; border:1px solid #7a3a38; border-radius:8px; display:none" id="vb-block-banner"><strong>PaymentException blocks customer contact</strong> — resolve PX before recovery actions. <a href="#">View exception</a></div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:12px">
+          <div>
+            <h4>Evidence (normalized only)</h4>
+            <div class="card" style="background:#0f1923; font-size:.85rem">PaymentEvent payment.failed • card • insufficient_funds<br>provider evt ev_29X • Razorpay error_reason retained • raw body hidden behind hash a3f9…</div>
+            <h4>Audit timeline</h4>
+            ${mock.detail.timeline.map(t=>`<div class="vb-audit"><span class="tag">${t.kind}</span> <span class="muted" style="font-size:.8rem">${t.at}</span><div style="font-size:.85rem">${t.data}</div></div>`).join('')}
+          </div>
+          <div>
+            <h4>Next action</h4>
+            <div class="card" style="background:#0f1923"><div style="font-weight:600">contact — mock email (MOCK)</div><div class="muted" style="font-size:.8rem">No real delivery. Records AuditEvent + Action idempotency.</div><pre style="background:#0c1117; padding:10px; border-radius:6px; font-size:.8rem; white-space:pre-wrap">Subject: Complete your payment for ORD-98231
+Hi, your payment for INR 999.00 failed (insufficient funds). Pay now: [mock payment link] or reply: pay / promise / help / opt-out.
+Quiet hours respected. Consent source: checkout 2026-08-10.</pre><button style="width:100%;padding:10px;background:#61c795;color:#0e141c;border:none;border-radius:8px;font-weight:600;cursor:pointer">Approve contact</button><div class="muted" style="font-size:.75rem;margin-top:6px">Idempotency key required • 24h outcome window</div></div>
+            <div class="card" style="margin-top:10px"><h4 style="margin:0 0 6px">Outcome (separate from estimates)</h4><div class="muted" style="font-size:.85rem">No Outcome yet. Recovered flag + amount + source appear here when resolved. Not summed into Actual Recovered until TEST MODE or MOCK source.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:14px">
+        <div class="card"><h3 style="margin:0 0 6px">PaymentExceptions</h3><p class="muted" style="font-size:.85rem">Separate workflow from RecoveryCase. Open exception blocks recovery contact.</p>${mock.exceptions.map(e=>`<div style="padding:8px; border:1px solid #33414e; border-radius:8px; margin:6px 0"><strong>${e.id}</strong> — ${e.state}<br><span style="font-size:.85rem">${e.evidence}</span><br><span class="muted" style="font-size:.8rem">Blocks: ${e.blocks} • ${e.opened}</span></div>`).join('')}</div>
+        <div class="card"><h3 style="margin:0 0 6px">Policy settings (owner only)</h3><div class="muted" style="font-size:.8rem">Versioned changes, quiet hours, contact cap, kill switch. Operations worker sees read-only.</div><div style="margin-top:8px; font-size:.85rem"><div>Kill switch: <strong>OFF</strong></div><div>Quiet hours: ${mock.policySettings.quietHours}</div><div>Contact cap: ${mock.policySettings.contactCap}</div><div>Approvals: ${mock.policySettings.approvals}</div></div><button style="margin-top:8px;padding:8px 10px;background:#1e3245;border:1px solid #3a5a75;border-radius:6px;color:#e8edf2">View version history</button></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderC(){
+  return `
+  <div class="vc-header">
+    <div><strong>ReRoute — Prototype C</strong> <span class="muted">Commander split-pane</span></div>
+    <div style="display:flex; gap:6px"><span class="tag estimated">ESTIMATED ${money(mock.overview.estimatedRecoverable)}</span><span class="tag test">TEST MODE ${money(mock.overview.actualRecovered)}</span><span class="tag simulated">SIMULATED ${money(mock.overview.simulatedRecovery)}</span></div>
+  </div>
+  <div class="vc-layout">
+    <div class="vc-queue">
+      <div style="padding:10px; border-bottom:1px solid #33414e; display:flex; justify-content:space-between"><strong>Worklist</strong><span class="muted" style="font-size:.8rem">${mock.overview.openCases} open</span></div>
+      <div style="padding:8px"><input placeholder="Search case, customer, error…" style="width:100%; padding:8px; border-radius:6px; border:1px solid #33414e; background:#0c1117; color:#e8edf2"></div>
+      ${mock.queue.map((q,i)=>`<div class="vc-queue-item ${q.caseId==='RC-0829'?'active':''}">
+        <div style="display:flex; justify-content:space-between"><strong>${q.caseId}</strong><span style="font-size:.8rem">${money(q.amount)}</span></div>
+        <div class="muted" style="font-size:.8rem">${q.customer} • ${q.error} • ${q.age}</div>
+        <div style="margin-top:4px">${pills(q.state)} ${q.expected?`<span class="muted" style="font-size:.75rem">exp ${money(q.expected)}</span>`:''}</div>
+      </div>`).join('')}
+      <div style="padding:10px" class="muted" style="font-size:.8rem">Tip: click a row — right pane shows detail + Investigation context without navigation.</div>
+    </div>
+    <div class="vc-detail">
+      <h2 style="margin:0">RecoveryCase ${mock.detail.caseId} <span class="muted" style="font-size:.9rem">— ${mock.detail.obligation}</span></h2>
+      <div class="muted" style="font-size:.85rem">${mock.detail.customer} • ${mock.detail.attempts} • State eligible</div>
+      <div style="display:flex; gap:6px; margin-top:8px"><span class="tag estimated">ESTIMATED expected ${money(78500)}</span><span class="tag">Policy v7</span><span class="tag simulated">RecoveryModel v2</span></div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px">
+        <div class="card"><div class="muted" style="font-size:.75rem">POLICY GATE</div><div style="font-size:.85rem">Allowed: payment_link, contact<br>Blocked: retry — prior provider failure<br><span class="muted">Consent ✓ • Quiet hours OK • Idempotent • Human approval needed</span></div></div>
+        <div class="card" style="border-left:4px solid #7a3a38"><div class="muted" style="font-size:.75rem">SAFETY</div><div style="font-size:.85rem">No open PaymentException for this obligation. Customer contact is allowed.</div><div class="muted" style="font-size:.75rem">Other cases: PX-014 blocks RC-0824</div></div>
+      </div>
+
+      <div class="card" style="margin-top:10px">
+        <h3 style="margin:0 0 6px">Timeline — audit + decisions + provider refs</h3>
+        ${mock.detail.timeline.map(t=>`<div style="display:flex; gap:8px; padding:6px 0; border-bottom:1px solid #1e2e3e"><span class="tag" style="height:fit-content">${t.kind}</span><div><div class="muted" style="font-size:.8rem">${t.at}</div><div style="font-size:.85rem">${t.data}</div></div></div>`).join('')}
+        <div style="display:flex; gap:8px; padding:6px 0"><span class="tag mock">Action draft</span><div><div style="font-size:.85rem">contact — mock email queued (needs approval)</div><div class="muted" style="font-size:.8rem">Provider reference: — (mock has none) • MOCK source if customer pays</div></div></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px">
+        <div class="card"><h4 style="margin:0 0 6px">Action composer</h4><div style="font-size:.85rem; font-weight:600">contact — mock email</div><pre style="font-size:.8rem; background:#0c1117; padding:8px; border-radius:6px; white-space:pre-wrap">No real delivery. Channel-neutral mock email. Includes payment link placeholder + promise/help/opt-out language per ADR 0004.</pre><button style="width:100%;padding:8px;background:#61c795;color:#0e141c;border:none;border-radius:6px;font-weight:600">Approve contact</button></div>
+        <div class="card"><h4 style="margin:0 0 6px">LeakFinding context</h4><div style="font-size:.85rem"><strong>LF-241</strong> — UPI gateway_timeout • ${money(3124000)} ESTIMATED<br>Support 14 • Observed 18.4% vs baseline 4.1% • Confidence 71%<br><span class="muted">Evidence JSON includes method/error breakdowns, not summed cohorts</span></div><a href="#" style="font-size:.8rem">View Investigation</a></div>
+      </div>
+    </div>
+    <div class="vc-rail">
+      <h3 style="margin:0 0 6px">PaymentExceptions</h3><p class="muted" style="font-size:.8rem">Separate from queue. Open exception blocks its RecoveryCase.</p>
+      ${mock.exceptions.map(e=>`<div class="card" style="margin:6px 0; padding:10px"><strong>${e.id}</strong><br><span style="font-size:.85rem">${e.evidence}</span><br><span class="tag blocked">${e.state}</span> <span class="muted" style="font-size:.8rem">${e.opened}</span></div>`).join('')}
+      <h3 style="margin:14px 0 6px">Policy — read-only for ops</h3><div class="card" style="padding:10px; font-size:.85rem"><div>Kill switch OFF</div><div>Quiet hours ${mock.policySettings.quietHours}</div><div>${mock.policySettings.contactCap}</div><div class="muted" style="font-size:.8rem">Owner edits versioned; ops sees gate reason only</div></div>
+      <h3 style="margin:14px 0 6px">Evaluation</h3><div class="card" style="padding:10px; font-size:.85rem"><span class="tag simulated">SIMULATED</span> 30 seeds × 30 cases<br>Adaptive recovered ${money(mock.overview.simulatedRecovery)}<br><span class="muted">Identical generated cases per policy</span></div>
+    </div>
+  </div>`;
+}
+
+function render(){
+  const v = getVariant();
+  const app = document.getElementById('app');
+  if(v==='A') app.innerHTML = renderA();
+  else if(v==='B') app.innerHTML = renderB();
+  else app.innerHTML = renderC();
+  const label = document.getElementById('switcher-label');
+  const names = {A:"Queue-first sidebar", B:"Overview-first top nav", C:"Commander split-pane"};
+  label.innerHTML = `Variant <strong>${v}</strong> — ${names[v]} <span class="muted" style="font-size:.75rem">(${v==='A'?'ops worker speed': v==='B'?'owner/demo clarity':'power-user context'})</span>`;
+  document.getElementById('prev').onclick = () => setVariant(v==='A'?'C': v==='B'?'A':'B');
+  document.getElementById('next').onclick = () => setVariant(v==='A'?'B': v==='B'?'C':'A');
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.target.matches('input,textarea,[contenteditable]')) return;
+  if(e.key==='ArrowLeft') document.getElementById('prev').click();
+  if(e.key==='ArrowRight') document.getElementById('next').click();
+});
+
+render();
+
+// Verdict helper — visible in page for reviewer
+console.log("Prototype loaded. Variants: ?variant=A (sidebar), B (top nav), C (split-pane). Recommended: B for demo clarity, with C's rail pattern for exceptions. See resolution comment on issue #19.");
+</script>
+</body>
+</html>
