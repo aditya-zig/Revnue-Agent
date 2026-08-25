@@ -20,6 +20,29 @@ from app.policy import evaluate_policy
 router = APIRouter(tags=["dashboard"])
 
 
+def _worklist_sort_key(item: dict) -> tuple[int, int, str]:
+    # ADR 0006 order: escalations -> aged PaymentExceptions -> eligible by expected net value -> investigated by age
+    # PaymentExceptions not yet introduced in #30, so eligible is second after escalated
+    state = item["state"]
+    if state == "escalated":
+        rank = 0
+        # aged: older opened_at first
+        secondary = item.get("opened_at") or ""
+        return (rank, 0, secondary)
+    if state == "eligible":
+        rank = 2
+        # eligible by expected net value descending (negate for ascending sort), then age
+        ev = item.get("expected_value")
+        # use negative for descending; None -> lowest priority
+        neg_ev = -(ev or -1_000_000_000)
+        return (rank, neg_ev, item.get("opened_at") or "")
+    if state == "investigated":
+        rank = 3
+        return (rank, 0, item.get("opened_at") or "")
+    # others like detected
+    return (4, 0, item.get("opened_at") or "")
+
+
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 def dashboard_page() -> str:
     return DASHBOARD_HTML
@@ -32,17 +55,33 @@ def get_dashboard(request: Request) -> dict:
         findings.sort(key=finding_sort_key)
         cases = session.scalars(select(RecoveryCase).order_by(RecoveryCase.case_id)).all()
         worklist = [_case_summary(session, case, request) for case in cases]
-        estimated_value = sum(item["expected_value"] or 0 for item in worklist)
+        # Worklist ordering per ADR 0006: escalations -> aged PaymentExceptions -> eligible by expected net value -> investigated by age
+        # PaymentExceptions not yet implemented in #30, so sort as escalated, then eligible, then investigated, then others
+        worklist.sort(key=lambda item: _worklist_sort_key(item))
+        # Executive measures per ADR 0006: one ClaimTag per figure
+        # Revenue at Risk = sum amount_at_risk where state not recovered
+        # Estimated Recoverable = single top LeakFinding recoverable_impact (ESTIMATED)
+        # Actual Recovered = sum Outcome where source=razorpay_test (TEST MODE)
+        # Simulated Recovery is in evaluation (SIMULATED) - not computed here
+        revenue_at_risk = sum(
+            case.amount_at_risk for case in cases if case.state not in {"recovered", "stopped"}
+        )
+        top_recoverable = findings[0].recoverable_impact if findings else 0
+        estimated_value = top_recoverable
         outcomes = session.scalars(select(Outcome)).all()
-        test_mode_value = sum(outcome.recovered_amount for outcome in outcomes)
+        test_mode_value = sum(
+            outcome.recovered_amount for outcome in outcomes if outcome.source == "razorpay_test"
+        )
+        # fallback: if no razorpay_test outcomes, keep 0 rather than summing all (preserve ClaimTag discipline)
 
         return {
             "executive": {
                 "top_leak": _finding(findings[0]) if findings else None,
+                "revenue_at_risk": revenue_at_risk,
                 "estimated_value": estimated_value,
                 "test_mode_value": test_mode_value,
                 "open_cases": sum(
-                    case["state"] not in {"recovered", "closed"} for case in worklist
+                    case["state"] not in {"recovered", "closed", "stopped"} for case in worklist
                 ),
             },
             "investigation": _finding(findings[0]) if findings else None,
@@ -61,11 +100,18 @@ def get_dashboard(request: Request) -> dict:
 
 
 def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
-    payment = session.scalar(
-        select(PaymentEvent)
-        .where(PaymentEvent.payment_id == case.payment_id)
-        .order_by(PaymentEvent.occurred_at.desc())
-    )
+    if getattr(case, "obligation_reference", None):
+        payment = session.scalar(
+            select(PaymentEvent)
+            .where(PaymentEvent.obligation_reference == case.obligation_reference)
+            .order_by(PaymentEvent.occurred_at.desc())
+        )
+    else:
+        payment = session.scalar(
+            select(PaymentEvent)
+            .where(PaymentEvent.payment_id == case.payment_id)
+            .order_by(PaymentEvent.occurred_at.desc())
+        )
     decision = session.scalar(
         select(Decision)
         .where(Decision.case_id == case.case_id)
@@ -83,17 +129,30 @@ def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
         request.app.state.quiet_hours_start,
         request.app.state.quiet_hours_end,
     )
+    # expected net value for worklist sorting: prefer persisted Decision, else rank eligible via RecoveryModel
+    if decision is not None:
+        expected_value = decision.expected_value
+    elif case.state == "eligible":
+        from app.db.tables import Customer
+
+        customer = session.get(Customer, case.customer_id) if case.customer_id else None
+        ranked = request.app.state.recovery_model.rank(case, customer, policy.allowed_actions)
+        expected_value = int(ranked[0]["expected_net_value"]) if ranked else None
+    else:
+        expected_value = None
     return {
         "case_id": case.case_id,
         "payment_id": case.payment_id,
+        "obligation_reference": getattr(case, "obligation_reference", None),
         "customer_id": case.customer_id,
         "amount_at_risk": case.amount_at_risk,
         "state": case.state,
+        "opened_at": case.opened_at.isoformat() if case.opened_at else None,
         "evidence": _payment(payment) if payment else None,
         "selected_action": (
             decision.selected_action if decision else action.tool if action else None
         ),
-        "expected_value": decision.expected_value if decision else None,
+        "expected_value": expected_value,
         "policy": policy.model_dump(),
         "human_review": {
             "allowed_actions": policy.allowed_actions,
@@ -103,11 +162,18 @@ def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
 
 
 def _timeline(session, case: RecoveryCase) -> dict:
-    payment_events = session.scalars(
-        select(PaymentEvent)
-        .where(PaymentEvent.payment_id == case.payment_id)
-        .order_by(PaymentEvent.occurred_at)
-    ).all()
+    if getattr(case, "obligation_reference", None):
+        payment_events = session.scalars(
+            select(PaymentEvent)
+            .where(PaymentEvent.obligation_reference == case.obligation_reference)
+            .order_by(PaymentEvent.occurred_at)
+        ).all()
+    else:
+        payment_events = session.scalars(
+            select(PaymentEvent)
+            .where(PaymentEvent.payment_id == case.payment_id)
+            .order_by(PaymentEvent.occurred_at)
+        ).all()
     audit_events = session.scalars(
         select(AuditEvent).where(AuditEvent.case_id == case.case_id).order_by(AuditEvent.created_at)
     ).all()
@@ -182,6 +248,9 @@ def _payment(payment: PaymentEvent) -> dict:
         "amount": payment.amount,
         "method": payment.method,
         "error_reason": payment.error_reason,
+        "obligation_reference": getattr(payment, "obligation_reference", None),
+        "payment_id": payment.payment_id,
+        "provider_event_id": payment.provider_event_id,
         "raw_hash": payment.raw_hash,
         "raw_body": (
             payment.raw_body.decode("utf-8", errors="replace") if payment.raw_body else None

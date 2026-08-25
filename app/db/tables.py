@@ -15,6 +15,7 @@ class PaymentEvent(Base):
     provider_event_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     event_type: Mapped[str] = mapped_column(String(64))
     payment_id: Mapped[str] = mapped_column(String(128), index=True)
+    obligation_reference: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     customer_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     amount: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3))
@@ -35,7 +36,8 @@ class RecoveryCase(Base):
 
     case_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     customer_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    payment_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    payment_id: Mapped[str] = mapped_column(String(128), index=True)
+    obligation_reference: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     amount_at_risk: Mapped[int] = mapped_column(Integer)
     state: Mapped[str] = mapped_column(String(32))
     attempts: Mapped[int] = mapped_column(Integer, default=0)

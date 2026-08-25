@@ -44,9 +44,20 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
     factory = request.app.state.session_factory
     with factory() as session:
         if not record_event_and_update_case(session, event):
-            case = session.scalar(
-                select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
-            )
+            if getattr(event, "obligation_reference", None):
+                case = session.scalar(
+                    select(RecoveryCase).where(
+                        RecoveryCase.obligation_reference == event.obligation_reference
+                    )
+                )
+                if case is None:
+                    case = session.scalar(
+                        select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
+                    )
+            else:
+                case = session.scalar(
+                    select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
+                )
             if case:
                 session.add(
                     AuditEvent(

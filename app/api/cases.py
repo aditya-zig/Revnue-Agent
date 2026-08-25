@@ -24,8 +24,9 @@ def _kill_switch(request: Request) -> bool:
 def list_cases(request: Request) -> list[dict]:
     with request.app.state.session_factory() as session:
         cases = session.scalars(select(RecoveryCase).order_by(RecoveryCase.case_id)).all()
-        return [
-            {
+        result = []
+        for case in cases:
+            payload: dict = {
                 "case_id": case.case_id,
                 "customer_id": case.customer_id,
                 "payment_id": case.payment_id,
@@ -34,8 +35,12 @@ def list_cases(request: Request) -> list[dict]:
                 "attempts": case.attempts,
                 "stop_reason": case.stop_reason,
             }
-            for case in cases
-        ]
+            # include obligation only when verified, keep compatible
+            obl = getattr(case, "obligation_reference", None)
+            if obl is not None:
+                payload["obligation_reference"] = obl
+            result.append(payload)
+        return result
 
 
 @router.get("/audit/{case_id}")

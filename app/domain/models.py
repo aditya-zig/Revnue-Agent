@@ -11,6 +11,7 @@ class NormalizedPaymentEvent(BaseModel):
     provider_event_id: str
     event_type: PaymentEventType
     payment_id: str
+    obligation_reference: str | None = None
     customer_id: str | None = None
     amount: int = Field(ge=0)
     currency: str = Field(min_length=3, max_length=3)
@@ -31,12 +32,28 @@ class NormalizedPaymentEvent(BaseModel):
         payment = payload["payload"]["payment"]["entity"]
         payment_id = payment["id"]
         created_at = datetime.fromtimestamp(payment["created_at"], tz=UTC)
+        # Prefer order_id, then notes obligation; fallback handled in state machine
+        # PaymentObligation is explicit verified merchant reference
+        notes = payment.get("notes", {})
+        if isinstance(notes, dict):
+            obligation_reference = (
+                payment.get("order_id")
+                or notes.get("obligation_reference")
+                or notes.get("order_id")
+            )
+        else:
+            obligation_reference = payment.get("order_id")
+        # treat empty string as missing reference -> isolated attempt
+        if obligation_reference == "":
+            obligation_reference = None
+        customer_id = notes.get("customer_id") if isinstance(notes, dict) else None
         return cls(
             event_id=f"evt_{payload.get('id', raw_hash)}",
             provider_event_id=payload.get("id", raw_hash),
             event_type=event_type,
             payment_id=payment_id,
-            customer_id=payment.get("notes", {}).get("customer_id"),
+            obligation_reference=obligation_reference,
+            customer_id=customer_id,
             amount=payment["amount"],
             currency=payment["currency"],
             method=payment.get("method"),

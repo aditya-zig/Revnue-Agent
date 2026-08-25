@@ -73,9 +73,16 @@ def evaluate_policy(
         for action in CONTACT_ACTIONS:
             blocked_reasons.setdefault(action, []).append("quiet_hours")
 
-    error_codes = session.scalars(
-        select(PaymentEvent.error_code).where(PaymentEvent.payment_id == case.payment_id)
-    )
+    if getattr(case, "obligation_reference", None):
+        error_codes = session.scalars(
+            select(PaymentEvent.error_code).where(
+                PaymentEvent.obligation_reference == case.obligation_reference
+            )
+        )
+    else:
+        error_codes = session.scalars(
+            select(PaymentEvent.error_code).where(PaymentEvent.payment_id == case.payment_id)
+        )
     if any(error_code and error_code.upper() in HARD_DECLINE_CODES for error_code in error_codes):
         blocked_reasons["retry"] = ["hard_decline"]
 

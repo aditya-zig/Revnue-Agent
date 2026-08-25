@@ -41,7 +41,15 @@ def detect_and_store_leaks(session: Session) -> list[LeakFinding]:
     if not rows:
         return []
 
-    cases = {case.payment_id: case for case in session.scalars(select(RecoveryCase))}
+    cases_by_payment: dict[str, RecoveryCase] = {
+        case.payment_id: case for case in session.scalars(select(RecoveryCase))
+    }
+    cases_by_obligation: dict[str, RecoveryCase] = {
+        obl: case
+        for case in session.scalars(select(RecoveryCase))
+        if (obl := getattr(case, "obligation_reference", None)) is not None
+    }
+
     outcomes = {outcome.case_id: outcome for outcome in session.scalars(select(Outcome))}
     default_recovery_probability = _calibrated_recovery_probability(list(outcomes.values()))
     baseline_rate = sum(event.status == "failed" for event, _ in rows) / len(rows)
@@ -62,7 +70,8 @@ def detect_and_store_leaks(session: Session) -> list[LeakFinding]:
             value,
             cohort,
             baseline_rate,
-            cases,
+            cases_by_payment,
+            cases_by_obligation,
             outcomes,
             default_recovery_probability,
         )
@@ -159,7 +168,8 @@ def _create_finding(
     value: str,
     cohort: list[tuple[PaymentEvent, Customer | None]],
     baseline_rate: float,
-    cases: dict[str, RecoveryCase],
+    cases_by_payment: dict[str, RecoveryCase],
+    cases_by_obligation: dict[str, RecoveryCase],
     outcomes: dict[str, Outcome],
     default_recovery_probability: float,
 ) -> LeakFinding | None:
@@ -168,12 +178,18 @@ def _create_finding(
     if observed_rate <= baseline_rate:
         return None
 
-    recoverable_cases = {
-        case.payment_id: case
-        for event in failures
-        if (case := cases.get(event.payment_id)) is not None
-        and case.state not in {"recovered", "stopped"}
-    }
+    recoverable_cases: dict[str, RecoveryCase] = {}
+    for event in failures:
+        case = None
+        obl = getattr(event, "obligation_reference", None)
+        if obl is not None:
+            case = cases_by_obligation.get(obl)
+        if case is None:
+            case = cases_by_payment.get(event.payment_id)
+        if case is None or case.state in {"recovered", "stopped"}:
+            continue
+        key = getattr(case, "obligation_reference", None) or case.payment_id
+        recoverable_cases[key] = case
     attempted_value = sum(event.amount for event, _ in cohort)
     failed_value = sum(event.amount for event in failures)
     if failed_value == 0:
