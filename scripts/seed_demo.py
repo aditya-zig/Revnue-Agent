@@ -30,14 +30,16 @@ def main() -> None:
 
     database_url = Settings().database_url
     session_factory = create_session_factory(database_url)
-    csv_path = REPOSITORY_ROOT / "demo" / "payment_events.csv"
+    from simulator.generator import generate_csv
 
     with session_factory() as session:
-        imported, duplicates = import_csv(session, csv_path.read_text())
+        imported, duplicates = import_csv(session, generate_csv())
         if duplicates:
             raise RuntimeError("the synthetic CSV must not contain duplicate events")
         detect_and_store_leaks(session)
         session.commit()
+
+        action_time = datetime(2026, 8, 24, 5, tzinfo=UTC)
 
         hard_decline = make_eligible(session, "case_demo_hard_decline")
         try:
@@ -46,7 +48,7 @@ def main() -> None:
                 hard_decline,
                 "retry",
                 "demo-hard-decline-retry",
-                datetime.now(UTC),
+                action_time,
                 21,
                 8,
                 unavailable_payment_link,
@@ -61,7 +63,7 @@ def main() -> None:
                 provider_failure,
                 "payment_link",
                 "demo-provider-failure",
-                datetime.now(UTC),
+                action_time,
                 21,
                 8,
                 unavailable_payment_link,
@@ -69,8 +71,25 @@ def main() -> None:
         except ProviderError:
             pass
 
+        opted_out = make_eligible(session, "case_demo_opt_out")
+        try:
+            execute_action(
+                session,
+                opted_out,
+                "contact",
+                "demo-opt-out-contact",
+                action_time,
+                21,
+                8,
+                unavailable_payment_link,
+            )
+        except PermissionError:
+            pass
+
+        make_eligible(session, "case_demo_promise")
+
     print(f"Imported {imported} synthetic events into {database_url}.")
-    print("Recorded a hard-decline block and a payment-link provider failure.")
+    print("Recorded hard-decline and opt-out blocks plus a payment-link provider failure.")
 
 
 if __name__ == "__main__":

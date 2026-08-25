@@ -26,17 +26,25 @@ class NormalizedPaymentEvent(BaseModel):
     raw_body: bytes | None = None
 
     @classmethod
-    def from_razorpay(cls, payload: dict, raw_hash: str) -> "NormalizedPaymentEvent":
+    def from_razorpay(
+        cls,
+        payload: dict,
+        raw_hash: str,
+        webhook_event_id: str | None = None,
+    ) -> "NormalizedPaymentEvent":
         event_type = payload["event"]
         payment = payload["payload"]["payment"]["entity"]
         payment_id = payment["id"]
         created_at = datetime.fromtimestamp(payment["created_at"], tz=UTC)
+        notes = payment.get("notes")
+        customer_id = notes.get("customer_id") if isinstance(notes, dict) else None
+        provider_event_id = webhook_event_id or payload.get("id") or raw_hash
         return cls(
-            event_id=f"evt_{payload.get('id', raw_hash)}",
-            provider_event_id=payload.get("id", raw_hash),
+            event_id=f"evt_{provider_event_id}",
+            provider_event_id=provider_event_id,
             event_type=event_type,
             payment_id=payment_id,
-            customer_id=payment.get("notes", {}).get("customer_id"),
+            customer_id=customer_id,
             amount=payment["amount"],
             currency=payment["currency"],
             method=payment.get("method"),
@@ -44,7 +52,7 @@ class NormalizedPaymentEvent(BaseModel):
             error_source=payment.get("error_source"),
             error_step=payment.get("error_step"),
             error_code=payment.get("error_code"),
-            error_reason=payment.get("error_description"),
+            error_reason=payment.get("error_reason"),
             occurred_at=created_at,
             provider="razorpay_test",
             raw_hash=raw_hash,

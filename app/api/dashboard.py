@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import datetime
 
 from fastapi import APIRouter, Request
@@ -8,6 +9,7 @@ from app.api.evaluations import get_published_evaluation
 from app.db.tables import (
     ActionEvent,
     AuditEvent,
+    Customer,
     Decision,
     LeakFinding,
     Outcome,
@@ -32,20 +34,35 @@ def get_dashboard(request: Request) -> dict:
         findings.sort(key=finding_sort_key)
         cases = session.scalars(select(RecoveryCase).order_by(RecoveryCase.case_id)).all()
         worklist = [_case_summary(session, case, request) for case in cases]
-        estimated_value = sum(item["expected_value"] or 0 for item in worklist)
+        worklist.sort(key=lambda item: item["expected_value"] or 0, reverse=True)
         outcomes = session.scalars(select(Outcome)).all()
-        test_mode_value = sum(outcome.recovered_amount for outcome in outcomes)
+        payments = session.scalars(select(PaymentEvent)).all()
+        top_leak = _finding(findings[0]) if findings else None
+        open_states = {"detected", "investigated", "eligible", "action_selected", "awaiting_outcome"}
 
         return {
             "executive": {
-                "top_leak": _finding(findings[0]) if findings else None,
-                "estimated_value": estimated_value,
-                "test_mode_value": test_mode_value,
-                "open_cases": sum(
-                    case["state"] not in {"recovered", "closed"} for case in worklist
+                "top_leak": top_leak,
+                "revenue_at_risk": sum(
+                    case.amount_at_risk for case in cases if case.state in open_states
                 ),
+                "estimated_recoverable": top_leak["recoverable_impact"] if top_leak else 0,
+                "actual_recovered": sum(
+                    outcome.recovered_amount
+                    for outcome in outcomes
+                    if outcome.source == "razorpay_test"
+                ),
+                "simulated_recovery": get_published_evaluation()["results"]["policies"][
+                    "adaptive"
+                ]["recovered_amount"],
+                "open_cases": sum(case["state"] in open_states for case in worklist),
             },
-            "investigation": _finding(findings[0]) if findings else None,
+            "investigation": {
+                "top_finding": top_leak,
+                "findings": [_finding(finding) for finding in findings],
+                "error_reasons": dict(Counter(event.error_reason or "unknown" for event in payments)),
+                "methods": dict(Counter(event.method or "unknown" for event in payments)),
+            },
             "worklist": worklist,
             "timeline": [_timeline(session, case) for case in cases],
             "evaluation": get_published_evaluation(),
@@ -82,6 +99,12 @@ def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
         request.app.state.policy_now(),
         request.app.state.quiet_hours_start,
         request.app.state.quiet_hours_end,
+        bool(getattr(request.app.state, "kill_switch", False)),
+    )
+    customer = session.get(Customer, case.customer_id) if case.customer_id else None
+    ranked_actions = request.app.state.recovery_model.rank(case, customer, policy.allowed_actions)
+    expected_value = decision.expected_value if decision else (
+        int(ranked_actions[0]["expected_net_value"]) if ranked_actions else None
     )
     return {
         "case_id": case.case_id,
@@ -93,7 +116,8 @@ def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
         "selected_action": (
             decision.selected_action if decision else action.tool if action else None
         ),
-        "expected_value": decision.expected_value if decision else None,
+        "expected_value": expected_value,
+        "ranked_actions": ranked_actions,
         "policy": policy.model_dump(),
         "human_review": {
             "allowed_actions": policy.allowed_actions,
@@ -132,6 +156,7 @@ def _timeline(session, case: RecoveryCase) -> dict:
                 "selected_action": decision.selected_action,
                 "expected_value": decision.expected_value,
                 "policy_version": decision.policy_version,
+                "model_version": decision.model_version,
                 "evidence": decision.reason_json.get("evidence", {}),
             },
         }
@@ -161,6 +186,7 @@ def _timeline(session, case: RecoveryCase) -> dict:
                 },
             }
         )
+    events.sort(key=lambda event: str(event["at"] or "9999-12-31T23:59:59+00:00"))
     return {"case_id": case.case_id, "events": events}
 
 
@@ -182,10 +208,8 @@ def _payment(payment: PaymentEvent) -> dict:
         "amount": payment.amount,
         "method": payment.method,
         "error_reason": payment.error_reason,
+        "provider_event_id": payment.provider_event_id,
         "raw_hash": payment.raw_hash,
-        "raw_body": (
-            payment.raw_body.decode("utf-8", errors="replace") if payment.raw_body else None
-        ),
     }
 
 
@@ -228,11 +252,12 @@ const html = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&'
 const json = value => `<pre>${html(JSON.stringify(value, null, 2))}</pre>`;
 const tag = (kind, text) => `<span class="tag ${kind}">${text}</span>`;
 function render(data) {
-  const top = data.executive.top_leak;
+   const top = data.investigation.top_finding;
   document.querySelector('#executive-content').innerHTML = [
-    `<article class="card estimated"><div class="label">Estimated recoverable value</div><div class="number">${money(data.executive.estimated_value)}</div>${tag('estimated','ESTIMATED')}</article>`,
-    `<article class="card simulated"><div class="label">Adaptive simulated recovery</div><div class="number">${money(data.evaluation.results.policies.adaptive.recovered_amount)}</div>${tag('simulated','SIMULATED')}</article>`,
-    `<article class="card test-mode"><div class="label">Test Mode recovered</div><div class="number">${money(data.executive.test_mode_value)}</div>${tag('test-mode','TEST MODE')}</article>`,
+     `<article class="card estimated"><div class="label">Revenue at risk</div><div class="number">${money(data.executive.revenue_at_risk)}</div>${tag('estimated','ESTIMATED')}</article>`,
+     `<article class="card estimated"><div class="label">Estimated recoverable</div><div class="number">${money(data.executive.estimated_recoverable)}</div>${tag('estimated','ESTIMATED')}</article>`,
+     `<article class="card test-mode"><div class="label">Actual recovered</div><div class="number">${money(data.executive.actual_recovered)}</div>${tag('test-mode','TEST MODE')}</article>`,
+     `<article class="card simulated"><div class="label">Simulated recovery</div><div class="number">${money(data.executive.simulated_recovery)}</div>${tag('simulated','SIMULATED')}</article>`,
     `<article class="card"><div class="label">Open cases</div><div class="number">${data.executive.open_cases}</div></article>`].join('');
   document.querySelector('#investigation-content').innerHTML = top ? `<article class="card"><h3>${html(top.finding_id)}</h3>${tag('estimated','ESTIMATED RECOVERABLE IMPACT')}<strong>${money(top.recoverable_impact)}</strong><p>Confidence ${Math.round(top.confidence * 100)}%</p><h4>Cohort</h4>${json(top.cohort_filter)}<h4>Evidence</h4>${json(top.evidence)}</article>` : '<p class="muted">No leak finding has been detected.</p>';
   document.querySelector('#worklist-content').innerHTML = `<table><thead><tr><th>Case</th><th>Evidence</th><th>Selected action</th><th>Policy</th><th>Human review</th></tr></thead><tbody>${data.worklist.map(c => `<tr><td>${html(c.case_id)}<br>${money(c.amount_at_risk)}<br><span class="muted">${html(c.state)}</span></td><td>${c.evidence ? `${html(c.evidence.event_type)}<br>${html(c.evidence.error_reason || c.evidence.status)}` : 'No payment event'}</td><td>${html(c.selected_action || 'None')} ${c.expected_value !== null ? `<br>${tag('estimated','EST.')} ${money(c.expected_value)}` : ''}</td><td>${c.policy.allowed_actions.length ? 'Allowed: ' + c.policy.allowed_actions.map(html).join(', ') : '<span class="error">Blocked</span>'}</td><td>${c.human_review.can_execute ? c.human_review.allowed_actions.map(a => `<button class="review" data-case="${html(c.case_id)}" data-action="${html(a)}">Approve ${html(a)}</button>`).join(' ') : 'No action permitted'}</td></tr>`).join('')}</tbody></table>`;
@@ -242,5 +267,6 @@ function render(data) {
 }
 document.querySelector('nav').addEventListener('click', event => { const view = event.target.dataset.view; if (!view) return; document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === view)); });
 document.addEventListener('click', async event => { if (!event.target.matches('.review')) return; const key = `review-${crypto.randomUUID()}`; const response = await fetch(`/api/v1/cases/${event.target.dataset.case}/actions`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:event.target.dataset.action, idempotency_key:key})}); if (!response.ok) alert(await response.text()); else location.reload(); });
-fetch('/api/v1/dashboard').then(r => r.json()).then(render).catch(error => { document.querySelector('main').innerHTML = `<p class="error">Could not load dashboard: ${html(error)}</p>`; });
+ const refresh = () => fetch('/api/v1/dashboard').then(r => r.json()).then(render).catch(error => { document.querySelector('main').innerHTML = `<p class="error">Could not load dashboard: ${html(error)}</p>`; });
+ refresh(); setInterval(refresh, 5000);
 </script></body></html>"""

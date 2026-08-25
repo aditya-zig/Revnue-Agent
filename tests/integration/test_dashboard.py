@@ -47,3 +47,7 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
     assert case["policy"]["policy_version"]
     assert case["human_review"]["allowed_actions"]
     assert payload["timeline"][0]["events"][0]["kind"] == "raw event"
+    assert payload["executive"]["revenue_at_risk"] == 249900
+    assert payload["executive"]["actual_recovered"] == 0
+    assert "raw_body" not in case["evidence"]
+    assert "ranked_actions" in case
