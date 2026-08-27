@@ -71,11 +71,15 @@ Status: completed in commit `6f6a26c`.
 - Store versioned findings with source event IDs.
 - Confirm the seeded hidden scenario ranks the expected leak first.
 
+Status: completed. Detector and evidence records implemented with seeded-scenario test.
+
 ### Phase 3. Simulator and baseline
 
 - Generate seeded customers, events, and hidden response probabilities.
 - Implement the fixed Day 0/1/3 baseline with contact, retry, and discount costs.
 - Run reproducible evaluations with identical cases and random seeds.
+
+Status: completed. Seeded simulator and Day 0/1/3 baseline implemented via evaluation runner.
 
 ### Phase 4. Recovery model
 
@@ -84,11 +88,15 @@ Status: completed in commit `6f6a26c`.
 - Rank allowed actions by expected net value.
 - Publish model assumptions and limits.
 
+Status: completed. Customer-disjoint split, calibration, and ranker implemented in scoring module.
+
 ### Phase 5. Policy and tools
 
 - Implement every policy rule.
 - Add Razorpay Test Mode payment links, mock messaging, retry scheduling, promise-to-pay, and escalation tools.
 - Make every tool idempotent and auditable.
+
+Status: completed. All policy guards, idempotent tools, kill switch via REROUTE_KILL_SWITCH, and audit events implemented.
 
 ### Phase 6. Controller
 
@@ -96,10 +104,14 @@ Status: completed in commit `6f6a26c`.
 - Reject malformed or blocked actions.
 - Add message composition and deterministic fallback behavior.
 
+Status: completed. Structured decisions validated and fallback used on malformed or blocked output.
+
 ### Phase 7. Dashboard
 
 - Build executive, investigation, worklist, timeline, evaluation, and mock-inbox views.
 - Keep estimated values separate from simulated and Test Mode values.
+
+Status: completed. Dashboard endpoint serves executive, investigation, worklist, timeline, evaluation, and mock inbox views with distinct value types.
 
 ### Phase 8. Evaluation and hardening
 
@@ -107,11 +119,15 @@ Status: completed in commit `6f6a26c`.
 - Test duplicates, late success, opt-out, hard declines, and provider failures.
 - Freeze results, exceptions, and published claims.
 
+Status: completed. 30-seed reproducible comparison with frozen published results and exception records.
+
 ### Phase 9. Submission
 
 - Document architecture, prior art, threats, evaluation, setup, and limits.
 - Provide demo data and a five-minute video.
 - Audit the public repository for secrets and real customer data.
+
+Status: deadline is 4 September 2026. Submission is planned for 4 September 2026. No license file per owner decision.
 
 ## Verification targets
 

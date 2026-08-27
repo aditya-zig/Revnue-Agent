@@ -1,0 +1,15 @@
+{
+  "duplicate_delivery": ["case.detected", "event.recorded", "event.duplicate"],
+  "late_success": [
+    "action.started",
+    "case.action_selected",
+    "case.awaiting_outcome",
+    "action.pending",
+    "case.recovered",
+    "action.cancelled",
+    "event.recorded"
+  ],
+  "opt_out": ["case.detected", "event.recorded", "action.blocked"],
+  "hard_decline": ["case.detected", "event.recorded", "action.blocked"],
+  "provider_failure": ["action.started", "action.failed", "case.escalated"]
+}

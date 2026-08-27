@@ -15,12 +15,21 @@ def import_csv(session: Session, content: str) -> tuple[int, int]:
     duplicates = 0
     for row in csv.DictReader(StringIO(content)):
         try:
+            # obligation_reference optional; empty means isolated attempt
+            obligation_raw = (
+                row.get("obligation_reference")
+                or row.get("order_id")
+                or row.get("obligation")
+                or ""
+            )
+            obligation_reference = obligation_raw.strip() or None
             event = NormalizedPaymentEvent.model_validate(
                 {
                     "event_id": row["event_id"],
                     "provider_event_id": row["event_id"],
                     "event_type": row["event_type"],
                     "payment_id": row["payment_id"],
+                    "obligation_reference": obligation_reference,
                     "customer_id": row["customer_id"] or None,
                     "amount": row["amount"],
                     "currency": row["currency"],

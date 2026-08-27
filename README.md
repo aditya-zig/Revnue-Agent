@@ -1,32 +1,92 @@
 # ReRoute Intelligence
 
-ReRoute ingests Razorpay Test Mode payment events, opens recoverable-payment
-cases, and records each state transition in an audit log. This commit provides
-the Phase 1 foundation only.
+ReRoute is a FastAPI prototype for investigating recoverable payment failures.
+It ingests Razorpay Test Mode webhooks or normalized CSV events, groups failure
+cohorts, ranks policy-permitted actions, and writes an audit trail for every
+case transition and action attempt.
 
-## Run locally
+This repository contains synthetic data only. It does not send real customer
+messages or include production credentials. When local Razorpay Test Mode keys
+are configured, it can create a Test Mode payment link. It never handles real
+money.
+
+## Run the public demo
+
+Install [uv](https://docs.astral.sh/uv/) and Python 3.12 or later. The commands
+below start with a clean, local database named `demo.db`.
 
 ```sh
+git clone https://github.com/aditya-zig/Revnue-Agent.git
+cd Revnue-Agent
 uv sync --dev
 cp .env.example .env
-uv run alembic upgrade head
-uv run uvicorn app.main:app --reload
+rm -f demo.db
+REROUTE_DATABASE_URL=sqlite:///./demo.db uv run alembic upgrade head
+REROUTE_DATABASE_URL=sqlite:///./demo.db uv run python scripts/seed_demo.py
+REROUTE_DATABASE_URL=sqlite:///./demo.db uv run uvicorn app.main:app --reload
 ```
 
-The health endpoint is available at `GET /health`. The application reads
-`REROUTE_DATABASE_URL` and `REROUTE_RAZORPAY_WEBHOOK_SECRET` from `.env`.
+Open `http://127.0.0.1:8000/` for the dashboard. The source data is
+`demo/payment_events.csv`. The replay imports it, computes findings, and adds
+two controlled records for the demo. One demonstrates a hard-decline retry
+block. The other records the default payment-link provider failure. Both use
+synthetic identifiers.
 
-## HTTP endpoints
+Use these commands in another terminal to inspect the demo state:
 
-- `POST /api/v1/webhooks/razorpay` verifies the `X-Razorpay-Signature` against
-  the exact request body before normalizing and storing the event.
-- `POST /api/v1/data/import` accepts a UTF-8 CSV body with normalized payment
-  event columns.
-- `GET /api/v1/cases` and `GET /api/v1/audit/{case_id}` expose the current
-  case state and its append-only audit trail.
+```sh
+curl http://127.0.0.1:8000/api/v1/findings
+curl http://127.0.0.1:8000/api/v1/cases/case_demo_hard_decline/policy
+curl http://127.0.0.1:8000/api/v1/audit/case_demo_hard_decline
+curl http://127.0.0.1:8000/api/v1/audit/case_demo_provider_failure
+curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
+```
 
-## Limits
+`docs/demo.md` is a five-minute walkthrough with expected observations.
 
-This project uses synthetic and Razorpay Test Mode data only. The Phase 1
-foundation does not send customer messages, create payment links, or select
-recovery actions. Those functions belong to later phases of the plan.
+## API
+
+- `POST /api/v1/webhooks/razorpay` verifies an `X-Razorpay-Signature` against
+  the raw request body before storing a normalized event.
+- `POST /api/v1/data/import` imports a UTF-8 normalized CSV body.
+- `POST /api/v1/findings/detect` calculates and persists ranked failure cohorts.
+- `GET /api/v1/cases`, `/api/v1/audit/{case_id}`, and
+  `/api/v1/cases/{case_id}/policy` expose case state, audit events, and policy.
+- `POST /api/v1/cases/{case_id}/actions` executes a permitted mock action or
+  attempts a Test Mode payment link. Requests need an idempotency key.
+- `POST /api/v1/cases/{case_id}/exceptions` opens a PaymentException. Open
+  exceptions block customer-directed actions until evidence resolves them.
+- `GET` and owner-only `PUT /api/v1/policy-settings` expose the versioned
+  quiet-hours, contact-limit, kill-switch, and mock-identity controls.
+- `POST /api/v1/mock-inbox/{provider_reference}/reply` records a mock pay,
+  ignore, promise, help, or opt-out reply without claiming a Test Mode payment.
+- `GET /api/v1/evaluations/reproducible` reruns the published synthetic comparison.
+
+## Razorpay tooling
+
+Two local tools talk to Razorpay Test Mode alongside the app. They are not needed for the demo.
+
+* **MCP server** at `https://mcp.razorpay.com/mcp`. OpenCode connects as a remote server with `Basic {env:RAZORPAY_BASIC_TOKEN}` from `~/.config/opencode/opencode.json`. See `docs/razorpay-tooling.md` for the token generation `echo -n "key_id:key_secret" | base64` and the `opencode mcp list` check.
+* **CLI** `~/.local/bin/razorpay` `v1.0.9`. Installed from `https://razorpay.com/docs/api/install-cli/`, configured via `razorpay configure` to `~/.razorpay/config.yaml`. Use `razorpay payments list`, `razorpay orders create`, `razorpay payment-links list` for manual Test Mode checks.
+
+Test keys are Test Mode only. `rzp-test-key.csv` is gitignored and should not be committed. The app reads `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` from the local environment only when it creates a Test Mode payment link. It uses `REROUTE_RAZORPAY_WEBHOOK_SECRET` for webhook HMAC in `app/api/webhooks.py`.
+
+Details and troubleshooting in `docs/razorpay-tooling.md`.
+
+## Documentation
+
+- [Five-minute demo](docs/demo.md)
+- [Architecture](docs/architecture.md)
+- [Razorpay tooling](docs/razorpay-tooling.md)
+- [Threat model](docs/threat-model.md)
+- [Evaluation](docs/evaluation.md)
+- [Model limits](docs/model-limits.md)
+- [Prior art and primary references](docs/prior-art.md)
+
+## Verify
+
+```sh
+uv run pytest
+uv run ruff check .
+uv run mypy
+```

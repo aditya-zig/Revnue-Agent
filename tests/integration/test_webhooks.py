@@ -75,7 +75,23 @@ async def test_verified_failure_creates_one_case_and_audit_record(app):
             "case_id": "case_pay_001",
             "event_type": "case.detected",
             "payload": {"payment_id": "pay_001"},
-        }
+        },
+        {
+            "case_id": "case_pay_001",
+            "event_type": "event.recorded",
+            "payload": {
+                "event_id": f"evt_{hashlib.sha256(body).hexdigest()}",
+                "event_type": "payment.failed",
+            },
+        },
+        {
+            "case_id": "case_pay_001",
+            "event_type": "event.duplicate",
+            "payload": {
+                "event_id": f"evt_{hashlib.sha256(body).hexdigest()}",
+                "event_type": "payment.failed",
+            },
+        },
     ]
 
 
@@ -92,6 +108,80 @@ async def test_webhook_rejects_a_signature_that_does_not_match_the_raw_body(app)
 
     assert response.status_code == 401
     assert response.json() == {"detail": "invalid webhook signature"}
+
+
+@pytest.mark.asyncio
+async def test_official_failure_payload_with_empty_notes_uses_webhook_event_id(app):
+    payload = {
+        "entity": "event",
+        "event": "payment.failed",
+        "contains": ["payment"],
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_official_001",
+                    "amount": 50000,
+                    "currency": "INR",
+                    "status": "failed",
+                    "method": "upi",
+                    "error_code": "BAD_REQUEST_ERROR",
+                    "error_description": "Payment failed",
+                    "error_reason": "payment_failed",
+                    "created_at": 1567610214,
+                    "notes": [],
+                }
+            }
+        },
+        "created_at": 1567610215,
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "X-Razorpay-Event-Id": "event_official_001",
+        "X-Razorpay-Signature": signature(body),
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/api/v1/webhooks/razorpay", content=body, headers=headers)
+        duplicate = await client.post("/api/v1/webhooks/razorpay", content=body, headers=headers)
+        dashboard = await client.get("/api/v1/dashboard")
+
+    assert first.json() == {"event_id": "evt_event_official_001", "status": "accepted"}
+    assert duplicate.json() == {"event_id": "evt_event_official_001", "status": "duplicate"}
+    evidence = dashboard.json()["worklist"][0]["evidence"]
+    assert evidence["error_reason"] == "payment_failed"
+    assert "raw_body" not in evidence
+
+
+@pytest.mark.asyncio
+async def test_provider_reversal_signal_opens_a_payment_exception(app):
+    payload = {
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_reversal_001",
+                    "amount": 50000,
+                    "currency": "INR",
+                    "status": "failed",
+                    "error_reason": "payment_reversed",
+                    "created_at": 1567610214,
+                }
+            }
+        },
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=body,
+            headers={"X-Razorpay-Signature": signature(body)},
+        )
+        exceptions = await client.get("/api/v1/exceptions")
+
+    assert response.status_code == 202
+    assert exceptions.json()[0]["kind"] == "provider_reversal"
 
 
 @pytest.mark.asyncio
