@@ -94,10 +94,12 @@ async def test_policy_blocks_hard_decline_retries_and_contact_without_consent_or
 
     assert hard_decline.json()["blocked_reasons"] == {"retry": ["hard_decline"]}
     assert no_consent.json()["blocked_reasons"] == {
+        "payment_link": ["missing_consent"],
         "contact": ["missing_consent"],
         "promise": ["missing_consent"],
     }
     assert no_identity.json()["blocked_reasons"] == {
+        "payment_link": ["missing_identity"],
         "contact": ["missing_identity"],
         "promise": ["missing_identity"],
     }
@@ -141,7 +143,6 @@ async def test_ranked_actions_exclude_policy_blocked_actions(app):
 
     assert response.status_code == 200
     assert {action["action"] for action in response.json()["actions"]} == {
-        "payment_link",
         "escalate",
     }
 
@@ -238,6 +239,7 @@ async def test_policy_blocks_contact_during_kolkata_quiet_hours(database_url):
         response = await client.get("/api/v1/cases/case_quiet/policy")
 
     assert response.json()["blocked_reasons"] == {
+        "payment_link": ["quiet_hours"],
         "contact": ["quiet_hours"],
         "promise": ["quiet_hours"],
     }

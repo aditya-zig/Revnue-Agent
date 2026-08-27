@@ -36,7 +36,6 @@ def create_payment_link(
         "expire_by": int(
             (datetime.now(UTC) + timedelta(days=expire_days)).timestamp()
         ),
-        "notify": {"sms": True, "email": True},
     }
     # Only include customer block if at least one field is present
     customer: dict = {}

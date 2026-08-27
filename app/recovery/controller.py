@@ -22,6 +22,7 @@ def run_decision(
     create_payment_link: Callable[[int, str], str],
     recovery_model: RecoveryModel,
     decide_recovery_action: Callable[[dict], object] | None,
+    approved: bool = False,
     kill_switch: bool = False,
     contact_limit: int = 3,
     policy_version: str = "v1",
@@ -31,19 +32,21 @@ def run_decision(
     if existing is not None:
         if existing.case_id != case.case_id:
             raise ValueError("idempotency key belongs to another decision")
-        result, _ = execute_action(
-            session,
-            case,
-            existing.selected_action,
-            idempotency_key,
-            now,
-            quiet_hours_start,
-            quiet_hours_end,
-            create_payment_link,
-            kill_switch,
-            contact_limit,
-            policy_version,
-        )
+        result = None
+        if approved:
+            result, _ = execute_action(
+                session,
+                case,
+                existing.selected_action,
+                idempotency_key,
+                now,
+                quiet_hours_start,
+                quiet_hours_end,
+                create_payment_link,
+                kill_switch,
+                contact_limit,
+                policy_version,
+            )
         reason = existing.reason_json
         return (
             DecisionResponse(
@@ -104,6 +107,20 @@ def run_decision(
             },
         )
     )
+    if not approved:
+        session.commit()
+        return (
+            DecisionResponse(
+                decision_id=decision_id,
+                selected_action=selected_action,
+                selection_source=selection_source,
+                policy_version=policy.policy_version,
+                model_version=recovery_model.report["model_version"],
+                evidence=evidence,
+                action=None,
+            ),
+            False,
+        )
     result, duplicate = execute_action(
         session,
         case,

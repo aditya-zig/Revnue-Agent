@@ -11,5 +11,5 @@
   ],
   "opt_out": ["case.detected", "event.recorded", "action.blocked"],
   "hard_decline": ["case.detected", "event.recorded", "action.blocked"],
-  "provider_failure": ["action.started", "action.failed"]
+  "provider_failure": ["action.started", "action.failed", "case.escalated"]
 }

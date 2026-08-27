@@ -8,6 +8,11 @@ from app.db.tables import AuditEvent, PaymentException, RecoveryCase
 from app.domain.models import PaymentExceptionRequest, PaymentExceptionResolutionRequest
 
 router = APIRouter(prefix="/api/v1", tags=["payment exceptions"])
+TERMINAL_CASE_STATES = {"recovered", "stopped", "escalated"}
+
+
+def _role(request: Request) -> str:
+    return request.headers.get("X-Reroute-Role", "operations_worker")
 
 
 @router.get("/exceptions")
@@ -27,6 +32,10 @@ def open_payment_exception(
         case = session.get(RecoveryCase, case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="case not found")
+        if case.state in TERMINAL_CASE_STATES:
+            raise HTTPException(
+                status_code=409, detail="terminal recovery case cannot open an exception"
+            )
         existing = session.scalar(
             select(PaymentException).where(
                 PaymentException.case_id == case.case_id,
@@ -57,6 +66,8 @@ def open_payment_exception(
 def resolve_payment_exception(
     exception_id: str, payload: PaymentExceptionResolutionRequest, request: Request
 ) -> dict:
+    if _role(request) != "business_owner":
+        raise HTTPException(status_code=403, detail="business owner role required")
     with request.app.state.session_factory() as session:
         exception = session.get(PaymentException, exception_id)
         if exception is None:
@@ -66,6 +77,10 @@ def resolve_payment_exception(
         case = session.get(RecoveryCase, exception.case_id)
         if case is None:
             raise HTTPException(status_code=409, detail="recovery case not found")
+        if case.state in TERMINAL_CASE_STATES:
+            raise HTTPException(
+                status_code=409, detail="terminal recovery case cannot resolve an exception"
+            )
         previous_state = case.state
         target_state = {
             "no_debit": "investigated",

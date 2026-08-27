@@ -23,15 +23,14 @@ router = APIRouter(tags=["dashboard"])
 
 def _worklist_sort_key(item: dict) -> tuple[int, int, str]:
     # ADR 0006 order: escalations -> aged PaymentExceptions -> eligible by expected net value -> investigated by age
-    # PaymentExceptions not yet introduced in #30, so eligible is second after escalated
     state = item["state"]
     if state == "escalated":
         rank = 0
         # aged: older opened_at first
         secondary = item.get("opened_at") or ""
         return (rank, 0, secondary)
-    if item["open_payment_exception"]:
-        return (1, 0, item.get("opened_at") or "")
+    if item["open_payment_exception_at"]:
+        return (1, 0, item["open_payment_exception_at"])
     if state == "eligible":
         rank = 2
         # eligible by expected net value descending (negate for ascending sort), then age
@@ -61,15 +60,22 @@ def get_dashboard(request: Request) -> dict:
         exceptions = session.scalars(
             select(PaymentException).order_by(PaymentException.opened_at.desc())
         ).all()
-        open_exception_case_ids = {
-            exception.case_id for exception in exceptions if exception.state == "open"
+        open_exceptions_by_case = {
+            exception.case_id: exception.opened_at.isoformat()
+            for exception in exceptions
+            if exception.state == "open"
         }
         worklist = [
-            _case_summary(session, case, request, configuration, case.case_id in open_exception_case_ids)
+            _case_summary(
+                session,
+                case,
+                request,
+                configuration,
+                open_exceptions_by_case.get(case.case_id),
+            )
             for case in cases
         ]
-        # Worklist ordering per ADR 0006: escalations -> aged PaymentExceptions -> eligible by expected net value -> investigated by age
-        # PaymentExceptions not yet implemented in #30, so sort as escalated, then eligible, then investigated, then others
+        # Worklist ordering follows ADR 0006.
         worklist.sort(key=lambda item: _worklist_sort_key(item))
         # Executive measures per ADR 0006: one ClaimTag per figure
         # Revenue at Risk = sum amount_at_risk where state not recovered
@@ -114,7 +120,9 @@ def get_dashboard(request: Request) -> dict:
         }
 
 
-def _case_summary(session, case: RecoveryCase, request: Request, configuration, has_open_exception: bool) -> dict:
+def _case_summary(
+    session, case: RecoveryCase, request: Request, configuration, open_exception_at: str | None
+) -> dict:
     if getattr(case, "obligation_reference", None):
         payment = session.scalar(
             select(PaymentEvent)
@@ -178,7 +186,8 @@ def _case_summary(session, case: RecoveryCase, request: Request, configuration, 
         ),
         "expected_value": expected_value,
         "policy": policy.model_dump(),
-        "open_payment_exception": has_open_exception,
+        "open_payment_exception": open_exception_at is not None,
+        "open_payment_exception_at": open_exception_at,
         "contact_budget": max(0, configuration.contact_limit - (contact_count or 0)),
         "owner": "business_owner" if case.state == "escalated" else "operations_worker",
         "blocked_reasons": policy.blocked_reasons,
@@ -241,6 +250,7 @@ def _timeline(session, case: RecoveryCase) -> dict:
                 "selected_action": decision.selected_action,
                 "expected_value": decision.expected_value,
                 "policy_version": decision.policy_version,
+                "model_version": decision.model_version,
                 "evidence": decision.reason_json.get("evidence", {}),
             },
         }
@@ -365,9 +375,10 @@ const tag = (kind, text) => `<span class="tag ${kind}">${text}</span>`;
 function render(data) {
   const top = data.executive.top_leak;
   document.querySelector('#overview-content').innerHTML = [
+    `<article class="card estimated"><div class="label">Revenue at risk</div><div class="number">${money(data.executive.revenue_at_risk)}</div>${tag('estimated','ESTIMATED')}<p class="muted">Open RecoveryCases</p></article>`,
     `<article class="card estimated"><div class="label">Estimated recoverable value</div><div class="number">${money(data.executive.estimated_value)}</div>${tag('estimated','ESTIMATED')}</article>`,
-    `<article class="card simulated"><div class="label">Adaptive simulated recovery</div><div class="number">${money(data.evaluation.results.policies.adaptive.recovered_amount)}</div>${tag('simulated','SIMULATED')}</article>`,
-    `<article class="card test-mode"><div class="label">Test Mode recovered</div><div class="number">${money(data.executive.test_mode_value)}</div>${tag('test-mode','TEST MODE')}</article>`,
+    `<article class="card simulated"><div class="label">Adaptive simulated recovery</div><div class="number">${money(data.evaluation.results.policies.adaptive.recovered_amount)}</div>${tag('simulated','SIMULATED')}<p class="muted">30 seeds x 30 cases</p></article>`,
+    `<article class="card test-mode"><div class="label">Test Mode recovered</div><div class="number">${money(data.executive.test_mode_value)}</div>${tag('test-mode','TEST MODE')}<p class="muted">Recorded Outcomes</p></article>`,
     `<article class="card"><div class="label">Open cases</div><div class="number">${data.executive.open_cases}</div></article>`].join('');
   document.querySelector('#investigation-content').innerHTML = top ? `<article class="card"><h3>${html(top.finding_id)}</h3>${tag('estimated','ESTIMATED RECOVERABLE IMPACT')}<strong>${money(top.recoverable_impact)}</strong><p>Confidence ${Math.round(top.confidence * 100)}%</p><h4>Cohort</h4>${json(top.cohort_filter)}<h4>Evidence</h4>${json(top.evidence)}</article>` : '<p class="muted">No leak finding has been detected.</p>';
   document.querySelector('#queue-content').innerHTML = `<table><thead><tr><th>Case</th><th>Evidence</th><th>Owner and budget</th><th>Policy</th><th>Human review</th></tr></thead><tbody>${data.worklist.map(c => `<tr><td>${html(c.case_id)}<br>${money(c.amount_at_risk)}<br><span class="muted">${html(c.state)}</span></td><td>${c.evidence ? `${html(c.evidence.event_type)}<br>${html(c.evidence.error_reason || c.evidence.status)}` : 'No payment event'}${c.open_payment_exception ? '<br><span class="error">Open PaymentException</span>' : ''}</td><td>${html(c.owner)}<br>${c.contact_budget} contacts left</td><td>${c.policy.allowed_actions.length ? 'Allowed: ' + c.policy.allowed_actions.map(html).join(', ') : '<span class="error">Blocked</span>'}<br>${html(Object.values(c.blocked_reasons).flat().join(', '))}</td><td>${c.human_review.can_execute ? c.human_review.allowed_actions.map(a => `<button class="review" data-case="${html(c.case_id)}" data-action="${html(a)}">Approve ${html(a)}</button>`).join(' ') : 'No action permitted'}</td></tr>`).join('')}</tbody></table>`;

@@ -55,10 +55,10 @@ def evaluate_policy(
     blocked_reasons: dict[str, list[str]] = {}
     customer = session.get(Customer, case.customer_id) if case.customer_id else None
     if customer is None:
-        for action in CONTACT_ACTIONS:
+        for action in CUSTOMER_DIRECTED_ACTIONS:
             blocked_reasons[action] = ["missing_identity"]
     elif not customer.consent:
-        for action in CONTACT_ACTIONS:
+        for action in CUSTOMER_DIRECTED_ACTIONS:
             blocked_reasons[action] = ["missing_consent"]
 
     open_exception = session.scalar(
@@ -83,7 +83,7 @@ def evaluate_policy(
 
     local_hour = now.astimezone(ZoneInfo("Asia/Kolkata")).hour
     if _is_quiet_hour(local_hour, quiet_hours_start, quiet_hours_end):
-        for action in CONTACT_ACTIONS:
+        for action in CUSTOMER_DIRECTED_ACTIONS:
             blocked_reasons.setdefault(action, []).append("quiet_hours")
 
     if getattr(case, "obligation_reference", None):

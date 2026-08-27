@@ -158,6 +158,7 @@ def create_decision(
                 request.app.state.create_payment_link,
                 request.app.state.recovery_model,
                 request.app.state.decide_recovery_action,
+                decision.approved,
                 configuration.kill_switch,
                 configuration.contact_limit,
                 configuration.policy_version,

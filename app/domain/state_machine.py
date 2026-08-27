@@ -8,7 +8,7 @@ from app.domain.models import NormalizedPaymentEvent
 TRANSITIONS = {
     CaseState.DETECTED: {CaseState.INVESTIGATED},
     CaseState.INVESTIGATED: {CaseState.ELIGIBLE, CaseState.STOPPED},
-    CaseState.ELIGIBLE: {CaseState.ACTION_SELECTED, CaseState.STOPPED},
+    CaseState.ELIGIBLE: {CaseState.ACTION_SELECTED, CaseState.ESCALATED, CaseState.STOPPED},
     CaseState.ACTION_SELECTED: {CaseState.AWAITING_OUTCOME},
     CaseState.AWAITING_OUTCOME: {
         CaseState.ELIGIBLE,

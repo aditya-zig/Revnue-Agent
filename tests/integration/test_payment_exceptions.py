@@ -46,6 +46,7 @@ async def test_open_exception_blocks_customer_actions_and_no_debit_returns_to_in
         resolved = await client.post(
             f"/api/v1/exceptions/{created.json()['exception_id']}/resolve",
             json={"resolution": "no_debit", "evidence": {"provider_status": "failed"}},
+            headers={"X-Reroute-Role": "business_owner"},
         )
         cases = await client.get("/api/v1/cases")
         audit = await client.get("/api/v1/audit/case_order_001")
@@ -77,8 +78,26 @@ async def test_exception_resolution_sets_terminal_case_state(app, resolution, ca
         resolved = await client.post(
             f"/api/v1/exceptions/{created.json()['exception_id']}/resolve",
             json={"resolution": resolution, "evidence": {"reference": "proof_001"}},
+            headers={"X-Reroute-Role": "business_owner"},
         )
         cases = await client.get("/api/v1/cases")
 
     assert resolved.status_code == 200
     assert cases.json()[0]["state"] == case_state
+
+
+@pytest.mark.asyncio
+async def test_terminal_case_cannot_open_or_resolve_payment_exception(app):
+    with app.state.session_factory() as session:
+        case = session.get(RecoveryCase, "case_order_001")
+        assert case is not None
+        case.state = "recovered"
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_order_001/exceptions",
+            json={"kind": "customer_debit_claim", "evidence": {"claim": "debited"}},
+        )
+
+    assert response.status_code == 409

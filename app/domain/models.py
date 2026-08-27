@@ -92,6 +92,7 @@ class ActionResponse(BaseModel):
 
 class DecisionRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128)
+    approved: bool = False
 
 
 class StructuredDecision(BaseModel):
@@ -107,7 +108,7 @@ class DecisionResponse(BaseModel):
     policy_version: str
     model_version: str
     evidence: dict
-    action: ActionResponse
+    action: ActionResponse | None
 
 
 class PaymentExceptionRequest(BaseModel):

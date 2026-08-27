@@ -154,6 +154,37 @@ async def test_official_failure_payload_with_empty_notes_uses_webhook_event_id(a
 
 
 @pytest.mark.asyncio
+async def test_provider_reversal_signal_opens_a_payment_exception(app):
+    payload = {
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_reversal_001",
+                    "amount": 50000,
+                    "currency": "INR",
+                    "status": "failed",
+                    "error_reason": "payment_reversed",
+                    "created_at": 1567610214,
+                }
+            }
+        },
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=body,
+            headers={"X-Razorpay-Signature": signature(body)},
+        )
+        exceptions = await client.get("/api/v1/exceptions")
+
+    assert response.status_code == 202
+    assert exceptions.json()[0]["kind"] == "provider_reversal"
+
+
+@pytest.mark.asyncio
 async def test_repeated_failures_for_one_payment_create_distinct_events_and_one_case(app):
     def payload(created_at: int) -> bytes:
         return json.dumps(

@@ -115,7 +115,7 @@ async def test_decision_uses_the_highest_ranked_allowed_action_when_model_is_una
         ranked = await client.get("/api/v1/cases/case_001/ranked-actions")
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
-            json={"idempotency_key": "decision-001"},
+            json={"idempotency_key": "decision-001", "approved": True},
         )
 
     assert response.status_code == 201
@@ -142,7 +142,7 @@ async def test_decision_executes_a_valid_structured_model_action(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
-            json={"idempotency_key": "decision-001"},
+            json={"idempotency_key": "decision-001", "approved": True},
         )
 
     assert response.status_code == 201
@@ -166,7 +166,7 @@ async def test_decision_rejects_malformed_model_output_and_uses_fallback(app):
         ranked = await client.get("/api/v1/cases/case_001/ranked-actions")
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
-            json={"idempotency_key": "decision-001"},
+            json={"idempotency_key": "decision-001", "approved": True},
         )
 
     assert response.status_code == 201
@@ -186,12 +186,30 @@ async def test_decision_rejects_a_policy_blocked_model_action_and_uses_fallback(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
-            json={"idempotency_key": "decision-001"},
+            json={"idempotency_key": "decision-001", "approved": True},
         )
 
     assert response.status_code == 201
     assert response.json()["selected_action"] != "contact"
     assert response.json()["selection_source"] == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_decision_records_a_proposal_without_executing_until_approved(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        proposed = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-proposal"},
+        )
+        approved = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-proposal", "approved": True},
+        )
+
+    assert proposed.status_code == 201
+    assert proposed.json()["action"] is None
+    assert approved.status_code == 200
+    assert approved.json()["action"]["status"] in {"completed", "pending"}
 
 
 @pytest.mark.asyncio
@@ -256,7 +274,7 @@ async def test_action_records_any_provider_failure(database_url):
 
     assert response.status_code == 502
     assert response.json() == {"detail": "provider unavailable"}
-    assert audit.json()[-1] == {
+    assert audit.json()[-2] == {
         "case_id": "case_001",
         "event_type": "action.failed",
         "payload": {
@@ -265,6 +283,7 @@ async def test_action_records_any_provider_failure(database_url):
             "reason": "provider unavailable",
         },
     }
+    assert audit.json()[-1]["event_type"] == "case.escalated"
 
 
 @pytest.mark.asyncio
@@ -302,7 +321,7 @@ async def test_action_records_provider_failure_without_creating_a_pending_action
 
     assert response.status_code == 502
     assert response.json() == {"detail": "provider unavailable"}
-    assert audit.json()[-1] == {
+    assert audit.json()[-2] == {
         "case_id": "case_001",
         "event_type": "action.failed",
         "payload": {
@@ -311,6 +330,9 @@ async def test_action_records_provider_failure_without_creating_a_pending_action
             "reason": "provider unavailable",
         },
     }
+    assert audit.json()[-1]["event_type"] == "case.escalated"
+    with app.state.session_factory() as session:
+        assert session.get(RecoveryCase, "case_001").state == "escalated"
 
 
 @pytest.mark.asyncio

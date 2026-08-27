@@ -129,6 +129,7 @@ def execute_action(
                     },
                 )
             )
+            transition_case(session, case, CaseState.ESCALATED)
             session.commit()
             raise ProviderError(str(error)) from error
 
