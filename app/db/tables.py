@@ -47,6 +47,22 @@ class RecoveryCase(Base):
     stop_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class PaymentException(Base):
+    __tablename__ = "payment_exceptions"
+
+    exception_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("recovery_cases.case_id"), index=True)
+    kind: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(32), default="open")
+    evidence_json: Mapped[dict] = mapped_column(JSON)
+    resolution: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolution_evidence_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Customer(Base):
     __tablename__ = "customers"
 
@@ -84,6 +100,9 @@ class Decision(Base):
     selected_action: Mapped[str] = mapped_column(String(64))
     expected_value: Mapped[int] = mapped_column(Integer)
     reason_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class ActionEvent(Base):
@@ -96,6 +115,8 @@ class ActionEvent(Base):
     input_hash: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(32))
     provider_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reply: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     executed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -120,6 +141,33 @@ class AuditEvent(Base):
     audit_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     case_id: Mapped[str] = mapped_column(ForeignKey("recovery_cases.case_id"), index=True)
     event_type: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class PolicyConfiguration(Base):
+    __tablename__ = "policy_configurations"
+
+    configuration_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    quiet_hours_start: Mapped[int] = mapped_column(Integer)
+    quiet_hours_end: Mapped[int] = mapped_column(Integer)
+    contact_limit: Mapped[int] = mapped_column(Integer)
+    kill_switch: Mapped[bool] = mapped_column(default=False)
+    mock_identity: Mapped[str] = mapped_column(String(128))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class PolicyChangeAudit(Base):
+    __tablename__ = "policy_change_audits"
+
+    audit_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version: Mapped[int] = mapped_column(Integer)
+    actor_role: Mapped[str] = mapped_column(String(32))
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

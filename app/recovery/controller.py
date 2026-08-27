@@ -23,6 +23,8 @@ def run_decision(
     recovery_model: RecoveryModel,
     decide_recovery_action: Callable[[dict], object] | None,
     kill_switch: bool = False,
+    contact_limit: int = 3,
+    policy_version: str = "v1",
 ) -> tuple[DecisionResponse, bool]:
     decision_id = f"decision_{hashlib.sha256(idempotency_key.encode()).hexdigest()}"
     existing = session.get(Decision, decision_id)
@@ -39,6 +41,8 @@ def run_decision(
             quiet_hours_end,
             create_payment_link,
             kill_switch,
+            contact_limit,
+            policy_version,
         )
         reason = existing.reason_json
         return (
@@ -54,7 +58,16 @@ def run_decision(
             True,
         )
 
-    policy = evaluate_policy(session, case, now, quiet_hours_start, quiet_hours_end, kill_switch)
+    policy = evaluate_policy(
+        session,
+        case,
+        now,
+        quiet_hours_start,
+        quiet_hours_end,
+        kill_switch,
+        contact_limit,
+        policy_version,
+    )
     customer = session.get(Customer, case.customer_id) if case.customer_id else None
     scores = recovery_model.rank(case, customer, policy.allowed_actions)
     if not scores:
@@ -101,6 +114,8 @@ def run_decision(
         quiet_hours_end,
         create_payment_link,
         kill_switch,
+        contact_limit,
+        policy_version,
     )
     return (
         DecisionResponse(

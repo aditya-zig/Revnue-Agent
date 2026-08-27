@@ -4,12 +4,13 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.tables import ActionEvent, Customer, PaymentEvent, RecoveryCase
+from app.db.tables import ActionEvent, Customer, PaymentEvent, PaymentException, RecoveryCase
 from app.domain.models import PolicyResponse
 
 POLICY_VERSION = "v1"
 RECOVERY_ACTIONS = ["payment_link", "contact", "retry", "promise", "escalate"]
 CONTACT_ACTIONS = ["contact", "promise"]
+CUSTOMER_DIRECTED_ACTIONS = ["payment_link", *CONTACT_ACTIONS]
 TERMINAL_CASE_STATES = {
     "paid",
     "refunded",
@@ -36,18 +37,20 @@ def evaluate_policy(
     quiet_hours_start: int,
     quiet_hours_end: int,
     kill_switch: bool = False,
+    contact_limit: int = 3,
+    policy_version: str = POLICY_VERSION,
 ) -> PolicyResponse:
     if kill_switch:
         return PolicyResponse(
             allowed_actions=[],
             blocked_reasons={action: ["kill_switch"] for action in RECOVERY_ACTIONS},
-            policy_version=POLICY_VERSION,
+            policy_version=policy_version,
         )
     if case.state in TERMINAL_CASE_STATES:
         return PolicyResponse(
             allowed_actions=[],
             blocked_reasons={action: ["terminal_case"] for action in RECOVERY_ACTIONS},
-            policy_version=POLICY_VERSION,
+            policy_version=policy_version,
         )
     blocked_reasons: dict[str, list[str]] = {}
     customer = session.get(Customer, case.customer_id) if case.customer_id else None
@@ -58,13 +61,23 @@ def evaluate_policy(
         for action in CONTACT_ACTIONS:
             blocked_reasons[action] = ["missing_consent"]
 
+    open_exception = session.scalar(
+        select(PaymentException.exception_id).where(
+            PaymentException.case_id == case.case_id,
+            PaymentException.state == "open",
+        )
+    )
+    if open_exception:
+        for action in CUSTOMER_DIRECTED_ACTIONS:
+            blocked_reasons.setdefault(action, []).append("payment_exception")
+
     contact_count = session.scalar(
         select(func.count()).select_from(ActionEvent).where(
             ActionEvent.case_id == case.case_id,
             ActionEvent.tool.in_(CONTACT_ACTIONS),
         )
     )
-    if (contact_count or 0) >= 3:
+    if (contact_count or 0) >= contact_limit:
         for action in CONTACT_ACTIONS:
             blocked_reasons.setdefault(action, []).append("contact_limit")
 
@@ -99,7 +112,7 @@ def evaluate_policy(
     return PolicyResponse(
         allowed_actions=[action for action in RECOVERY_ACTIONS if action not in blocked_reasons],
         blocked_reasons=blocked_reasons,
-        policy_version=POLICY_VERSION,
+        policy_version=policy_version,
     )
 
 

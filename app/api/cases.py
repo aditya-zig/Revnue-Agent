@@ -9,15 +9,15 @@ from app.domain.models import (
     DecisionResponse,
     PolicyResponse,
 )
-from app.policy import evaluate_policy
+from app.policy import evaluate_policy, get_policy_configuration
 from app.recovery import execute_action, run_decision
 from app.recovery.actions import ProviderError
 
 router = APIRouter(prefix="/api/v1", tags=["cases"])
 
 
-def _kill_switch(request: Request) -> bool:
-    return bool(getattr(request.app.state, "kill_switch", False))
+def _policy_configuration(session, request: Request):
+    return get_policy_configuration(session, request.app.state)
 
 
 @router.get("/cases")
@@ -64,13 +64,16 @@ def get_policy(case_id: str, request: Request) -> PolicyResponse:
         case = session.get(RecoveryCase, case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="case not found")
+        configuration = _policy_configuration(session, request)
         return evaluate_policy(
             session,
             case,
             request.app.state.policy_now(),
-            request.app.state.quiet_hours_start,
-            request.app.state.quiet_hours_end,
-            _kill_switch(request),
+            configuration.quiet_hours_start,
+            configuration.quiet_hours_end,
+            configuration.kill_switch,
+            configuration.contact_limit,
+            configuration.policy_version,
         )
 
 
@@ -80,13 +83,16 @@ def get_ranked_actions(case_id: str, request: Request) -> dict:
         case = session.get(RecoveryCase, case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="case not found")
+        configuration = _policy_configuration(session, request)
         policy = evaluate_policy(
             session,
             case,
             request.app.state.policy_now(),
-            request.app.state.quiet_hours_start,
-            request.app.state.quiet_hours_end,
-            _kill_switch(request),
+            configuration.quiet_hours_start,
+            configuration.quiet_hours_end,
+            configuration.kill_switch,
+            configuration.contact_limit,
+            configuration.policy_version,
         )
         customer = session.get(Customer, case.customer_id) if case.customer_id else None
         return {
@@ -106,6 +112,7 @@ def create_action(
         case = session.get(RecoveryCase, case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="case not found")
+        configuration = _policy_configuration(session, request)
         try:
             result, duplicate = execute_action(
                 session,
@@ -113,10 +120,12 @@ def create_action(
                 action.action,
                 action.idempotency_key,
                 request.app.state.policy_now(),
-                request.app.state.quiet_hours_start,
-                request.app.state.quiet_hours_end,
+                configuration.quiet_hours_start,
+                configuration.quiet_hours_end,
                 request.app.state.create_payment_link,
-                _kill_switch(request),
+                configuration.kill_switch,
+                configuration.contact_limit,
+                configuration.policy_version,
             )
         except PermissionError as error:
             raise HTTPException(status_code=409, detail=list(error.args[0])) from error
@@ -137,18 +146,21 @@ def create_decision(
         case = session.get(RecoveryCase, case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="case not found")
+        configuration = _policy_configuration(session, request)
         try:
             result, duplicate = run_decision(
                 session,
                 case,
                 decision.idempotency_key,
                 request.app.state.policy_now(),
-                request.app.state.quiet_hours_start,
-                request.app.state.quiet_hours_end,
+                configuration.quiet_hours_start,
+                configuration.quiet_hours_end,
                 request.app.state.create_payment_link,
                 request.app.state.recovery_model,
                 request.app.state.decide_recovery_action,
-                _kill_switch(request),
+                configuration.kill_switch,
+                configuration.contact_limit,
+                configuration.policy_version,
             )
         except PermissionError as error:
             raise HTTPException(status_code=409, detail=list(error.args[0])) from error

@@ -67,11 +67,28 @@ def _row(**overrides):
 @pytest.mark.asyncio
 async def test_shared_customer_different_obligations_creates_separate_cases(app):
     header = _csv_header()
-    row1 = _row(event_id="evt_a", payment_id="pay_a", obligation_reference="order_001", customer_id="cust_shared", amount="100000")
-    row2 = _row(event_id="evt_b", payment_id="pay_b", obligation_reference="order_002", customer_id="cust_shared", amount="100000", occurred_at="2026-08-24T04:05:00+00:00")
-    content = "\n".join([",".join(header), ",".join(row1[h] for h in header), ",".join(row2[h] for h in header)])
+    row1 = _row(
+        event_id="evt_a",
+        payment_id="pay_a",
+        obligation_reference="order_001",
+        customer_id="cust_shared",
+        amount="100000",
+    )
+    row2 = _row(
+        event_id="evt_b",
+        payment_id="pay_b",
+        obligation_reference="order_002",
+        customer_id="cust_shared",
+        amount="100000",
+        occurred_at="2026-08-24T04:05:00+00:00",
+    )
+    content = "\n".join(
+        [",".join(header), ",".join(row1[h] for h in header), ",".join(row2[h] for h in header)]
+    )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.post("/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"})
+        resp = await client.post(
+            "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
+        )
         assert resp.status_code == 201, resp.text
         cases = (await client.get("/api/v1/cases")).json()
     assert len(cases) == 2
@@ -84,11 +101,26 @@ async def test_shared_customer_different_obligations_creates_separate_cases(app)
 @pytest.mark.asyncio
 async def test_same_obligation_groups_into_single_case(app):
     header = _csv_header()
-    row1 = _row(event_id="evt_a", payment_id="pay_a", obligation_reference="order_same", customer_id="cust_001")
-    row2 = _row(event_id="evt_b", payment_id="pay_b", obligation_reference="order_same", customer_id="cust_001", occurred_at="2026-08-24T05:00:00+00:00")
-    content = "\n".join([",".join(header), ",".join(row1[h] for h in header), ",".join(row2[h] for h in header)])
+    row1 = _row(
+        event_id="evt_a",
+        payment_id="pay_a",
+        obligation_reference="order_same",
+        customer_id="cust_001",
+    )
+    row2 = _row(
+        event_id="evt_b",
+        payment_id="pay_b",
+        obligation_reference="order_same",
+        customer_id="cust_001",
+        occurred_at="2026-08-24T05:00:00+00:00",
+    )
+    content = "\n".join(
+        [",".join(header), ",".join(row1[h] for h in header), ",".join(row2[h] for h in header)]
+    )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.post("/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"})
+        resp = await client.post(
+            "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
+        )
         assert resp.status_code == 201
         cases = (await client.get("/api/v1/cases")).json()
         # only one RecoveryCase for one PaymentObligation, with two PaymentEvents underneath
@@ -103,11 +135,28 @@ async def test_same_obligation_groups_into_single_case(app):
 @pytest.mark.asyncio
 async def test_missing_obligation_stays_isolated(app):
     header = _csv_header()
-    row1 = _row(event_id="evt_a", payment_id="pay_a", obligation_reference="", customer_id="cust_001", amount="100000")
-    row2 = _row(event_id="evt_b", payment_id="pay_b", obligation_reference="", customer_id="cust_001", amount="100000", occurred_at="2026-08-24T04:05:00+00:00")
-    content = "\n".join([",".join(header), ",".join(row1[h] for h in header), ",".join(row2[h] for h in header)])
+    row1 = _row(
+        event_id="evt_a",
+        payment_id="pay_a",
+        obligation_reference="",
+        customer_id="cust_001",
+        amount="100000",
+    )
+    row2 = _row(
+        event_id="evt_b",
+        payment_id="pay_b",
+        obligation_reference="",
+        customer_id="cust_001",
+        amount="100000",
+        occurred_at="2026-08-24T04:05:00+00:00",
+    )
+    content = "\n".join(
+        [",".join(header), ",".join(row1[h] for h in header), ",".join(row2[h] for h in header)]
+    )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.post("/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"})
+        resp = await client.post(
+            "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
+        )
         assert resp.status_code == 201
         cases = (await client.get("/api/v1/cases")).json()
     # isolated attempt when no durable reference: each payment_id remains its own case
@@ -126,9 +175,13 @@ async def test_synthetic_corpus_is_deterministic_and_idempotent(app):
     assert len(rows) >= 500
     # idempotent import via provider_event_id uniqueness
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        first = await client.post("/api/v1/data/import", content=csv_a, headers={"Content-Type": "text/csv"})
+        first = await client.post(
+            "/api/v1/data/import", content=csv_a, headers={"Content-Type": "text/csv"}
+        )
         assert first.json()["imported"] == len(rows)
-        second = await client.post("/api/v1/data/import", content=csv_a, headers={"Content-Type": "text/csv"})
+        second = await client.post(
+            "/api/v1/data/import", content=csv_a, headers={"Content-Type": "text/csv"}
+        )
         assert second.json()["imported"] == 0
         assert second.json()["duplicates"] == len(rows)
 
@@ -139,8 +192,10 @@ async def test_corpus_produces_ranked_leak_findings_with_support(app):
 
     content = generate_csv(seed=7, event_count=500)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await client.post("/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"})
-        # SyntheticCorpus must produce variety for ranked LeakFindings; detector needs explicit trigger via findings endpoint
+        await client.post(
+            "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
+        )
+        # The detector needs an explicit trigger to persist ranked LeakFindings.
         detect_resp = await client.post("/api/v1/findings/detect")
         assert detect_resp.status_code == 200
         findings = detect_resp.json()
@@ -161,7 +216,9 @@ async def test_named_edge_cases_have_deterministic_policy_behavior(app):
 
     content = generate_csv(seed=7, event_count=500)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await client.post("/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"})
+        await client.post(
+            "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
+        )
         # hard decline should block retry
         cases = {c["case_id"]: c for c in (await client.get("/api/v1/cases")).json()}
         # find the hard decline case by payment_id pattern
@@ -195,11 +252,15 @@ async def test_eligible_unacted_shows_expected_net_value_and_worklist_sorted(app
 
     content = generate_csv(seed=7, event_count=500)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await client.post("/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"})
+        await client.post(
+            "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
+        )
         # make eligible case actually eligible to test expected net value and worklist ordering
         # transition the eligible edge case through investigated -> eligible
         with app.state.session_factory() as session:
-            case = session.scalar(select(RecoveryCase).where(RecoveryCase.case_id == "case_order_eligible"))
+            case = session.scalar(
+                select(RecoveryCase).where(RecoveryCase.case_id == "case_order_eligible")
+            )
             assert case is not None
             transition_case(session, case, CaseState.INVESTIGATED)
             transition_case(session, case, CaseState.ELIGIBLE)
@@ -208,13 +269,15 @@ async def test_eligible_unacted_shows_expected_net_value_and_worklist_sorted(app
         worklist = dash["worklist"]
         # SyntheticCorpus with 500 events yields ~400 failed => ~400 cases; plus edge cases
         assert len(worklist) >= 400
-        # worklist should be sorted per ADR 0006: escalated first, then eligible by expected_value, then investigated by age
+        # ADR 0006 sorts escalated, then eligible by expected value, then investigated by age.
         # eligible case should have expected_value and be among top eligible
         eligible_items = [item for item in worklist if item["state"] == "eligible"]
         assert eligible_items, "expected at least one eligible case after transition"
         assert eligible_items[0]["expected_value"] is not None
         # eligible items should be sorted descending by expected_value
-        evs = [item["expected_value"] for item in eligible_items if item["expected_value"] is not None]
+        evs = [
+            item["expected_value"] for item in eligible_items if item["expected_value"] is not None
+        ]
         assert evs == sorted(evs, reverse=True)
 
 
@@ -224,7 +287,9 @@ async def test_synthetic_corpus_never_leaks_into_evaluation_and_claimtags(app):
 
     content = generate_csv(seed=7, event_count=500)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await client.post("/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"})
+        await client.post(
+            "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
+        )
         await client.post("/api/v1/findings/detect")
         dash = (await client.get("/api/v1/dashboard")).json()
         # findings remain ESTIMATED, not SIMULATED
@@ -237,6 +302,9 @@ async def test_synthetic_corpus_never_leaks_into_evaluation_and_claimtags(app):
         evaluation = dash["evaluation"]
         assert evaluation["results"]["cases_per_seed"] == 30
         assert len(evaluation["results"]["seeds"]) == 30
-        # dashboard executive top_leak should be present and tagged ESTIMATED in UI (checked via API field)
+        # The overview top finding stays an estimated value in the API projection.
         assert dash["executive"]["top_leak"] is not None
-        assert dash["executive"]["top_leak"]["recoverable_impact"] == dash["executive"]["estimated_value"]
+        assert (
+            dash["executive"]["top_leak"]["recoverable_impact"]
+            == dash["executive"]["estimated_value"]
+        )

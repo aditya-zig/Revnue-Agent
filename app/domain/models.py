@@ -27,7 +27,12 @@ class NormalizedPaymentEvent(BaseModel):
     raw_body: bytes | None = None
 
     @classmethod
-    def from_razorpay(cls, payload: dict, raw_hash: str) -> "NormalizedPaymentEvent":
+    def from_razorpay(
+        cls,
+        payload: dict,
+        raw_hash: str,
+        webhook_event_id: str | None = None,
+    ) -> "NormalizedPaymentEvent":
         event_type = payload["event"]
         payment = payload["payload"]["payment"]["entity"]
         payment_id = payment["id"]
@@ -48,8 +53,8 @@ class NormalizedPaymentEvent(BaseModel):
             obligation_reference = None
         customer_id = notes.get("customer_id") if isinstance(notes, dict) else None
         return cls(
-            event_id=f"evt_{payload.get('id', raw_hash)}",
-            provider_event_id=payload.get("id", raw_hash),
+            event_id=f"evt_{webhook_event_id or payload.get('id', raw_hash)}",
+            provider_event_id=webhook_event_id or payload.get("id", raw_hash),
             event_type=event_type,
             payment_id=payment_id,
             obligation_reference=obligation_reference,
@@ -61,7 +66,7 @@ class NormalizedPaymentEvent(BaseModel):
             error_source=payment.get("error_source"),
             error_step=payment.get("error_step"),
             error_code=payment.get("error_code"),
-            error_reason=payment.get("error_description"),
+            error_reason=payment.get("error_reason") or payment.get("error_description"),
             occurred_at=created_at,
             provider="razorpay_test",
             raw_hash=raw_hash,
@@ -103,3 +108,25 @@ class DecisionResponse(BaseModel):
     model_version: str
     evidence: dict
     action: ActionResponse
+
+
+class PaymentExceptionRequest(BaseModel):
+    kind: Literal["customer_debit_claim", "provider_reversal"]
+    evidence: dict
+
+
+class PaymentExceptionResolutionRequest(BaseModel):
+    resolution: Literal["no_debit", "reversed", "captured", "refunded"]
+    evidence: dict
+
+
+class PolicySettingsRequest(BaseModel):
+    quiet_hours_start: int = Field(ge=0, le=23)
+    quiet_hours_end: int = Field(ge=0, le=23)
+    contact_limit: int = Field(ge=0, le=10)
+    kill_switch: bool
+    mock_identity: str = Field(min_length=1, max_length=128)
+
+
+class MockInboxReplyRequest(BaseModel):
+    reply: Literal["pay", "ignore", "promise", "help", "opt_out"]

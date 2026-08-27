@@ -18,7 +18,7 @@ the local database.
 | Unsafe automated choice | The policy filters actions before scoring. Structured model output has an allowlist and rejects extra fields. The default uses deterministic fallback. | Policy rules need merchant review before use with real data. |
 | Provider outage | A payment-link exception writes `action.failed` and returns HTTP 502. The demo replays this path. | Retries, alerts, and recovery queues are absent. |
 | Resource exhaustion | Request bodies have a configured maximum size. | No rate limiting, authentication, or production ingress controls exist. |
-| Data disclosure | `.env`, databases, Python caches, and virtual environments are ignored. The committed demo records have synthetic identifiers. | Local SQLite encryption, access control, retention, and deletion are not implemented. |
+| Data disclosure | `.env`, databases, Python caches, virtual environments, and `rzp-test-key.csv` are ignored. Razorpay Test Mode keys live in `~/.razorpay/config.yaml` and `RAZORPAY_BASIC_TOKEN` in the shell, not in the repo. The committed demo records have synthetic identifiers. | Local SQLite encryption, access control, retention, and deletion are not implemented. |
 
 This is a prototype threat model, not a production security approval. A public
 deployment needs authentication, authorization, secret management, encrypted

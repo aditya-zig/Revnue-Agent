@@ -33,7 +33,11 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
 
     try:
         payload = json.loads(body)
-        event = NormalizedPaymentEvent.from_razorpay(payload, hashlib.sha256(body).hexdigest())
+        event = NormalizedPaymentEvent.from_razorpay(
+            payload,
+            hashlib.sha256(body).hexdigest(),
+            request.headers.get("X-Razorpay-Event-Id"),
+        )
         event.raw_body = body
     except (KeyError, TypeError, ValueError) as error:
         raise HTTPException(

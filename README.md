@@ -5,9 +5,10 @@ It ingests Razorpay Test Mode webhooks or normalized CSV events, groups failure
 cohorts, ranks policy-permitted actions, and writes an audit trail for every
 case transition and action attempt.
 
-This repository contains synthetic data only. It does not send customer
-messages, create live payment links, process real money, or include production
-credentials.
+This repository contains synthetic data only. It does not send real customer
+messages or include production credentials. When local Razorpay Test Mode keys
+are configured, it can create a Test Mode payment link. It never handles real
+money.
 
 ## Run the public demo
 
@@ -53,12 +54,30 @@ curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
   `/api/v1/cases/{case_id}/policy` expose case state, audit events, and policy.
 - `POST /api/v1/cases/{case_id}/actions` executes a permitted mock action or
   attempts a Test Mode payment link. Requests need an idempotency key.
+- `POST /api/v1/cases/{case_id}/exceptions` opens a PaymentException. Open
+  exceptions block customer-directed actions until evidence resolves them.
+- `GET` and owner-only `PUT /api/v1/policy-settings` expose the versioned
+  quiet-hours, contact-limit, kill-switch, and mock-identity controls.
+- `POST /api/v1/mock-inbox/{provider_reference}/reply` records a mock pay,
+  ignore, promise, help, or opt-out reply without claiming a Test Mode payment.
 - `GET /api/v1/evaluations/reproducible` reruns the published synthetic comparison.
+
+## Razorpay tooling
+
+Two local tools talk to Razorpay Test Mode alongside the app. They are not needed for the demo.
+
+* **MCP server** at `https://mcp.razorpay.com/mcp`. OpenCode connects as a remote server with `Basic {env:RAZORPAY_BASIC_TOKEN}` from `~/.config/opencode/opencode.json`. See `docs/razorpay-tooling.md` for the token generation `echo -n "key_id:key_secret" | base64` and the `opencode mcp list` check.
+* **CLI** `~/.local/bin/razorpay` `v1.0.9`. Installed from `https://razorpay.com/docs/api/install-cli/`, configured via `razorpay configure` to `~/.razorpay/config.yaml`. Use `razorpay payments list`, `razorpay orders create`, `razorpay payment-links list` for manual Test Mode checks.
+
+Test keys are Test Mode only. `rzp-test-key.csv` is gitignored and should not be committed. The app reads `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` from the local environment only when it creates a Test Mode payment link. It uses `REROUTE_RAZORPAY_WEBHOOK_SECRET` for webhook HMAC in `app/api/webhooks.py`.
+
+Details and troubleshooting in `docs/razorpay-tooling.md`.
 
 ## Documentation
 
 - [Five-minute demo](docs/demo.md)
 - [Architecture](docs/architecture.md)
+- [Razorpay tooling](docs/razorpay-tooling.md)
 - [Threat model](docs/threat-model.md)
 - [Evaluation](docs/evaluation.md)
 - [Model limits](docs/model-limits.md)

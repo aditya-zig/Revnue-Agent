@@ -31,7 +31,16 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
         response = await client.get("/api/v1/dashboard")
 
     assert page.status_code == 200
-    assert "Mock inbox" in page.text
+    for label in [
+        "Overview",
+        "Recovery queue",
+        "RecoveryCase detail",
+        "PaymentExceptions",
+        "Policy settings",
+        "Investigation",
+        "Evaluation",
+    ]:
+        assert label in page.text
     assert response.status_code == 200
     payload = response.json()
     case = payload["worklist"][0]
@@ -42,6 +51,8 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
         "timeline",
         "evaluation",
         "mock_inbox",
+        "payment_exceptions",
+        "policy_settings",
     } <= payload.keys()
     assert case["evidence"]["event_id"] == "evt_001"
     assert case["policy"]["policy_version"]

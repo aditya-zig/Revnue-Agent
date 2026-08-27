@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.evaluations import get_published_evaluation
 from app.db.tables import (
@@ -12,10 +12,11 @@ from app.db.tables import (
     LeakFinding,
     Outcome,
     PaymentEvent,
+    PaymentException,
     RecoveryCase,
 )
 from app.leak_analysis import finding_sort_key
-from app.policy import evaluate_policy
+from app.policy import evaluate_policy, get_policy_configuration
 
 router = APIRouter(tags=["dashboard"])
 
@@ -29,6 +30,8 @@ def _worklist_sort_key(item: dict) -> tuple[int, int, str]:
         # aged: older opened_at first
         secondary = item.get("opened_at") or ""
         return (rank, 0, secondary)
+    if item["open_payment_exception"]:
+        return (1, 0, item.get("opened_at") or "")
     if state == "eligible":
         rank = 2
         # eligible by expected net value descending (negate for ascending sort), then age
@@ -51,10 +54,20 @@ def dashboard_page() -> str:
 @router.get("/api/v1/dashboard")
 def get_dashboard(request: Request) -> dict:
     with request.app.state.session_factory() as session:
+        configuration = get_policy_configuration(session, request.app.state)
         findings = session.scalars(select(LeakFinding)).all()
         findings.sort(key=finding_sort_key)
         cases = session.scalars(select(RecoveryCase).order_by(RecoveryCase.case_id)).all()
-        worklist = [_case_summary(session, case, request) for case in cases]
+        exceptions = session.scalars(
+            select(PaymentException).order_by(PaymentException.opened_at.desc())
+        ).all()
+        open_exception_case_ids = {
+            exception.case_id for exception in exceptions if exception.state == "open"
+        }
+        worklist = [
+            _case_summary(session, case, request, configuration, case.case_id in open_exception_case_ids)
+            for case in cases
+        ]
         # Worklist ordering per ADR 0006: escalations -> aged PaymentExceptions -> eligible by expected net value -> investigated by age
         # PaymentExceptions not yet implemented in #30, so sort as escalated, then eligible, then investigated, then others
         worklist.sort(key=lambda item: _worklist_sort_key(item))
@@ -87,6 +100,8 @@ def get_dashboard(request: Request) -> dict:
             "investigation": _finding(findings[0]) if findings else None,
             "worklist": worklist,
             "timeline": [_timeline(session, case) for case in cases],
+            "payment_exceptions": [_payment_exception(exception) for exception in exceptions],
+            "policy_settings": _policy_settings(configuration),
             "evaluation": get_published_evaluation(),
             "mock_inbox": [
                 _action(action)
@@ -99,7 +114,7 @@ def get_dashboard(request: Request) -> dict:
         }
 
 
-def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
+def _case_summary(session, case: RecoveryCase, request: Request, configuration, has_open_exception: bool) -> dict:
     if getattr(case, "obligation_reference", None):
         payment = session.scalar(
             select(PaymentEvent)
@@ -126,20 +141,29 @@ def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
         session,
         case,
         request.app.state.policy_now(),
-        request.app.state.quiet_hours_start,
-        request.app.state.quiet_hours_end,
+        configuration.quiet_hours_start,
+        configuration.quiet_hours_end,
+        configuration.kill_switch,
+        configuration.contact_limit,
+        configuration.policy_version,
     )
     # expected net value for worklist sorting: prefer persisted Decision, else rank eligible via RecoveryModel
+    from app.db.tables import Customer
+
+    customer = session.get(Customer, case.customer_id) if case.customer_id else None
     if decision is not None:
         expected_value = decision.expected_value
     elif case.state == "eligible":
-        from app.db.tables import Customer
-
-        customer = session.get(Customer, case.customer_id) if case.customer_id else None
         ranked = request.app.state.recovery_model.rank(case, customer, policy.allowed_actions)
         expected_value = int(ranked[0]["expected_net_value"]) if ranked else None
     else:
         expected_value = None
+    contact_count = session.scalar(
+        select(func.count()).select_from(ActionEvent).where(
+            ActionEvent.case_id == case.case_id,
+            ActionEvent.tool.in_(["contact", "promise"]),
+        )
+    )
     return {
         "case_id": case.case_id,
         "payment_id": case.payment_id,
@@ -154,6 +178,25 @@ def _case_summary(session, case: RecoveryCase, request: Request) -> dict:
         ),
         "expected_value": expected_value,
         "policy": policy.model_dump(),
+        "open_payment_exception": has_open_exception,
+        "contact_budget": max(0, configuration.contact_limit - (contact_count or 0)),
+        "owner": "business_owner" if case.state == "escalated" else "operations_worker",
+        "blocked_reasons": policy.blocked_reasons,
+        "customer": (
+            {
+                "consent": customer.consent,
+                "tenure_days": customer.tenure_days,
+                "successful_payments": customer.successful_payments,
+                "prior_failures": customer.prior_failures,
+            }
+            if customer
+            else None
+        ),
+        "ranked_actions": (
+            request.app.state.recovery_model.rank(case, customer, policy.allowed_actions)
+            if case.state == "eligible"
+            else []
+        ),
         "human_review": {
             "allowed_actions": policy.allowed_actions,
             "can_execute": case.state == "eligible" and bool(policy.allowed_actions),
@@ -193,7 +236,7 @@ def _timeline(session, case: RecoveryCase) -> dict:
     events += [
         {
             "kind": "decision",
-            "at": None,
+            "at": _time(decision.created_at),
             "data": {
                 "selected_action": decision.selected_action,
                 "expected_value": decision.expected_value,
@@ -227,6 +270,7 @@ def _timeline(session, case: RecoveryCase) -> dict:
                 },
             }
         )
+    events.sort(key=lambda event: (event["at"] is None, event["at"] or ""))
     return {"case_id": case.case_id, "events": events}
 
 
@@ -252,9 +296,6 @@ def _payment(payment: PaymentEvent) -> dict:
         "payment_id": payment.payment_id,
         "provider_event_id": payment.provider_event_id,
         "raw_hash": payment.raw_hash,
-        "raw_body": (
-            payment.raw_body.decode("utf-8", errors="replace") if payment.raw_body else None
-        ),
     }
 
 
@@ -264,7 +305,32 @@ def _action(action: ActionEvent) -> dict:
         "tool": action.tool,
         "status": action.status,
         "provider_reference": action.provider_reference,
+        "idempotency_key": action.idempotency_key,
+        "reply": action.reply,
         "executed_at": _time(action.executed_at),
+    }
+
+
+def _payment_exception(exception: PaymentException) -> dict:
+    return {
+        "exception_id": exception.exception_id,
+        "case_id": exception.case_id,
+        "kind": exception.kind,
+        "state": exception.state,
+        "evidence": exception.evidence_json,
+        "resolution": exception.resolution,
+    }
+
+
+def _policy_settings(configuration) -> dict:
+    return {
+        "version": configuration.version,
+        "policy_version": configuration.policy_version,
+        "quiet_hours_start": configuration.quiet_hours_start,
+        "quiet_hours_end": configuration.quiet_hours_end,
+        "contact_limit": configuration.contact_limit,
+        "kill_switch": configuration.kill_switch,
+        "mock_identity": configuration.mock_identity,
     }
 
 
@@ -289,8 +355,8 @@ main { max-width:1180px; margin:auto; padding:24px; } section { display:none; } 
 table { border-collapse:collapse; width:100%; margin-top:12px; } th,td { border-bottom:1px solid #33414e; padding:10px 6px; text-align:left; vertical-align:top; } th { color:#aebdca; font-size:.8rem; }
 pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#0c1117; padding:12px; border-radius:6px; } .event { border-left:2px solid #426179; padding:0 0 18px 14px; margin-left:8px; } .muted { color:#aebdca; } .error { color:#ffaaa4; }
 </style></head><body><header><h1>ReRoute Intelligence</h1><p>Recovery operations in Razorpay Test Mode</p></header>
-<nav><button data-view="executive">Executive</button><button data-view="investigation">Investigation</button><button data-view="worklist">Worklist</button><button data-view="timeline">Timeline</button><button data-view="evaluation">Evaluation</button><button data-view="inbox">Mock inbox</button></nav>
-<main><section id="executive" class="active"><h2>Executive</h2><div id="executive-content" class="grid"></div></section><section id="investigation"><h2>Investigation</h2><div id="investigation-content"></div></section><section id="worklist"><h2>Worklist</h2><p class="muted">Human review can submit only actions allowed by the policy. Actions use Test Mode or mock tools.</p><div id="worklist-content"></div></section><section id="timeline"><h2>Timeline</h2><p class="muted">Raw event, decision, action, audit record, and outcome share one case timeline.</p><div id="timeline-content"></div></section><section id="evaluation"><h2>Evaluation</h2><div id="evaluation-content"></div></section><section id="inbox"><h2>Mock inbox</h2><div id="inbox-content"></div></section></main>
+<nav><button data-view="overview">Overview</button><button data-view="queue">Recovery queue</button><button data-view="detail">RecoveryCase detail</button><button data-view="exceptions">PaymentExceptions</button><button data-view="settings">Policy settings</button><button data-view="investigation">Investigation</button><button data-view="evaluation">Evaluation</button></nav>
+<main><section id="overview" class="active"><h2>Overview</h2><div id="overview-content" class="grid"></div></section><section id="queue"><h2>Recovery queue</h2><p class="muted">Human review can submit only actions allowed by the policy. Actions use Test Mode or mock tools.</p><div id="queue-content"></div></section><section id="detail"><h2>RecoveryCase detail</h2><p class="muted">Raw event, decision, action, audit record, and outcome share one case timeline.</p><div id="detail-content"></div><h3>Mock inbox</h3><div id="inbox-content"></div></section><section id="exceptions"><h2>PaymentExceptions</h2><div id="exceptions-content"></div></section><section id="settings"><h2>Policy settings</h2><div id="settings-content"></div></section><section id="investigation"><h2>Investigation</h2><div id="investigation-content"></div></section><section id="evaluation"><h2>Evaluation</h2><div id="evaluation-content"></div></section></main>
 <script>
 const money = value => 'INR ' + (value / 100).toLocaleString('en-IN', {minimumFractionDigits: 2});
 const html = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
@@ -298,16 +364,18 @@ const json = value => `<pre>${html(JSON.stringify(value, null, 2))}</pre>`;
 const tag = (kind, text) => `<span class="tag ${kind}">${text}</span>`;
 function render(data) {
   const top = data.executive.top_leak;
-  document.querySelector('#executive-content').innerHTML = [
+  document.querySelector('#overview-content').innerHTML = [
     `<article class="card estimated"><div class="label">Estimated recoverable value</div><div class="number">${money(data.executive.estimated_value)}</div>${tag('estimated','ESTIMATED')}</article>`,
     `<article class="card simulated"><div class="label">Adaptive simulated recovery</div><div class="number">${money(data.evaluation.results.policies.adaptive.recovered_amount)}</div>${tag('simulated','SIMULATED')}</article>`,
     `<article class="card test-mode"><div class="label">Test Mode recovered</div><div class="number">${money(data.executive.test_mode_value)}</div>${tag('test-mode','TEST MODE')}</article>`,
     `<article class="card"><div class="label">Open cases</div><div class="number">${data.executive.open_cases}</div></article>`].join('');
   document.querySelector('#investigation-content').innerHTML = top ? `<article class="card"><h3>${html(top.finding_id)}</h3>${tag('estimated','ESTIMATED RECOVERABLE IMPACT')}<strong>${money(top.recoverable_impact)}</strong><p>Confidence ${Math.round(top.confidence * 100)}%</p><h4>Cohort</h4>${json(top.cohort_filter)}<h4>Evidence</h4>${json(top.evidence)}</article>` : '<p class="muted">No leak finding has been detected.</p>';
-  document.querySelector('#worklist-content').innerHTML = `<table><thead><tr><th>Case</th><th>Evidence</th><th>Selected action</th><th>Policy</th><th>Human review</th></tr></thead><tbody>${data.worklist.map(c => `<tr><td>${html(c.case_id)}<br>${money(c.amount_at_risk)}<br><span class="muted">${html(c.state)}</span></td><td>${c.evidence ? `${html(c.evidence.event_type)}<br>${html(c.evidence.error_reason || c.evidence.status)}` : 'No payment event'}</td><td>${html(c.selected_action || 'None')} ${c.expected_value !== null ? `<br>${tag('estimated','EST.')} ${money(c.expected_value)}` : ''}</td><td>${c.policy.allowed_actions.length ? 'Allowed: ' + c.policy.allowed_actions.map(html).join(', ') : '<span class="error">Blocked</span>'}</td><td>${c.human_review.can_execute ? c.human_review.allowed_actions.map(a => `<button class="review" data-case="${html(c.case_id)}" data-action="${html(a)}">Approve ${html(a)}</button>`).join(' ') : 'No action permitted'}</td></tr>`).join('')}</tbody></table>`;
-  document.querySelector('#timeline-content').innerHTML = data.timeline.map(t => `<article class="card"><h3>${html(t.case_id)}</h3>${t.events.map(e => `<div class="event">${tag(e.kind === 'outcome' ? 'test-mode' : e.kind === 'decision' ? 'estimated' : 'simulated', e.kind.toUpperCase())}<span class="muted">${html(e.at || 'recorded decision')}</span>${json(e.data)}</div>`).join('') || '<p class="muted">No events.</p>'}</article>`).join('');
+  document.querySelector('#queue-content').innerHTML = `<table><thead><tr><th>Case</th><th>Evidence</th><th>Owner and budget</th><th>Policy</th><th>Human review</th></tr></thead><tbody>${data.worklist.map(c => `<tr><td>${html(c.case_id)}<br>${money(c.amount_at_risk)}<br><span class="muted">${html(c.state)}</span></td><td>${c.evidence ? `${html(c.evidence.event_type)}<br>${html(c.evidence.error_reason || c.evidence.status)}` : 'No payment event'}${c.open_payment_exception ? '<br><span class="error">Open PaymentException</span>' : ''}</td><td>${html(c.owner)}<br>${c.contact_budget} contacts left</td><td>${c.policy.allowed_actions.length ? 'Allowed: ' + c.policy.allowed_actions.map(html).join(', ') : '<span class="error">Blocked</span>'}<br>${html(Object.values(c.blocked_reasons).flat().join(', '))}</td><td>${c.human_review.can_execute ? c.human_review.allowed_actions.map(a => `<button class="review" data-case="${html(c.case_id)}" data-action="${html(a)}">Approve ${html(a)}</button>`).join(' ') : 'No action permitted'}</td></tr>`).join('')}</tbody></table>`;
+  document.querySelector('#detail-content').innerHTML = data.timeline.map(t => `<article class="card"><h3>${html(t.case_id)}</h3>${t.events.map(e => `<div class="event">${tag(e.kind === 'outcome' ? 'test-mode' : e.kind === 'decision' ? 'estimated' : 'simulated', e.kind.toUpperCase())}<span class="muted">${html(e.at || 'recorded decision')}</span>${json(e.data)}</div>`).join('') || '<p class="muted">No events.</p>'}</article>`).join('');
+  document.querySelector('#exceptions-content').innerHTML = data.payment_exceptions.length ? data.payment_exceptions.map(e => `<article class="card"><h3>${html(e.kind)}</h3><p>${html(e.case_id)}. ${html(e.state)}</p>${json(e.evidence)}</article>`).join('') : '<p class="muted">No PaymentExceptions.</p>';
+  document.querySelector('#settings-content').innerHTML = `<article class="card"><p>Policy ${html(data.policy_settings.policy_version)}. Owner-only edits affect future Actions.</p>${json(data.policy_settings)}</article>`;
   document.querySelector('#evaluation-content').innerHTML = `<article class="card simulated">${tag('simulated','SIMULATED')}<p>${data.evaluation.results.seeds.length} identical-case seeds, ${data.evaluation.results.cases_per_seed} cases per seed</p>${json(data.evaluation)}</article>`;
-  document.querySelector('#inbox-content').innerHTML = data.mock_inbox.length ? data.mock_inbox.map(m => `<article class="card"><h3>${html(m.tool)} for ${html(m.case_id)}</h3>${tag('test-mode','MOCK')}<p>${html(m.status)} at ${html(m.executed_at || 'unknown time')}</p><code>${html(m.provider_reference || 'no provider reference')}</code></article>`).join('') : '<p class="muted">No mock messages have been sent.</p>';
+  document.querySelector('#inbox-content').innerHTML = data.mock_inbox.length ? data.mock_inbox.map(m => `<article class="card"><h3>${html(m.tool)} for ${html(m.case_id)}</h3>${tag('test-mode','MOCK')}<p>${html(m.status)} at ${html(m.executed_at || 'unknown time')}</p><code>${html(m.provider_reference || 'no provider reference')}</code><p>${html(m.reply || 'Awaiting reply')}</p></article>`).join('') : '<p class="muted">No mock messages have been sent.</p>';
 }
 document.querySelector('nav').addEventListener('click', event => { const view = event.target.dataset.view; if (!view) return; document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === view)); });
 document.addEventListener('click', async event => { if (!event.target.matches('.review')) return; const key = `review-${crypto.randomUUID()}`; const response = await fetch(`/api/v1/cases/${event.target.dataset.case}/actions`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:event.target.dataset.action, idempotency_key:key})}); if (!response.ok) alert(await response.text()); else location.reload(); });
