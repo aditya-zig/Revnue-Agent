@@ -2,6 +2,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.cases import router as cases_router
 from app.api.dashboard import router as dashboard_router
@@ -41,6 +42,7 @@ def create_app(
 ) -> FastAPI:
     settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
     app.state.session_factory = create_session_factory(database_url or settings.database_url)
     app.state.webhook_secret = (
         webhook_secret if webhook_secret is not None else settings.razorpay_webhook_secret
