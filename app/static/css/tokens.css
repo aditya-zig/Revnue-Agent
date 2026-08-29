@@ -1,0 +1,132 @@
+/* Razorpay Design System — tokens
+   Source: /tmp/rzp/system/variables.css + DESIGN.md + colors_and_type.css
+   Light theme only. Add .dark block from variables.css if dark mode is needed later.
+   Brand prefix --brand-* is canonical; --rp-* aliases keep BRAND.md ergonomics. */
+
+@import url("../fonts/fonts.css");
+
+:root {
+  /* ---- BRAND canonical tokens (from variables.css) ---- */
+  --brand-color-primary: #305eff;
+  --brand-color-primary-bg: #f0f6ff;
+  --brand-color-primary-bg-hover: #d4e3ff;
+  --brand-color-primary-border: #abc6ff;
+  --brand-color-primary-border-hover: #82a6ff;
+  --brand-color-primary-hover: #5984ff;
+  --brand-color-primary-active: #1e42d9;
+  --brand-color-primary-text: #06168c;
+  --brand-color-success: #52c41a;
+  --brand-color-success-bg: #f6ffed;
+  --brand-color-success-border: #b6eb8f;
+  --brand-color-success-hover: #72d13d;
+  --brand-color-success-active: #389e0d;
+  --brand-color-warning: #faad14;
+  --brand-color-warning-bg: #fffbe6;
+  --brand-color-warning-border: #ffe58f;
+  --brand-color-warning-hover: #ffc53d;
+  --brand-color-warning-active: #d48806;
+  --brand-color-error: #ff4d4f;
+  --brand-color-error-bg: #fff2f0;
+  --brand-color-error-border: #ffccc7;
+  --brand-color-error-hover: #ff7875;
+  --brand-color-error-active: #d9363d;
+  --brand-color-info: #305eff;
+  --brand-color-info-bg: #f0f6ff;
+  --brand-color-info-border: #abc6ff;
+  --brand-color-link: #0052b4;
+  --brand-color-link-hover: #1f6fc2;
+  --brand-color-link-active: #003c8f;
+  --brand-color-text: #354251;
+  --brand-color-text-secondary: #6a737e;
+  --brand-color-text-tertiary: #989ea6;
+  --brand-color-text-quaternary: #c6c9ce;
+  --brand-color-fill: #dddfe1;
+  --brand-color-fill-secondary: #f1f2f3;
+  --brand-color-fill-tertiary: #f6f6f7;
+  --brand-color-fill-quaternary: #fafbfb;
+  --brand-color-bg-layout: #f6f6f7;
+  --brand-color-bg-container: #ffffff;
+  --brand-color-bg-elevated: #ffffff;
+  --brand-color-border: #dddfe1;
+  --brand-color-border-secondary: #f1f2f3;
+  --brand-font-family: Inter, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --brand-font-family-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  --brand-font-size: 14px;
+  --brand-font-size-sm: 12px;
+  --brand-font-size-lg: 18px;
+  --brand-font-size-xl: 22px;
+  --brand-font-size-heading-1: 38px;
+  --brand-font-size-heading-2: 32px;
+  --brand-font-size-heading-3: 26px;
+  --brand-font-size-heading-4: 22px;
+  --brand-font-size-heading-5: 18px;
+  --brand-line-height: 1.5714285714285714;
+  --brand-line-height-heading: 1.25;
+  --brand-font-weight-strong: 600;
+  --brand-size-xxs: 4px;
+  --brand-size-xs: 8px;
+  --brand-size-sm: 12px;
+  --brand-size: 16px;
+  --brand-size-md: 20px;
+  --brand-size-lg: 24px;
+  --brand-size-xl: 32px;
+  --brand-size-xxl: 48px;
+  --brand-border-radius-xs: 3px;
+  --brand-border-radius-sm: 5px;
+  --brand-border-radius: 8px;
+  --brand-border-radius-lg: 10px;
+  --brand-line-width: 1px;
+  --brand-control-height-xs: 22px;
+  --brand-control-height-sm: 33px;
+  --brand-control-height: 44px;
+  --brand-control-height-lg: 55px;
+  --brand-motion-duration-fast: 0.1s;
+  --brand-motion-duration-mid: 0.2s;
+  --brand-motion-duration-slow: 0.3s;
+  --brand-motion-ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --brand-motion-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --brand-primary-palette-1: #f0f6ff;
+  --brand-primary-palette-2: #d4e3ff;
+  --brand-primary-palette-3: #abc6ff;
+  --brand-primary-palette-4: #82a6ff;
+  --brand-primary-palette-5: #5984ff;
+  --brand-primary-palette-6: #305eff;
+  --brand-primary-palette-7: #1e42d9;
+  --brand-primary-palette-8: #1029b3;
+  --brand-primary-palette-9: #06168c;
+  --brand-primary-palette-10: #030c66;
+
+  /* ---- RaZorpAY semantic aliases (BRAND.md / colors_and_type.css) ---- */
+  --rp-bg: var(--brand-color-bg-container);
+  --rp-surface: var(--brand-color-fill-tertiary);
+  --rp-layout: var(--brand-color-bg-layout);
+  --rp-fg: var(--brand-color-text);
+  --rp-muted: var(--brand-color-text-secondary);
+  --rp-muted-2: var(--brand-color-text-tertiary);
+  --rp-border: var(--brand-color-border);
+  --rp-border-soft: var(--brand-color-border-secondary);
+  --rp-accent: var(--brand-color-primary);
+  --rp-accent-hover: var(--brand-color-primary-hover);
+  --rp-accent-strong: var(--brand-color-primary-active);
+  --rp-accent-bg: var(--brand-color-primary-bg);
+  --rp-accent-border: var(--brand-color-primary-border);
+  --rp-navy: #192839;
+  --rp-radius: var(--brand-border-radius);
+  --rp-radius-lg: var(--brand-border-radius-lg);
+  --rp-radius-sm: var(--brand-border-radius-sm);
+  --rp-control: var(--brand-control-height);
+  --rp-control-sm: var(--brand-control-height-sm);
+  --rp-display: "Inter", var(--brand-font-family);
+  --rp-body: var(--brand-font-family);
+  --rp-mono: var(--brand-font-family-code);
+
+  /* ---- Elevation (Razorpay: restrained, precise; no heavy shadows) ---- */
+  --rp-shadow-sm: 0 1px 2px rgba(16, 36, 64, 0.06);
+  --rp-shadow-card: 0 1px 2px rgba(16, 36, 64, 0.06), 0 4px 12px rgba(16, 36, 64, 0.04);
+  --rp-focus-ring: 0 0 0 3px var(--brand-color-primary-bg);
+
+  /* ---- Page geometry ---- */
+  --rzp-shell-max: 1180px;
+  --rzp-content-max: 1180px;
+  --rzp-gutter: clamp(16px, 4vw, 24px);
+}

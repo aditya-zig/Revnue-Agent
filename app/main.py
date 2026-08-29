@@ -1,7 +1,9 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.cases import router as cases_router
 from app.api.dashboard import router as dashboard_router
@@ -64,6 +66,11 @@ def create_app(
     )
     app.state.decide_recovery_action = decide_recovery_action
     app.state.recovery_model = RecoveryModel()
+    # Razorpay shell static assets — local fonts, tokens, shell styles, brand mark.
+    # Mounted at /static so dashboard HTML can load them without external references.
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.is_dir():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     app.include_router(webhooks_router)
     app.include_router(cases_router)
     app.include_router(data_router)

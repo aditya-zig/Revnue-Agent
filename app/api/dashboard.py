@@ -349,46 +349,206 @@ def _time(value: datetime | None) -> str | None:
 
 
 # ruff: noqa: E501
+# ReRoute shell — Razorpay design system
+# Worker contract: the 7 tabs and their content containers are stable.
+#   Tabs: overview, queue, detail, exceptions, settings, investigation, evaluation
+#   Containers: #overview-content, #queue-content, #detail-content, #inbox-content,
+#               #exceptions-content, #settings-content, #investigation-content, #evaluation-content
+#   JS helpers (money, html, json, tag, render) and the /api/v1/dashboard contract are preserved.
+#   New CSS primitives for parallel workers (documented in app/static/css/shell.css):
+#     .rzp-card, .rzp-badge, .rzp-btn, .rzp-table-wrap, .rzp-empty, .rzp-skeleton, .rzp-grid, etc.
+#   Legacy .card / .tag / .grid / button markup is auto-styled by shell.css for back-compat.
 DASHBOARD_HTML = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ReRoute Intelligence</title><style>
-:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui; background:#10151c; color:#e8edf2; }
-body { margin:0; } header { padding:26px max(5vw,24px); background:#17212b; border-bottom:1px solid #33414e; }
-h1 { margin:0; font-size:1.4rem; } header p { margin:6px 0 0; color:#aebdca; }
-nav { display:flex; gap:8px; overflow:auto; padding:14px max(5vw,24px); position:sticky; top:0; background:#10151c; border-bottom:1px solid #33414e; }
-button { color:inherit; background:#243444; border:1px solid #426179; border-radius:6px; padding:8px 10px; cursor:pointer; } button:hover { background:#31516b; }
-main { max-width:1180px; margin:auto; padding:24px; } section { display:none; } section.active { display:block; }
-.grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); } .card { background:#17212b; border:1px solid #33414e; border-radius:9px; padding:16px; }
-.label { color:#aebdca; font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; } .number { font-size:1.7rem; margin-top:5px; }
-.estimated { border-left:4px solid #e0a847; } .simulated { border-left:4px solid #7eb2e0; } .test-mode { border-left:4px solid #61c795; }
-.tag { display:inline-block; padding:3px 6px; border-radius:4px; font-size:.75rem; margin-right:6px; background:#263b4b; } .tag.estimated { color:#f1c46c; } .tag.simulated { color:#a5d1f6; } .tag.test-mode { color:#92e5b7; }
-table { border-collapse:collapse; width:100%; margin-top:12px; } th,td { border-bottom:1px solid #33414e; padding:10px 6px; text-align:left; vertical-align:top; } th { color:#aebdca; font-size:.8rem; }
-pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#0c1117; padding:12px; border-radius:6px; } .event { border-left:2px solid #426179; padding:0 0 18px 14px; margin-left:8px; } .muted { color:#aebdca; } .error { color:#ffaaa4; }
-</style></head><body><header><h1>ReRoute Intelligence</h1><p>Recovery operations in Razorpay Test Mode</p></header>
-<nav><button data-view="overview">Overview</button><button data-view="queue">Recovery queue</button><button data-view="detail">RecoveryCase detail</button><button data-view="exceptions">PaymentExceptions</button><button data-view="settings">Policy settings</button><button data-view="investigation">Investigation</button><button data-view="evaluation">Evaluation</button></nav>
-<main><section id="overview" class="active"><h2>Overview</h2><div id="overview-content" class="grid"></div></section><section id="queue"><h2>Recovery queue</h2><p class="muted">Human review can submit only actions allowed by the policy. Actions use Test Mode or mock tools.</p><div id="queue-content"></div></section><section id="detail"><h2>RecoveryCase detail</h2><p class="muted">Raw event, decision, action, audit record, and outcome share one case timeline.</p><div id="detail-content"></div><h3>Mock inbox</h3><div id="inbox-content"></div></section><section id="exceptions"><h2>PaymentExceptions</h2><div id="exceptions-content"></div></section><section id="settings"><h2>Policy settings</h2><div id="settings-content"></div></section><section id="investigation"><h2>Investigation</h2><div id="investigation-content"></div></section><section id="evaluation"><h2>Evaluation</h2><div id="evaluation-content"></div></section></main>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>ReRoute Intelligence — Razorpay Recovery Operations</title>
+<meta name="description" content="ReRoute Intelligence recovery operations dashboard — Razorpay Test Mode">
+<link rel="icon" href="/static/img/favicon.png" type="image/png">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/shell.css">
+</head>
+<body>
+<a class="rzp-skip" href="#main">Skip to content</a>
+<header class="rzp-header" role="banner">
+  <div class="rzp-header__inner">
+    <a class="rzp-brand" href="/" aria-label="ReRoute Intelligence home">
+      <img class="rzp-brand__mark" src="/static/img/header.svg" alt="Razorpay" width="118" height="25" loading="eager" decoding="async">
+      <span class="rzp-brand__meta">
+        <span class="rzp-brand__title">ReRoute Intelligence</span>
+        <span class="rzp-brand__subtitle">Recovery operations &middot; Razorpay Test Mode</span>
+      </span>
+    </a>
+    <div class="rzp-header__actions" aria-label="Environment">
+      <span class="rzp-header__badge"><span class="rzp-header__badge-dot" aria-hidden="true"></span> Test Mode</span>
+    </div>
+  </div>
+</header>
+<nav class="rzp-nav" role="navigation" aria-label="Primary">
+  <div class="rzp-nav__inner">
+    <div class="rzp-nav__list" role="tablist" aria-label="Dashboard sections">
+      <button role="tab" class="rzp-nav__item rzp-nav__item--active" aria-selected="true" tabindex="0" data-view="overview" id="tab-overview">Overview</button>
+      <button role="tab" class="rzp-nav__item" aria-selected="false" tabindex="-1" data-view="queue" id="tab-queue">Recovery queue</button>
+      <button role="tab" class="rzp-nav__item" aria-selected="false" tabindex="-1" data-view="detail" id="tab-detail">RecoveryCase detail</button>
+      <button role="tab" class="rzp-nav__item" aria-selected="false" tabindex="-1" data-view="exceptions" id="tab-exceptions">PaymentExceptions</button>
+      <button role="tab" class="rzp-nav__item" aria-selected="false" tabindex="-1" data-view="settings" id="tab-settings">Policy settings</button>
+      <button role="tab" class="rzp-nav__item" aria-selected="false" tabindex="-1" data-view="investigation" id="tab-investigation">Investigation</button>
+      <button role="tab" class="rzp-nav__item" aria-selected="false" tabindex="-1" data-view="evaluation" id="tab-evaluation">Evaluation</button>
+    </div>
+  </div>
+</nav>
+<main id="main" class="rzp-page" role="main" tabindex="-1">
+  <div id="global-loading" class="rzp-loading-bar" aria-hidden="true" style="display:none" role="progressbar" aria-label="Loading dashboard"></div>
+  <div id="global-error" class="rzp-card" role="alert" aria-live="assertive" style="display:none; border-left:4px solid var(--brand-color-error); margin-bottom: var(--brand-size-lg);"></div>
+
+  <section id="overview" class="active" role="tabpanel" aria-labelledby="tab-overview">
+    <p class="rzp-kicker">Executive</p>
+    <h2 class="rzp-section-title">Overview</h2>
+    <p class="rzp-section-lede">Revenue at risk, estimated recoverable, simulated and Test Mode outcomes — one ClaimTag per figure.</p>
+    <div id="overview-content" class="grid rzp-grid">
+      <div class="rzp-skeleton rzp-skeleton--card" aria-hidden="true"></div>
+      <div class="rzp-skeleton rzp-skeleton--card" aria-hidden="true"></div>
+      <div class="rzp-skeleton rzp-skeleton--card" aria-hidden="true"></div>
+      <div class="rzp-skeleton rzp-skeleton--card" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <section id="queue" role="tabpanel" aria-labelledby="tab-queue" hidden>
+    <p class="rzp-kicker">Worklist</p>
+    <h2 class="rzp-section-title">Recovery queue</h2>
+    <p class="rzp-section-lede">Human review can submit only actions allowed by the policy. Actions use Test Mode or mock tools.</p>
+    <div id="queue-content">
+      <div class="rzp-skeleton" style="height: 180px; border-radius: var(--brand-border-radius-lg);" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <section id="detail" role="tabpanel" aria-labelledby="tab-detail" hidden>
+    <p class="rzp-kicker">Timeline</p>
+    <h2 class="rzp-section-title">RecoveryCase detail</h2>
+    <p class="rzp-section-lede">Raw event, decision, action, audit record, and outcome share one case timeline.</p>
+    <div id="detail-content"><div class="rzp-skeleton" style="height: 120px; border-radius: var(--brand-border-radius-lg);" aria-hidden="true"></div></div>
+    <h3 style="margin-top: var(--brand-size-xl);">Mock inbox</h3>
+    <p class="rzp-muted" style="margin-bottom: var(--brand-size-sm);">Replies from mock contact and promise tools.</p>
+    <div id="inbox-content"><div class="rzp-skeleton" style="height: 80px; border-radius: var(--brand-border-radius-lg);" aria-hidden="true"></div></div>
+  </section>
+
+  <section id="exceptions" role="tabpanel" aria-labelledby="tab-exceptions" hidden>
+    <p class="rzp-kicker">Exceptions</p>
+    <h2 class="rzp-section-title">PaymentExceptions</h2>
+    <p class="rzp-section-lede">Open exceptions block customer-directed actions until evidence resolves them.</p>
+    <div id="exceptions-content"><div class="rzp-skeleton" style="height: 100px; border-radius: var(--brand-border-radius-lg);" aria-hidden="true"></div></div>
+  </section>
+
+  <section id="settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+    <p class="rzp-kicker">Controls</p>
+    <h2 class="rzp-section-title">Policy settings</h2>
+    <p class="rzp-section-lede">Quiet hours, contact limit, kill switch, and mock identity. Owner-only edits affect future actions.</p>
+    <div id="settings-content"><div class="rzp-skeleton" style="height: 140px; border-radius: var(--brand-border-radius-lg);" aria-hidden="true"></div></div>
+  </section>
+
+  <section id="investigation" role="tabpanel" aria-labelledby="tab-investigation" hidden>
+    <p class="rzp-kicker">Finding</p>
+    <h2 class="rzp-section-title">Investigation</h2>
+    <p class="rzp-section-lede">Top LeakFinding cohort, recoverable impact, confidence, and evidence.</p>
+    <div id="investigation-content"><div class="rzp-skeleton" style="height: 160px; border-radius: var(--brand-border-radius-lg);" aria-hidden="true"></div></div>
+  </section>
+
+  <section id="evaluation" role="tabpanel" aria-labelledby="tab-evaluation" hidden>
+    <p class="rzp-kicker">Reproducible</p>
+    <h2 class="rzp-section-title">Evaluation</h2>
+    <p class="rzp-section-lede">Published synthetic comparison — adaptive versus baseline across identical-case seeds.</p>
+    <div id="evaluation-content"><div class="rzp-skeleton" style="height: 160px; border-radius: var(--brand-border-radius-lg);" aria-hidden="true"></div></div>
+  </section>
+</main>
 <script>
 const money = value => 'INR ' + (value / 100).toLocaleString('en-IN', {minimumFractionDigits: 2});
 const html = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 const json = value => `<pre>${html(JSON.stringify(value, null, 2))}</pre>`;
-const tag = (kind, text) => `<span class="tag ${kind}">${text}</span>`;
+const tag = (kind, text) => `<span class="tag rzp-badge rzp-badge--${html(kind)} ${html(kind)}">${html(text)}</span>`;
+function emptyState(title, body) {
+  return `<div class="rzp-empty" role="status"><p class="rzp-empty__title">${html(title)}</p><p class="rzp-empty__body">${html(body)}</p></div>`;
+}
 function render(data) {
   const top = data.executive.top_leak;
+  const loading = document.getElementById('global-loading');
+  if (loading) loading.style.display = 'none';
   document.querySelector('#overview-content').innerHTML = [
-    `<article class="card estimated"><div class="label">Revenue at risk</div><div class="number">${money(data.executive.revenue_at_risk)}</div>${tag('estimated','ESTIMATED')}<p class="muted">Open RecoveryCases</p></article>`,
-    `<article class="card estimated"><div class="label">Estimated recoverable value</div><div class="number">${money(data.executive.estimated_value)}</div>${tag('estimated','ESTIMATED')}</article>`,
-    `<article class="card simulated"><div class="label">Adaptive simulated recovery</div><div class="number">${money(data.evaluation.results.policies.adaptive.recovered_amount)}</div>${tag('simulated','SIMULATED')}<p class="muted">30 seeds x 30 cases</p></article>`,
-    `<article class="card test-mode"><div class="label">Test Mode recovered</div><div class="number">${money(data.executive.test_mode_value)}</div>${tag('test-mode','TEST MODE')}<p class="muted">Recorded Outcomes</p></article>`,
-    `<article class="card"><div class="label">Open cases</div><div class="number">${data.executive.open_cases}</div></article>`].join('');
-  document.querySelector('#investigation-content').innerHTML = top ? `<article class="card"><h3>${html(top.finding_id)}</h3>${tag('estimated','ESTIMATED RECOVERABLE IMPACT')}<strong>${money(top.recoverable_impact)}</strong><p>Confidence ${Math.round(top.confidence * 100)}%</p><h4>Cohort</h4>${json(top.cohort_filter)}<h4>Evidence</h4>${json(top.evidence)}</article>` : '<p class="muted">No leak finding has been detected.</p>';
-  document.querySelector('#queue-content').innerHTML = `<table><thead><tr><th>Case</th><th>Evidence</th><th>Owner and budget</th><th>Policy</th><th>Human review</th></tr></thead><tbody>${data.worklist.map(c => `<tr><td>${html(c.case_id)}<br>${money(c.amount_at_risk)}<br><span class="muted">${html(c.state)}</span></td><td>${c.evidence ? `${html(c.evidence.event_type)}<br>${html(c.evidence.error_reason || c.evidence.status)}` : 'No payment event'}${c.open_payment_exception ? '<br><span class="error">Open PaymentException</span>' : ''}</td><td>${html(c.owner)}<br>${c.contact_budget} contacts left</td><td>${c.policy.allowed_actions.length ? 'Allowed: ' + c.policy.allowed_actions.map(html).join(', ') : '<span class="error">Blocked</span>'}<br>${html(Object.values(c.blocked_reasons).flat().join(', '))}</td><td>${c.human_review.can_execute ? c.human_review.allowed_actions.map(a => `<button class="review" data-case="${html(c.case_id)}" data-action="${html(a)}">Approve ${html(a)}</button>`).join(' ') : 'No action permitted'}</td></tr>`).join('')}</tbody></table>`;
-  document.querySelector('#detail-content').innerHTML = data.timeline.map(t => `<article class="card"><h3>${html(t.case_id)}</h3>${t.events.map(e => `<div class="event">${tag(e.kind === 'outcome' ? 'test-mode' : e.kind === 'decision' ? 'estimated' : 'simulated', e.kind.toUpperCase())}<span class="muted">${html(e.at || 'recorded decision')}</span>${json(e.data)}</div>`).join('') || '<p class="muted">No events.</p>'}</article>`).join('');
-  document.querySelector('#exceptions-content').innerHTML = data.payment_exceptions.length ? data.payment_exceptions.map(e => `<article class="card"><h3>${html(e.kind)}</h3><p>${html(e.case_id)}. ${html(e.state)}</p>${json(e.evidence)}</article>`).join('') : '<p class="muted">No PaymentExceptions.</p>';
-  document.querySelector('#settings-content').innerHTML = `<article class="card"><p>Policy ${html(data.policy_settings.policy_version)}. Owner-only edits affect future Actions.</p>${json(data.policy_settings)}</article>`;
-  document.querySelector('#evaluation-content').innerHTML = `<article class="card simulated">${tag('simulated','SIMULATED')}<p>${data.evaluation.results.seeds.length} identical-case seeds, ${data.evaluation.results.cases_per_seed} cases per seed</p>${json(data.evaluation)}</article>`;
-  document.querySelector('#inbox-content').innerHTML = data.mock_inbox.length ? data.mock_inbox.map(m => `<article class="card"><h3>${html(m.tool)} for ${html(m.case_id)}</h3>${tag('test-mode','MOCK')}<p>${html(m.status)} at ${html(m.executed_at || 'unknown time')}</p><code>${html(m.provider_reference || 'no provider reference')}</code><p>${html(m.reply || 'Awaiting reply')}</p></article>`).join('') : '<p class="muted">No mock messages have been sent.</p>';
+    `<article class="card rzp-card rzp-card--accent-estimated estimated"><div class="label rzp-card__label">Revenue at risk</div><div class="number rzp-card__number">${money(data.executive.revenue_at_risk)}</div><div style="margin-top:8px">${tag('estimated','ESTIMATED')}</div><p class="muted rzp-muted" style="margin-top:8px">Open RecoveryCases</p></article>`,
+    `<article class="card rzp-card rzp-card--accent-estimated estimated"><div class="label rzp-card__label">Estimated recoverable value</div><div class="number rzp-card__number">${money(data.executive.estimated_value)}</div><div style="margin-top:8px">${tag('estimated','ESTIMATED')}</div></article>`,
+    `<article class="card rzp-card rzp-card--accent-simulated simulated"><div class="label rzp-card__label">Adaptive simulated recovery</div><div class="number rzp-card__number">${money(data.evaluation.results.policies.adaptive.recovered_amount)}</div><div style="margin-top:8px">${tag('simulated','SIMULATED')}</div><p class="muted rzp-muted" style="margin-top:8px">30 seeds x 30 cases</p></article>`,
+    `<article class="card rzp-card rzp-card--accent-test test-mode"><div class="label rzp-card__label">Test Mode recovered</div><div class="number rzp-card__number">${money(data.executive.test_mode_value)}</div><div style="margin-top:8px">${tag('test-mode','TEST MODE')}</div><p class="muted rzp-muted" style="margin-top:8px">Recorded Outcomes</p></article>`,
+    `<article class="card rzp-card"><div class="label rzp-card__label">Open cases</div><div class="number rzp-card__number">${data.executive.open_cases}</div></article>`].join('');
+  document.querySelector('#investigation-content').innerHTML = top ? `<article class="card rzp-card"><h3>${html(top.finding_id)}</h3><div style="margin:8px 0">${tag('estimated','ESTIMATED RECOVERABLE IMPACT')} <strong style="margin-left:6px">${money(top.recoverable_impact)}</strong></div><p class="rzp-muted">Confidence ${Math.round(top.confidence * 100)}%</p><h4 style="margin-top:16px">Cohort</h4>${json(top.cohort_filter)}<h4 style="margin-top:16px">Evidence</h4>${json(top.evidence)}</article>` : emptyState('No leak finding detected', 'Run finding detection from the API or ingest payment events to generate cohorts.');
+  if (data.worklist.length === 0) {
+    document.querySelector('#queue-content').innerHTML = emptyState('Queue is empty', 'No recovery cases match the current policy. Import CSV or webhook events to populate the queue.');
+  } else {
+    document.querySelector('#queue-content').innerHTML = `<div class="rzp-table-wrap"><table class="rzp-table"><thead><tr><th>Case</th><th>Evidence</th><th>Owner and budget</th><th>Policy</th><th>Human review</th></tr></thead><tbody>${data.worklist.map(c => `<tr><td>${html(c.case_id)}<br>${money(c.amount_at_risk)}<br><span class="muted rzp-muted">${html(c.state)}</span></td><td>${c.evidence ? `${html(c.evidence.event_type)}<br>${html(c.evidence.error_reason || c.evidence.status)}` : '<span class="rzp-muted">No payment event</span>'}${c.open_payment_exception ? '<br><span class="error rzp-error">Open PaymentException</span>' : ''}</td><td>${html(c.owner)}<br>${c.contact_budget} contacts left</td><td>${c.policy.allowed_actions.length ? 'Allowed: ' + c.policy.allowed_actions.map(html).join(', ') : '<span class="error rzp-error">Blocked</span>'}<br><span class="rzp-muted">${html(Object.values(c.blocked_reasons).flat().join(', '))}</span></td><td>${c.human_review.can_execute ? c.human_review.allowed_actions.map(a => `<button class="review rzp-btn rzp-btn--primary rzp-btn--sm" data-case="${html(c.case_id)}" data-action="${html(a)}">Approve ${html(a)}</button>`).join(' ') : '<span class="rzp-muted">No action permitted</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  document.querySelector('#detail-content').innerHTML = data.timeline.length ? data.timeline.map(t => `<article class="card rzp-card" style="margin-bottom: var(--brand-size-lg);"><h3>${html(t.case_id)}</h3>${t.events.map(e => `<div class="event ${e.kind === 'decision' ? 'event--decision' : e.kind === 'action' ? 'event--action' : e.kind === 'outcome' ? 'event--outcome' : ''}">${tag(e.kind === 'outcome' ? 'test-mode' : e.kind === 'decision' ? 'estimated' : 'simulated', e.kind.toUpperCase())} <span class="muted rzp-muted">${html(e.at || 'recorded decision')}</span>${json(e.data)}</div>`).join('') || '<p class="muted rzp-muted">No events.</p>'}</article>`).join('') : emptyState('No cases yet', 'Cases appear after ingestion. Each case shows raw events, decisions, actions, audit records, and outcomes on one timeline.');
+  document.querySelector('#exceptions-content').innerHTML = data.payment_exceptions.length ? `<div style="display:grid; gap: var(--brand-size-lg);">${data.payment_exceptions.map(e => `<article class="card rzp-card"><h3>${html(e.kind)}</h3><p class="rzp-muted">${html(e.case_id)} &middot; ${html(e.state)}</p>${json(e.evidence)}</article>`).join('')}</div>` : emptyState('No PaymentExceptions', 'Open exceptions will appear here. Customer-directed actions are blocked while an exception is open.');
+  document.querySelector('#settings-content').innerHTML = `<article class="card rzp-card"><p class="rzp-muted">Policy ${html(data.policy_settings.policy_version)}. Owner-only edits affect future Actions.</p>${json(data.policy_settings)}</article>`;
+  document.querySelector('#evaluation-content').innerHTML = `<article class="card rzp-card simulated rzp-card--accent-simulated">${tag('simulated','SIMULATED')}<p class="rzp-muted" style="margin-top:8px">${data.evaluation.results.seeds.length} identical-case seeds, ${data.evaluation.results.cases_per_seed} cases per seed</p>${json(data.evaluation)}</article>`;
+  document.querySelector('#inbox-content').innerHTML = data.mock_inbox.length ? `<div style="display:grid; gap: var(--brand-size-lg);">${data.mock_inbox.map(m => `<article class="card rzp-card"><h3>${html(m.tool)} for ${html(m.case_id)}</h3><div style="margin:8px 0">${tag('test-mode','MOCK')}</div><p class="rzp-muted">${html(m.status)} at ${html(m.executed_at || 'unknown time')}</p><code style="display:inline-block; margin-top:6px; padding:2px 6px; background: var(--brand-color-fill-quaternary); border-radius: var(--brand-border-radius-sm); font-family: var(--brand-font-family-code); font-size:12px;">${html(m.provider_reference || 'no provider reference')}</code><p style="margin-top:6px">${html(m.reply || 'Awaiting reply')}</p></article>`).join('')}</div>` : emptyState('No mock messages', 'Mock contact and promise replies appear here after actions are executed.');
 }
-document.querySelector('nav').addEventListener('click', event => { const view = event.target.dataset.view; if (!view) return; document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === view)); });
-document.addEventListener('click', async event => { if (!event.target.matches('.review')) return; const key = `review-${crypto.randomUUID()}`; const response = await fetch(`/api/v1/cases/${event.target.dataset.case}/actions`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:event.target.dataset.action, idempotency_key:key})}); if (!response.ok) alert(await response.text()); else location.reload(); });
-fetch('/api/v1/dashboard').then(r => r.json()).then(render).catch(error => { document.querySelector('main').innerHTML = `<p class="error">Could not load dashboard: ${html(error)}</p>`; });
-</script></body></html>"""
+function setActiveTab(view) {
+  document.querySelectorAll('.rzp-nav__item').forEach(btn => {
+    const isActive = btn.dataset.view === view;
+    btn.classList.toggle('rzp-nav__item--active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    btn.tabIndex = isActive ? 0 : -1;
+  });
+  document.querySelectorAll('main section[role="tabpanel"]').forEach(s => {
+    const isActive = s.id === view;
+    s.classList.toggle('active', isActive);
+    if (isActive) { s.removeAttribute('hidden'); s.focus?.(); } else { s.setAttribute('hidden', ''); }
+  });
+  // Keep legacy nav selector working for tests that query main section.active
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === view));
+  if (history.replaceState) history.replaceState(null, '', '#' + view);
+}
+document.querySelector('.rzp-nav').addEventListener('click', event => {
+  const btn = event.target.closest('[data-view]');
+  if (!btn) return;
+  setActiveTab(btn.dataset.view);
+});
+document.querySelector('.rzp-nav').addEventListener('keydown', event => {
+  const tabs = Array.from(document.querySelectorAll('.rzp-nav__item'));
+  const current = tabs.findIndex(t => t.getAttribute('aria-selected') === 'true');
+  if (event.key === 'ArrowRight') { event.preventDefault(); const next = tabs[(current + 1) % tabs.length]; next.focus(); setActiveTab(next.dataset.view); }
+  if (event.key === 'ArrowLeft') { event.preventDefault(); const prev = tabs[(current - 1 + tabs.length) % tabs.length]; prev.focus(); setActiveTab(prev.dataset.view); }
+  if (event.key === 'Home') { event.preventDefault(); tabs[0].focus(); setActiveTab(tabs[0].dataset.view); }
+  if (event.key === 'End') { event.preventDefault(); tabs[tabs.length - 1].focus(); setActiveTab(tabs[tabs.length - 1].dataset.view); }
+});
+document.addEventListener('click', async event => {
+  const btn = event.target.closest('.review');
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Approving…';
+  try {
+    const key = `review-${crypto.randomUUID()}`;
+    const response = await fetch(`/api/v1/cases/${btn.dataset.case}/actions`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:btn.dataset.action, idempotency_key:key})});
+    if (!response.ok) { alert(await response.text()); btn.disabled = false; btn.textContent = original; }
+    else location.reload();
+  } catch (err) {
+    alert(String(err)); btn.disabled = false; btn.textContent = original;
+  }
+});
+(function initTabs(){
+  const hash = (location.hash || '').replace('#','');
+  const valid = ['overview','queue','detail','exceptions','settings','investigation','evaluation'];
+  if (valid.includes(hash)) setActiveTab(hash);
+})();
+const _loadingEl = document.getElementById('global-loading');
+if (_loadingEl) _loadingEl.style.display = 'block';
+fetch('/api/v1/dashboard').then(r => { if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json(); }).then(render).catch(error => {
+  const loading = document.getElementById('global-loading');
+  if (loading) loading.style.display = 'none';
+  const box = document.getElementById('global-error');
+  if (box) { box.style.display = 'block'; box.innerHTML = `<strong style="color: var(--brand-color-error);">Could not load dashboard</strong><p class="rzp-muted" style="margin-top:6px">${html(error)}</p><p class="rzp-muted" style="margin-top:6px">Check the API is running and refresh. Data remains available at <code>/api/v1/dashboard</code>.</p>`; }
+  else { document.querySelector('main').innerHTML = `<p class="error rzp-error">Could not load dashboard: ${html(error)}</p>`; }
+});
+</script>
+</body>
+</html>"""
