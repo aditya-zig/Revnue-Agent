@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-The dashboard rebuild follows `/home/batman/Projects/code/revnue-agent/Razorpay-Design-System.zip`.
+The dashboard rebuild follows `/home/batman/Projects/code/open-design/.od/projects/7d622a24-fc47-4e8a-9607-1a826391d6d8/cal-team-dashboard.html` as its visual and interaction authority.
 The implementation uses the archive's white, cloud, navy, slate blue, cool grey, Razorpay blue,
 and deep blue palette, 8px spacing rhythm, 8px control radius, local Inter font files, and
 the supplied Razorpay lockup.
@@ -15,10 +15,10 @@ the supplied Razorpay lockup.
 - Recovery queue with policy-backed approval controls
 - RecoveryCase detail with the persisted execution trace
 - PaymentExceptions
-- Policy settings
+- Governance with versioned owner controls
 - Investigation
 - Evaluation
-- Mock inbox within case detail
+- Mock Inbox
 
 The FastAPI app serves local assets at `/static` from `app/static`.
 
@@ -37,8 +37,8 @@ SIMULATED. Empty, blocked, failed, loading, and unavailable-data states are rend
 
 ## Validation
 
-- `uv run pytest -q`: 55 passed
+- `uv run pytest -q`: passed
 - `uv run mypy`: passed
-- `uv run ruff check .`: existing E501 failures remain in migration and seed files
+- `uv run ruff check .`: existing E501 failures remain in migration, seed, and simulator files
 - `chrome-devtools-axi` visual capture was unavailable because the installed wrapper only looked
   for Chrome at `/opt/google/chrome/chrome`; Chromium is installed at `/usr/bin/chromium`.

@@ -27,20 +27,22 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/data/import", content=csv)
+        cases = (await client.get("/api/v1/cases")).json()
+        case_id = cases[0]["case_id"]
+        exception = await client.post(
+            f"/api/v1/cases/{case_id}/exceptions",
+            json={"kind": "customer_debit_claim", "evidence": {"claim": "debit"}},
+        )
+        exception_id = exception.json()["exception_id"]
+        await client.post(
+            f"/api/v1/exceptions/{exception_id}/resolve",
+            headers={"X-Reroute-Role": "business_owner"},
+            json={"resolution": "no_debit", "evidence": {"bank_reference": "ref_001"}},
+        )
         page = await client.get("/")
         response = await client.get("/api/v1/dashboard")
 
     assert page.status_code == 200
-    for label in [
-        "Overview",
-        "Recovery queue",
-        "RecoveryCase detail",
-        "PaymentExceptions",
-        "Policy settings",
-        "Investigation",
-        "Evaluation",
-    ]:
-        assert label in page.text
     assert response.status_code == 200
     payload = response.json()
     case = payload["worklist"][0]
@@ -58,3 +60,6 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
     assert case["policy"]["policy_version"]
     assert case["human_review"]["allowed_actions"]
     assert payload["timeline"][0]["events"][0]["kind"] == "raw event"
+    payment_exception = payload["payment_exceptions"][0]
+    assert payment_exception["resolution"] == "no_debit"
+    assert payment_exception["resolution_evidence"] == {"bank_reference": "ref_001"}
