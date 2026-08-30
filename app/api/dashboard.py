@@ -336,6 +336,7 @@ def _payment_exception(exception: PaymentException) -> dict:
         "state": exception.state,
         "evidence": exception.evidence_json,
         "resolution": exception.resolution,
+        "resolution_evidence": exception.resolution_evidence_json,
     }
 
 
