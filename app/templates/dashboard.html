@@ -58,6 +58,7 @@
           <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="settings" tabindex="-1" data-view="settings">Policy settings</button>
           <button class="tab" id="tab-investigation" role="tab" aria-selected="false" aria-controls="investigation" tabindex="-1" data-view="investigation">Investigation</button>
           <button class="tab" id="tab-evaluation" role="tab" aria-selected="false" aria-controls="evaluation" tabindex="-1" data-view="evaluation">Evaluation</button>
+          <button class="tab" id="tab-inbox" role="tab" aria-selected="false" aria-controls="inbox" tabindex="-1" data-view="inbox">Mock Inbox</button>
         </nav>
 
         <section class="stats" id="dashboardKpis" aria-label="Recovery metrics" aria-busy="true" data-dashboard-kpis>
@@ -135,6 +136,11 @@
           <section id="evaluation" class="view" role="tabpanel" aria-labelledby="tab-evaluation" data-dashboard-view="evaluation" hidden>
             <div class="view-slot" data-component-slot="evaluation">
               <div class="state state-placeholder"><div class="state-inner"><h3>Evaluation</h3><p>EvaluationComparison output will appear here with a SIMULATED label.</p></div></div>
+            </div>
+          </section>
+          <section id="inbox" class="view" role="tabpanel" aria-labelledby="tab-inbox" data-dashboard-view="inbox" hidden>
+            <div class="view-slot" data-component-slot="inbox">
+              <div class="state state-placeholder"><div class="state-inner"><h3>Mock Inbox</h3><p>Recorded mock replies will appear here when actions exist.</p></div></div>
             </div>
           </section>
         </div>

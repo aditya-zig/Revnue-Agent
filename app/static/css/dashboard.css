@@ -811,6 +811,10 @@ tbody tr:hover {
   border: 0;
 }
 
+.badge.positive::before { background: #16844b; }
+.badge.warning::before { background: #9b6900; }
+.reply-form { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
+
 @media (max-width: 1300px) {
   .grid {
     grid-template-columns: 1fr;

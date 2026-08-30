@@ -85,5 +85,7 @@ async def test_dashboard_serves_shared_shell_contract(app):
         'data-component-slot="evaluation"',
         'data-action="toggle-theme"',
         'data-action="export-worklist"',
+        'data-view="inbox"',
+        'data-component-slot="inbox"',
     ]:
         assert hook in page.text
