@@ -470,11 +470,7 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
                 ).hexdigest()
             },
         )
-        with app.state.session_factory() as session:
-            case = session.get(RecoveryCase, "case_pay_trace")
-            assert case is not None
-            case.state = "eligible"
-            session.commit()
+        investigated = await client.post("/api/v1/cases/case_pay_trace/investigate")
         proposal = await client.post(
             "/api/v1/cases/case_pay_trace/decisions",
             json={"idempotency_key": "trace-decision"},
@@ -505,6 +501,9 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
         audit = await client.get("/api/v1/audit/case_pay_trace")
 
     assert failure_response.status_code == 202
+    assert investigated.status_code == 200
+    assert investigated.json()["new_state"] == "eligible"
+    assert investigated.json()["policy"]["allowed_actions"]
     assert proposal.status_code == 201 and proposal.json()["action"] is None
     assert failed.status_code == 502
     assert denied_resume.status_code == 403

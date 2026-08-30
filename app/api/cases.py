@@ -106,6 +106,45 @@ def get_ranked_actions(case_id: str, request: Request) -> dict:
         }
 
 
+@router.post("/cases/{case_id}/investigate", status_code=200)
+def investigate_case(case_id: str, request: Request) -> dict:
+    with request.app.state.session_factory() as session:
+        case = session.get(RecoveryCase, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="case not found")
+        if case.state != CaseState.DETECTED:
+            raise HTTPException(status_code=409, detail="case is not detected")
+
+        transition_case(session, case, CaseState.INVESTIGATED)
+        configuration = _policy_configuration(session, request)
+        policy = evaluate_policy(
+            session,
+            case,
+            request.app.state.policy_now(),
+            configuration.quiet_hours_start,
+            configuration.quiet_hours_end,
+            configuration.kill_switch,
+            configuration.contact_limit,
+            configuration.policy_version,
+        )
+        if policy.allowed_actions:
+            transition_case(
+                session,
+                case,
+                CaseState.ELIGIBLE,
+                payload_extra={
+                    "policy_version": policy.policy_version,
+                    "allowed_actions": policy.allowed_actions,
+                },
+            )
+        session.commit()
+        return {
+            "case_id": case.case_id,
+            "new_state": case.state,
+            "policy": policy.model_dump(),
+        }
+
+
 @router.post("/cases/{case_id}/resume", status_code=200)
 def resume_case(case_id: str, request: Request) -> dict[str, str]:
     if request.headers.get("X-Reroute-Role", "operations_worker") != "business_owner":

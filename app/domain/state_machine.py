@@ -24,7 +24,7 @@ def transition_case(
     session: Session,
     case: RecoveryCase,
     target: CaseState,
-    payload_extra: dict[str, str] | None = None,
+    payload_extra: dict[str, object] | None = None,
 ) -> None:
     current = CaseState(case.state)
     if target not in TRANSITIONS.get(current, set()):
