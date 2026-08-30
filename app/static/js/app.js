@@ -250,7 +250,17 @@ function bindRenderedActions() {
     state.selectedCase = button.dataset.case || state.selectedCase;
     setView(button.dataset.view);
   }));
-  document.querySelectorAll(".review").forEach((button) => button.addEventListener("click", async () => { button.disabled = true; try { await createAction(button.dataset.case, { action: button.dataset.action, idempotency_key: `${button.dataset.case}:${button.dataset.action}` }); await loadDashboard(); } catch (error) { announce(error.message || "Action could not be recorded."); button.disabled = false; } }));
+  document.querySelectorAll(".review").forEach((button) => button.addEventListener("click", async () => {
+    const caseButtons = [...document.querySelectorAll(".review")].filter((candidate) => candidate.dataset.case === button.dataset.case);
+    caseButtons.forEach((candidate) => { candidate.disabled = true; });
+    try {
+      await createAction(button.dataset.case, { action: button.dataset.action, idempotency_key: `${button.dataset.case}:${button.dataset.action}` });
+      await loadDashboard();
+    } catch (error) {
+      announce(error.message || "Action could not be recorded.");
+      caseButtons.forEach((candidate) => { candidate.disabled = false; });
+    }
+  }));
   document.querySelectorAll(".reply-form").forEach((form) => form.addEventListener("submit", async (event) => { event.preventDefault(); try { const response = await fetch(`/api/v1/mock-inbox/${encodeURIComponent(form.dataset.providerReference)}/reply`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reply: form.querySelector("select").value }) }); if (!response.ok) throw new Error("Mock reply could not be recorded."); await loadDashboard(); } catch (error) { announce(error.message); } }));
   const search = document.getElementById("queueSearch"); if (search) search.addEventListener("input", () => { const query = search.value.toLowerCase(); document.querySelectorAll("#queue tbody tr").forEach((row) => { row.hidden = !row.textContent.toLowerCase().includes(query); }); });
 }

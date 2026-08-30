@@ -9,7 +9,7 @@ TRANSITIONS = {
     CaseState.DETECTED: {CaseState.INVESTIGATED},
     CaseState.INVESTIGATED: {CaseState.ELIGIBLE, CaseState.STOPPED},
     CaseState.ELIGIBLE: {CaseState.ACTION_SELECTED, CaseState.ESCALATED, CaseState.STOPPED},
-    CaseState.ACTION_SELECTED: {CaseState.AWAITING_OUTCOME},
+    CaseState.ACTION_SELECTED: {CaseState.AWAITING_OUTCOME, CaseState.ESCALATED},
     CaseState.AWAITING_OUTCOME: {
         CaseState.ELIGIBLE,
         CaseState.RECOVERED,

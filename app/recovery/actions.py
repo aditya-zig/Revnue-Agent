@@ -3,7 +3,7 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -77,6 +77,25 @@ def execute_action(
     input_hash = hashlib.sha256(
         json.dumps({"action": action, "amount": case.amount_at_risk}, sort_keys=True).encode()
     ).hexdigest()
+    claimed = session.execute(
+        update(RecoveryCase)
+        .where(
+            RecoveryCase.case_id == case.case_id,
+            RecoveryCase.state == CaseState.ELIGIBLE,
+        )
+        .values(state=CaseState.ACTION_SELECTED)
+    )
+    if claimed.rowcount != 1:
+        session.rollback()
+        raise PermissionError(["invalid_state"])
+    session.refresh(case)
+    session.add(
+        AuditEvent(
+            case_id=case.case_id,
+            event_type="case.action_selected",
+            payload={"action": action, "idempotency_key": idempotency_key},
+        )
+    )
     action_event = ActionEvent(
         action_id=f"action_{hashlib.sha256(idempotency_key.encode()).hexdigest()}",
         case_id=case.case_id,
@@ -133,7 +152,6 @@ def execute_action(
             session.commit()
             raise ProviderError(str(error)) from error
 
-    transition_case(session, case, CaseState.ACTION_SELECTED)
     transition_case(session, case, CaseState.AWAITING_OUTCOME)
     if action == "escalate":
         transition_case(session, case, CaseState.ESCALATED)

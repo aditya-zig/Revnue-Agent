@@ -79,6 +79,23 @@ async def test_payment_link_uses_the_outstanding_amount_and_idempotency_key(app)
 
 
 @pytest.mark.asyncio
+async def test_case_accepts_only_one_action_transition(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/cases/case_001/actions",
+            json={"action": "contact", "idempotency_key": "contact-001"},
+        )
+        second = await client.post(
+            "/api/v1/cases/case_001/actions",
+            json={"action": "retry", "idempotency_key": "retry-001"},
+        )
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+    assert second.json() == {"detail": ["invalid_state"]}
+
+
+@pytest.mark.asyncio
 async def test_ranked_actions_include_scores_for_every_policy_allowed_action(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         ranked = await client.get("/api/v1/cases/case_001/ranked-actions")
