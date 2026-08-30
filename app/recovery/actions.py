@@ -87,6 +87,20 @@ def execute_action(
     )
     if claimed.rowcount != 1:
         session.rollback()
+        existing = session.scalar(
+            select(ActionEvent).where(ActionEvent.idempotency_key == idempotency_key)
+        )
+        if existing:
+            if existing.case_id != case.case_id or existing.tool != action:
+                raise ValueError("idempotency key belongs to another action")
+            return (
+                ActionResponse(
+                    action=existing.tool,
+                    provider_reference=existing.provider_reference,
+                    status=existing.status,
+                ),
+                True,
+            )
         raise PermissionError(["invalid_state"])
     session.refresh(case)
     session.add(
