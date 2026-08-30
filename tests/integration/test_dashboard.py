@@ -58,3 +58,32 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
     assert case["policy"]["policy_version"]
     assert case["human_review"]["allowed_actions"]
     assert payload["timeline"][0]["events"][0]["kind"] == "raw event"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_serves_shared_shell_contract(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        page = await client.get("/")
+        css = await client.get("/static/css/dashboard.css")
+        javascript = await client.get("/static/js/app.js")
+
+    assert page.status_code == 200
+    assert css.status_code == 200
+    assert javascript.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
+    assert javascript.headers["content-type"].startswith("text/javascript")
+    for hook in [
+        'data-dashboard-shell',
+        'data-dashboard-navigation',
+        'data-dashboard-kpis',
+        'data-component-slot="overview"',
+        'data-component-slot="queue"',
+        'data-component-slot="detail"',
+        'data-component-slot="exceptions"',
+        'data-component-slot="settings"',
+        'data-component-slot="investigation"',
+        'data-component-slot="evaluation"',
+        'data-action="toggle-theme"',
+        'data-action="export-worklist"',
+    ]:
+        assert hook in page.text
