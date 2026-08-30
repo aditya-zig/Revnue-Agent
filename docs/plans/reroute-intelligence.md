@@ -108,10 +108,10 @@ Status: completed. Structured decisions validated and fallback used on malformed
 
 ### Phase 7. Dashboard
 
-- Build executive, investigation, worklist, timeline, evaluation, and mock-inbox views.
+- Build Overview, Recovery queue, RecoveryCase detail, PaymentExceptions, Governance, Investigation, Evaluation, and Mock Inbox views.
 - Keep estimated values separate from simulated and Test Mode values.
 
-Status: completed. Dashboard endpoint serves executive, investigation, worklist, timeline, evaluation, and mock inbox views with distinct value types.
+Status: completed. Dashboard serves the integrated operator views with distinct estimated, Test Mode, simulated, and persisted-evidence boundaries.
 
 ### Phase 8. Evaluation and hardening
 

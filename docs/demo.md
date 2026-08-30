@@ -63,7 +63,7 @@ had 120 counted violations. This is simulation, not merchant revenue evidence.
 
 ## 3:05 to 4:05. Architecture
 
-Use the Timeline view. Follow one case through the raw event, state changes,
+Use the RecoveryCase detail view. Follow one case through the raw event, state changes,
 action attempt, and audit records. Then show `docs/architecture.md`. The key
 point is ordering. Webhook or CSV input enters the database before analysis.
 Policy filters actions before scoring. The action layer owns side effects and

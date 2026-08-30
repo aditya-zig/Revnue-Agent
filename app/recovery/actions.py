@@ -2,8 +2,10 @@ import hashlib
 import json
 from collections.abc import Callable
 from datetime import datetime
+from typing import Any, cast
 
 from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -77,13 +79,16 @@ def execute_action(
     input_hash = hashlib.sha256(
         json.dumps({"action": action, "amount": case.amount_at_risk}, sort_keys=True).encode()
     ).hexdigest()
-    claimed = session.execute(
-        update(RecoveryCase)
-        .where(
-            RecoveryCase.case_id == case.case_id,
-            RecoveryCase.state == CaseState.ELIGIBLE,
-        )
-        .values(state=CaseState.ACTION_SELECTED)
+    claimed = cast(
+        CursorResult[Any],
+        session.execute(
+            update(RecoveryCase)
+            .where(
+                RecoveryCase.case_id == case.case_id,
+                RecoveryCase.state == CaseState.ELIGIBLE,
+            )
+            .values(state=CaseState.ACTION_SELECTED)
+        ),
     )
     if claimed.rowcount != 1:
         session.rollback()
