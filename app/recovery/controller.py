@@ -108,6 +108,15 @@ def run_decision(
         )
     )
     if not approved:
+        from app.db.tables import AuditEvent
+
+        session.add(
+            AuditEvent(
+                case_id=case.case_id,
+                event_type="human.approval_required",
+                payload={"decision_id": decision_id, "selected_action": selected_action},
+            )
+        )
         session.commit()
         return (
             DecisionResponse(

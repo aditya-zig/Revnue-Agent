@@ -108,13 +108,6 @@ def execute_action(
             )
         raise PermissionError(["invalid_state"])
     session.refresh(case)
-    session.add(
-        AuditEvent(
-            case_id=case.case_id,
-            event_type="case.action_selected",
-            payload={"action": action, "idempotency_key": idempotency_key},
-        )
-    )
     action_event = ActionEvent(
         action_id=f"action_{hashlib.sha256(idempotency_key.encode()).hexdigest()}",
         case_id=case.case_id,
@@ -167,10 +160,22 @@ def execute_action(
                     },
                 )
             )
-            transition_case(session, case, CaseState.ESCALATED)
+            transition_case(
+                session,
+                case,
+                CaseState.ESCALATED,
+                payload_extra={"owner": "business_owner", "reason": "provider_failure"},
+            )
             session.commit()
             raise ProviderError(str(error)) from error
 
+    session.add(
+        AuditEvent(
+            case_id=case.case_id,
+            event_type="case.action_selected",
+            payload={"action": action, "idempotency_key": idempotency_key},
+        )
+    )
     transition_case(session, case, CaseState.AWAITING_OUTCOME)
     if action == "escalate":
         transition_case(session, case, CaseState.ESCALATED)

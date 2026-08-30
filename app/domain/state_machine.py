@@ -16,19 +16,28 @@ TRANSITIONS = {
         CaseState.ESCALATED,
         CaseState.STOPPED,
     },
+    CaseState.ESCALATED: {CaseState.ELIGIBLE},
 }
 
 
-def transition_case(session: Session, case: RecoveryCase, target: CaseState) -> None:
+def transition_case(
+    session: Session,
+    case: RecoveryCase,
+    target: CaseState,
+    payload_extra: dict[str, str] | None = None,
+) -> None:
     current = CaseState(case.state)
     if target not in TRANSITIONS.get(current, set()):
         raise ValueError(f"cannot transition a {current} case to {target}")
     case.state = target
+    payload: dict[str, object] = {"from": current, "to": target}
+    if payload_extra:
+        payload.update(payload_extra)
     session.add(
         AuditEvent(
             case_id=case.case_id,
             event_type=f"case.{target}",
-            payload={"from": current, "to": target},
+            payload=payload,
         )
     )
 

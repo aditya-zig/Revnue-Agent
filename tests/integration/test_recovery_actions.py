@@ -397,3 +397,124 @@ async def test_successful_payment_cancels_pending_retry(app):
         "payload": {"action": "retry", "idempotency_key": "retry-001"},
     }
     assert audit.json()[-1]["event_type"] == "event.recorded"
+
+
+@pytest.mark.asyncio
+async def test_test_mode_trace_requires_human_resume_and_records_2499(database_url):
+    calls = 0
+
+    def provider(amount: int, idempotency_key: str) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("provider unavailable")
+        return "plink_test_recovery"
+
+    app = create_app(
+        database_url=database_url,
+        webhook_secret="test-secret",
+        policy_now=lambda: NOW,
+        create_payment_link=provider,
+    )
+    failure = json.dumps(
+        {
+            "event": "payment.failed",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": "pay_trace",
+                        "amount": 249900,
+                        "currency": "INR",
+                        "method": "upi",
+                        "status": "failed",
+                        "error_code": "BAD_REQUEST_ERROR",
+                        "error_description": "insufficient funds",
+                        "created_at": 1724481000,
+                        "notes": {"customer_id": "cust_trace"},
+                    }
+                }
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+    captured = json.dumps(
+        {
+            "event": "payment.captured",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": "pay_trace",
+                        "amount": 249900,
+                        "currency": "INR",
+                        "method": "upi",
+                        "status": "captured",
+                        "created_at": 1724481100,
+                        "notes": {"customer_id": "cust_trace"},
+                    }
+                }
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+    with app.state.session_factory() as session:
+        session.add(Customer(customer_id="cust_trace", consent=True))
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        failure_response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=failure,
+            headers={
+                "X-Razorpay-Signature": hmac.new(
+                    b"test-secret", failure, hashlib.sha256
+                ).hexdigest()
+            },
+        )
+        with app.state.session_factory() as session:
+            case = session.get(RecoveryCase, "case_pay_trace")
+            assert case is not None
+            case.state = "eligible"
+            session.commit()
+        proposal = await client.post(
+            "/api/v1/cases/case_pay_trace/decisions",
+            json={"idempotency_key": "trace-decision"},
+        )
+        failed = await client.post(
+            "/api/v1/cases/case_pay_trace/actions",
+            json={"action": "payment_link", "idempotency_key": "trace-failed"},
+        )
+        denied_resume = await client.post("/api/v1/cases/case_pay_trace/resume")
+        resumed = await client.post(
+            "/api/v1/cases/case_pay_trace/resume",
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        completed = await client.post(
+            "/api/v1/cases/case_pay_trace/actions",
+            json={"action": "payment_link", "idempotency_key": "trace-success"},
+        )
+        capture_response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=captured,
+            headers={
+                "X-Razorpay-Signature": hmac.new(
+                    b"test-secret", captured, hashlib.sha256
+                ).hexdigest()
+            },
+        )
+        dashboard = await client.get("/api/v1/dashboard")
+        audit = await client.get("/api/v1/audit/case_pay_trace")
+
+    assert failure_response.status_code == 202
+    assert proposal.status_code == 201 and proposal.json()["action"] is None
+    assert failed.status_code == 502
+    assert denied_resume.status_code == 403
+    assert resumed.json() == {"case_id": "case_pay_trace", "new_state": "eligible"}
+    assert completed.status_code == 201
+    assert capture_response.status_code == 202
+    assert dashboard.json()["executive"]["test_mode_value"] == 249900
+    event_types = [event["event_type"] for event in audit.json()]
+    assert event_types.count("outcome.recorded") == 1
+    assert "human.approval_required" in event_types
+    assert "human.approval_granted" in event_types
+    assert "case.escalated" in event_types
+    assert audit.json()[event_types.index("case.escalated")]["payload"]["owner"] == "business_owner"

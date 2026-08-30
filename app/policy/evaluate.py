@@ -102,6 +102,7 @@ def evaluate_policy(
     recent_action = session.scalar(
         select(ActionEvent.action_id).where(
             ActionEvent.case_id == case.case_id,
+            ActionEvent.status != "failed",
             ActionEvent.executed_at >= now.astimezone(UTC) - timedelta(hours=24),
         )
     )

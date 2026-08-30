@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
 from app.db.tables import AuditEvent, Customer, RecoveryCase
+from app.domain.enums import CaseState
 from app.domain.models import (
     ActionRequest,
     ActionResponse,
@@ -9,6 +10,7 @@ from app.domain.models import (
     DecisionResponse,
     PolicyResponse,
 )
+from app.domain.state_machine import transition_case
 from app.policy import evaluate_policy, get_policy_configuration
 from app.recovery import execute_action, run_decision
 from app.recovery.actions import ProviderError
@@ -102,6 +104,28 @@ def get_ranked_actions(case_id: str, request: Request) -> dict:
                 case, customer, policy.allowed_actions
             ),
         }
+
+
+@router.post("/cases/{case_id}/resume", status_code=200)
+def resume_case(case_id: str, request: Request) -> dict[str, str]:
+    if request.headers.get("X-Reroute-Role", "operations_worker") != "business_owner":
+        raise HTTPException(status_code=403, detail="business owner role required")
+    with request.app.state.session_factory() as session:
+        case = session.get(RecoveryCase, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="case not found")
+        if case.state != CaseState.ESCALATED:
+            raise HTTPException(status_code=409, detail="case is not awaiting approval")
+        transition_case(session, case, CaseState.ELIGIBLE)
+        session.add(
+            AuditEvent(
+                case_id=case.case_id,
+                event_type="human.approval_granted",
+                payload={"actor_role": "business_owner", "from": "escalated", "to": "eligible"},
+            )
+        )
+        session.commit()
+        return {"case_id": case_id, "new_state": case.state}
 
 
 @router.post("/cases/{case_id}/actions", status_code=201)
