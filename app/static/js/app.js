@@ -1,4 +1,5 @@
 import { ApiError, createAction, getDashboard } from "./api.js";
+import { nextFocusIndex } from "./focus-trap.js";
 
 const VIEW_IDS = [
   "overview",
@@ -312,9 +313,17 @@ function focusableIn(element) {
   return element.querySelector("button, input, select, textarea, a, [tabindex]:not([tabindex='-1'])");
 }
 
+function dialogFocusables(dialog) {
+  const descendants = [...dialog.querySelectorAll("button, input, select, textarea, a, [tabindex]:not([tabindex='-1'])")];
+  return [dialog, ...descendants].filter((element, index, elements) => (
+    element !== dialog || dialog.tabIndex >= 0
+  ) && elements.indexOf(element) === index);
+}
+
 function closeZoom() {
   if (!state.zoomed) return;
   state.zoomed.classList.remove("zoomed");
+  state.zoomed.setAttribute("role", "button");
   state.zoomed.removeAttribute("aria-modal");
   state.backdrop?.remove();
   state.zoomed = null;
@@ -336,6 +345,7 @@ function openZoom(element, trigger = element) {
   state.backdrop.addEventListener("click", closeZoom);
   document.body.appendChild(state.backdrop);
   element.classList.add("zoomed");
+  element.setAttribute("role", "dialog");
   element.setAttribute("aria-modal", "true");
   state.zoomed = element;
   const focusTarget = focusableIn(element) || (element.tabIndex >= 0 ? element : null);
@@ -363,6 +373,16 @@ function handleKeydown(event) {
   if (event.key === "Escape" && state.zoomed) {
     event.preventDefault();
     closeZoom();
+    return;
+  }
+
+  if (event.key === "Tab" && state.zoomed) {
+    const focusables = dialogFocusables(state.zoomed);
+    if (!focusables.length) return;
+    const currentIndex = focusables.indexOf(document.activeElement);
+    const nextIndex = nextFocusIndex(currentIndex, focusables.length, event.shiftKey);
+    event.preventDefault();
+    focusables[nextIndex].focus();
     return;
   }
 
