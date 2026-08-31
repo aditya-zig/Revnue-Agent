@@ -290,6 +290,8 @@ def create_action(
 def create_decision(
     case_id: str, decision: DecisionRequest, request: Request, response: Response
 ) -> DecisionResponse:
+    if decision.approved and request.headers.get("X-Reroute-Role", "operations_worker") != "business_owner":
+        raise HTTPException(status_code=403, detail="business owner role required")
     with request.app.state.session_factory() as session:
         case = session.get(RecoveryCase, case_id)
         if case is None:

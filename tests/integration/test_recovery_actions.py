@@ -135,6 +135,7 @@ async def test_decision_uses_the_highest_ranked_allowed_action_when_model_is_una
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -162,6 +163,7 @@ async def test_decision_executes_a_valid_structured_model_action(app):
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -186,6 +188,7 @@ async def test_decision_rejects_malformed_model_output_and_uses_fallback(app):
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -206,6 +209,7 @@ async def test_decision_rejects_a_policy_blocked_model_action_and_uses_fallback(
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -220,13 +224,19 @@ async def test_decision_records_a_proposal_without_executing_until_approved(app)
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-proposal"},
         )
+        unauthorized = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-proposal", "approved": True},
+        )
         approved = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-proposal", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert proposed.status_code == 201
     assert proposed.json()["action"] is None
+    assert unauthorized.status_code == 403
     assert approved.status_code == 200
     assert approved.json()["action"]["status"] in {"completed", "pending"}
 
@@ -487,6 +497,7 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
         failed = await client.post(
             "/api/v1/cases/case_order_trace/decisions",
             json={"idempotency_key": "trace-decision", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
         denied_resume = await client.post(
             "/api/v1/cases/case_order_trace/resume",
@@ -505,6 +516,7 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
         completed = await client.post(
             "/api/v1/cases/case_order_trace/decisions",
             json={"idempotency_key": "trace-success", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
         capture_response = await client.post(
             "/api/v1/webhooks/razorpay",
