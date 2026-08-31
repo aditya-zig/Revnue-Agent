@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.requests import read_limited_body
 from app.core.security import verify_razorpay_signature
-from app.db.tables import AuditEvent, Outcome, PaymentEvent, PaymentException, RecoveryCase
+from app.db.tables import AuditEvent, PaymentException, RecoveryCase
 from app.domain.models import NormalizedPaymentEvent
 from app.ingestion.record_event import record_event_and_update_case
 
@@ -49,20 +49,7 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
     factory = request.app.state.session_factory
     with factory() as session:
         if not record_event_and_update_case(session, event):
-            if getattr(event, "obligation_reference", None):
-                case = session.scalar(
-                    select(RecoveryCase).where(
-                        RecoveryCase.obligation_reference == event.obligation_reference
-                    )
-                )
-                if case is None:
-                    case = session.scalar(
-                        select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
-                    )
-            else:
-                case = session.scalar(
-                    select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
-                )
+            case = _case_for_event(session, event)
             if case:
                 session.add(
                     AuditEvent(
@@ -76,45 +63,6 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
                 status_code=status.HTTP_200_OK,
                 content={"event_id": event.event_id, "status": "duplicate"},
             )
-        if event.event_type == "payment.captured":
-            case = _case_for_event(session, event)
-            has_failure = case is not None and session.scalar(
-                select(PaymentEvent.event_id).where(
-                    PaymentEvent.payment_id == case.payment_id,
-                    PaymentEvent.event_type == "payment.failed",
-                )
-            )
-            if case is not None and event.amount == case.amount_at_risk and has_failure is not None:
-                outcome = session.scalar(select(Outcome).where(Outcome.case_id == case.case_id))
-                if outcome is None:
-                    outcome = Outcome(
-                        case_id=case.case_id,
-                        recovered=True,
-                        recovered_amount=event.amount,
-                        source="razorpay_test",
-                        resolved_at=event.occurred_at,
-                    )
-                    session.add(outcome)
-                    session.add(
-                        AuditEvent(
-                            case_id=case.case_id,
-                            event_type="outcome.recorded",
-                            payload={
-                                "event_id": event.event_id,
-                                "amount": event.amount,
-                                "source": "razorpay_test",
-                            },
-                        )
-                    )
-                if case.state not in {"recovered", "stopped"}:
-                    case.state = "recovered"
-                    session.add(
-                        AuditEvent(
-                            case_id=case.case_id,
-                            event_type="case.recovered",
-                            payload={"payment_id": event.payment_id},
-                        )
-                    )
         if event.error_reason == "payment_reversed":
             case = _case_for_event(session, event)
             if case is not None:
@@ -132,7 +80,18 @@ def _case_for_event(session, event: NormalizedPaymentEvent) -> RecoveryCase | No
         )
         if case is not None:
             return case
-    return session.scalar(select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id))
+        return session.scalar(
+            select(RecoveryCase).where(
+                RecoveryCase.payment_id == event.payment_id,
+                RecoveryCase.obligation_reference.is_(None),
+            )
+        )
+    return session.scalar(
+        select(RecoveryCase).where(
+            RecoveryCase.payment_id == event.payment_id,
+            RecoveryCase.obligation_reference.is_(None),
+        )
+    )
 
 
 def _open_provider_reversal_exception(

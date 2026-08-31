@@ -95,6 +95,10 @@ class DecisionRequest(BaseModel):
     approved: bool = False
 
 
+class ResumeRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=128)
+
+
 class StructuredDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

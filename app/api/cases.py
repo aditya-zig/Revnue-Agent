@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
-from app.db.tables import AuditEvent, Customer, RecoveryCase
+from app.db.tables import AuditEvent, Customer, Outcome, RecoveryCase
 from app.domain.enums import CaseState
 from app.domain.models import (
     ActionRequest,
@@ -9,6 +9,7 @@ from app.domain.models import (
     DecisionRequest,
     DecisionResponse,
     PolicyResponse,
+    ResumeRequest,
 )
 from app.domain.state_machine import transition_case
 from app.policy import evaluate_policy, get_policy_configuration
@@ -146,25 +147,109 @@ def investigate_case(case_id: str, request: Request) -> dict:
 
 
 @router.post("/cases/{case_id}/resume", status_code=200)
-def resume_case(case_id: str, request: Request) -> dict[str, str]:
+def resume_case(case_id: str, resume: ResumeRequest, request: Request) -> dict[str, str]:
     if request.headers.get("X-Reroute-Role", "operations_worker") != "business_owner":
         raise HTTPException(status_code=403, detail="business owner role required")
+    with request.app.state.session_factory() as session:
+        prior_resume = session.scalars(
+            select(AuditEvent).where(AuditEvent.event_type == "case.eligible")
+        ).all()
+        for event in prior_resume:
+            if event.payload.get("resume_idempotency_key") == resume.idempotency_key:
+                if event.case_id != case_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="idempotency key belongs to another case",
+                    )
+                return {
+                    "case_id": case_id,
+                    "previous_state": str(event.payload["from"]),
+                    "new_state": str(event.payload["to"]),
+                }
+        case = session.get(RecoveryCase, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="case not found")
+        if case.state not in {CaseState.ESCALATED, CaseState.AWAITING_OUTCOME}:
+            raise HTTPException(status_code=409, detail=["invalid_state"])
+        configuration = _policy_configuration(session, request)
+        policy = evaluate_policy(
+            session,
+            case,
+            request.app.state.policy_now(),
+            configuration.quiet_hours_start,
+            configuration.quiet_hours_end,
+            configuration.kill_switch,
+            configuration.contact_limit,
+            configuration.policy_version,
+            state_override=CaseState.ELIGIBLE,
+        )
+        if not policy.allowed_actions:
+            session.add(
+                AuditEvent(
+                    case_id=case.case_id,
+                    event_type="case.resume_blocked",
+                    payload={
+                        "idempotency_key": resume.idempotency_key,
+                        "actor_role": "business_owner",
+                        "policy_version": policy.policy_version,
+                        "blocked_reasons": policy.blocked_reasons,
+                    },
+                )
+            )
+            session.commit()
+            raise HTTPException(status_code=409, detail=policy.blocked_reasons)
+        previous_state = case.state
+        transition_case(
+            session,
+            case,
+            CaseState.ELIGIBLE,
+            payload_extra={
+                "resume_idempotency_key": resume.idempotency_key,
+                "actor_role": "business_owner",
+                "approval_granted": True,
+            },
+        )
+        session.commit()
+        return {
+            "case_id": case_id,
+            "previous_state": previous_state,
+            "new_state": case.state,
+        }
+
+
+@router.get("/cases/{case_id}/outcome")
+def get_outcome(case_id: str, request: Request) -> dict:
     with request.app.state.session_factory() as session:
         case = session.get(RecoveryCase, case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="case not found")
-        if case.state != CaseState.ESCALATED:
-            raise HTTPException(status_code=409, detail="case is not awaiting approval")
-        transition_case(session, case, CaseState.ELIGIBLE)
-        session.add(
-            AuditEvent(
-                case_id=case.case_id,
-                event_type="human.approval_granted",
-                payload={"actor_role": "business_owner", "from": "escalated", "to": "eligible"},
+        outcome = session.scalar(select(Outcome).where(Outcome.case_id == case_id))
+        evidence = session.scalar(
+            select(AuditEvent)
+            .where(
+                AuditEvent.case_id == case_id,
+                AuditEvent.event_type == "outcome.recorded",
             )
+            .order_by(AuditEvent.audit_id.desc())
         )
-        session.commit()
-        return {"case_id": case_id, "new_state": case.state}
+        return {
+            "case_id": case_id,
+            "outcome": (
+                {
+                    "recovered": outcome.recovered,
+                    "recovered_amount": outcome.recovered_amount,
+                    "contact_cost": outcome.contact_cost,
+                    "discount_cost": outcome.discount_cost,
+                    "resolved_at": (
+                        outcome.resolved_at.isoformat() if outcome.resolved_at else None
+                    ),
+                    "source": outcome.source,
+                }
+                if outcome
+                else None
+            ),
+            "evidence": evidence.payload if evidence else None,
+        }
 
 
 @router.post("/cases/{case_id}/actions", status_code=201)

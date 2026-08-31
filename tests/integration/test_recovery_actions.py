@@ -5,8 +5,10 @@ from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from app.db.tables import Customer, Decision, RecoveryCase
+from app.db.tables import AuditEvent, Customer, Decision, RecoveryCase
 from app.main import create_app
 
 NOW = datetime(2026, 8, 24, 10, tzinfo=UTC)
@@ -415,6 +417,7 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
         webhook_secret="test-secret",
         policy_now=lambda: NOW,
         create_payment_link=provider,
+        decide_recovery_action=lambda evidence: {"selected_action": "payment_link"},
     )
     failure = json.dumps(
         {
@@ -431,6 +434,7 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
                         "error_description": "insufficient funds",
                         "created_at": 1724481000,
                         "notes": {"customer_id": "cust_trace"},
+                        "order_id": "order_trace",
                     }
                 }
             },
@@ -450,6 +454,7 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
                         "status": "captured",
                         "created_at": 1724481100,
                         "notes": {"customer_id": "cust_trace"},
+                        "order_id": "order_trace",
                     }
                 }
             },
@@ -470,23 +475,36 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
                 ).hexdigest()
             },
         )
-        investigated = await client.post("/api/v1/cases/case_pay_trace/investigate")
+        investigated = await client.post("/api/v1/cases/case_order_trace/investigate")
         proposal = await client.post(
-            "/api/v1/cases/case_pay_trace/decisions",
+            "/api/v1/cases/case_order_trace/decisions",
             json={"idempotency_key": "trace-decision"},
         )
-        failed = await client.post(
-            "/api/v1/cases/case_pay_trace/actions",
-            json={"action": "payment_link", "idempotency_key": "trace-failed"},
+        bypassed = await client.post(
+            "/api/v1/cases/case_order_trace/actions",
+            json={"action": "payment_link", "idempotency_key": "trace-bypass"},
         )
-        denied_resume = await client.post("/api/v1/cases/case_pay_trace/resume")
+        failed = await client.post(
+            "/api/v1/cases/case_order_trace/decisions",
+            json={"idempotency_key": "trace-decision", "approved": True},
+        )
+        denied_resume = await client.post(
+            "/api/v1/cases/case_order_trace/resume",
+            json={"idempotency_key": "trace-resume"},
+        )
         resumed = await client.post(
-            "/api/v1/cases/case_pay_trace/resume",
+            "/api/v1/cases/case_order_trace/resume",
+            json={"idempotency_key": "trace-resume"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        resumed_duplicate = await client.post(
+            "/api/v1/cases/case_order_trace/resume",
+            json={"idempotency_key": "trace-resume"},
             headers={"X-Reroute-Role": "business_owner"},
         )
         completed = await client.post(
-            "/api/v1/cases/case_pay_trace/actions",
-            json={"action": "payment_link", "idempotency_key": "trace-success"},
+            "/api/v1/cases/case_order_trace/decisions",
+            json={"idempotency_key": "trace-success", "approved": True},
         )
         capture_response = await client.post(
             "/api/v1/webhooks/razorpay",
@@ -498,18 +516,46 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
             },
         )
         dashboard = await client.get("/api/v1/dashboard")
-        audit = await client.get("/api/v1/audit/case_pay_trace")
+        outcome = await client.get("/api/v1/cases/case_order_trace/outcome")
+        audit = await client.get("/api/v1/audit/case_order_trace")
 
     assert failure_response.status_code == 202
     assert investigated.status_code == 200
     assert investigated.json()["new_state"] == "eligible"
     assert investigated.json()["policy"]["allowed_actions"]
     assert proposal.status_code == 201 and proposal.json()["action"] is None
+    assert bypassed.status_code == 409
+    assert bypassed.json() == {"detail": ["approval_required"]}
     assert failed.status_code == 502
     assert denied_resume.status_code == 403
-    assert resumed.json() == {"case_id": "case_pay_trace", "new_state": "eligible"}
+    assert resumed.json() == {
+        "case_id": "case_order_trace",
+        "previous_state": "escalated",
+        "new_state": "eligible",
+    }
+    assert resumed_duplicate.status_code == 200
+    assert resumed_duplicate.json() == resumed.json()
     assert completed.status_code == 201
     assert capture_response.status_code == 202
+    outcome_body = outcome.json()
+    assert outcome_body["outcome"] == {
+        "recovered": True,
+        "recovered_amount": 249900,
+        "contact_cost": 0,
+        "discount_cost": 0,
+        "resolved_at": outcome_body["outcome"]["resolved_at"],
+        "source": "razorpay_test",
+    }
+    assert outcome_body["outcome"]["resolved_at"].startswith("2024-08-24T06:31:40")
+    assert outcome_body["evidence"] == {
+        "event_id": f"evt_{hashlib.sha256(captured).hexdigest()}",
+        "provider_event_id": hashlib.sha256(captured).hexdigest(),
+        "payment_id": "pay_trace",
+        "obligation_reference": "order_trace",
+        "amount": 249900,
+        "occurred_at": "2024-08-24T06:31:40+00:00",
+        "source": "razorpay_test",
+    }
     assert dashboard.json()["executive"]["test_mode_value"] == 249900
     event_types = [event["event_type"] for event in audit.json()]
     assert event_types.count("outcome.recorded") == 1
@@ -517,3 +563,112 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
     assert "human.approval_granted" in event_types
     assert "case.escalated" in event_types
     assert audit.json()[event_types.index("case.escalated")]["payload"]["owner"] == "business_owner"
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_resume_rechecks_current_policy_and_leaves_blocked_case_escalated(database_url):
+    app = create_app(
+        database_url=database_url,
+        webhook_secret="test-secret",
+        policy_now=lambda: NOW,
+        kill_switch=True,
+    )
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Customer(customer_id="cust_resume", consent=True),
+                RecoveryCase(
+                    case_id="case_resume",
+                    customer_id="cust_resume",
+                    payment_id="pay_resume",
+                    amount_at_risk=249900,
+                    state="escalated",
+                    attempts=0,
+                ),
+            ]
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        blocked = await client.post(
+            "/api/v1/cases/case_resume/resume",
+            json={"idempotency_key": "resume-policy"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        cases_after_block = await client.get("/api/v1/cases")
+        audit = await client.get("/api/v1/audit/case_resume")
+        app.state.kill_switch = False
+        resumed = await client.post(
+            "/api/v1/cases/case_resume/resume",
+            json={"idempotency_key": "resume-policy"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == {
+        action: ["kill_switch"]
+        for action in ["payment_link", "contact", "retry", "promise", "escalate"]
+    }
+    assert [case for case in cases_after_block.json() if case["case_id"] == "case_resume"][0][
+        "state"
+    ] == "escalated"
+    assert audit.json()[-1]["event_type"] == "case.resume_blocked"
+    assert resumed.status_code == 200
+    assert resumed.json() == {
+        "case_id": "case_resume",
+        "previous_state": "escalated",
+        "new_state": "eligible",
+    }
+
+
+@pytest.mark.asyncio
+async def test_resume_idempotency_key_cannot_cross_cases(app):
+    with app.state.session_factory() as session:
+        case = session.get(RecoveryCase, "case_001")
+        assert case is not None
+        case.state = "escalated"
+        session.add(
+            RecoveryCase(
+                case_id="case_002",
+                customer_id="cust_001",
+                payment_id="pay_002",
+                amount_at_risk=249900,
+                state="escalated",
+                attempts=0,
+            )
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/cases/case_001/resume",
+            json={"idempotency_key": "shared-resume"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        second = await client.post(
+            "/api/v1/cases/case_002/resume",
+            json={"idempotency_key": "shared-resume"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json() == {"detail": "idempotency key belongs to another case"}
+
+
+def test_audit_events_are_append_only(app):
+    with app.state.session_factory() as session:
+        session.add(
+            AuditEvent(case_id="case_001", event_type="test.audit", payload={"ok": True})
+        )
+        session.commit()
+        with pytest.raises(IntegrityError, match="audit events are immutable"):
+            session.execute(
+                text("UPDATE audit_events SET event_type = 'tampered' WHERE case_id = 'case_001'")
+            )
+            session.commit()
+        session.rollback()
+        with pytest.raises(IntegrityError, match="audit events are immutable"):
+            session.execute(text("DELETE FROM audit_events WHERE case_id = 'case_001'"))
+            session.commit()

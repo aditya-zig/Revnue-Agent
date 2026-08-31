@@ -39,6 +39,7 @@ def evaluate_policy(
     kill_switch: bool = False,
     contact_limit: int = 3,
     policy_version: str = POLICY_VERSION,
+    state_override: str | None = None,
 ) -> PolicyResponse:
     if kill_switch:
         return PolicyResponse(
@@ -46,7 +47,7 @@ def evaluate_policy(
             blocked_reasons={action: ["kill_switch"] for action in RECOVERY_ACTIONS},
             policy_version=policy_version,
         )
-    if case.state in TERMINAL_CASE_STATES:
+    if (state_override or case.state) in TERMINAL_CASE_STATES:
         return PolicyResponse(
             allowed_actions=[],
             blocked_reasons={action: ["terminal_case"] for action in RECOVERY_ACTIONS},

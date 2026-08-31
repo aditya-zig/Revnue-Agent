@@ -89,6 +89,18 @@ export function createDecision(caseId, payload, options = {}) {
   });
 }
 
+export function resumeCase(caseId, payload, options = {}) {
+  return requestJSON(`/cases/${encodeURIComponent(caseId)}/resume`, {
+    ...options,
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function getCaseOutcome(caseId, options = {}) {
+  return requestJSON(`/cases/${encodeURIComponent(caseId)}/outcome`, options);
+}
+
 export function listPaymentExceptions(options = {}) {
   return requestJSON("/exceptions", options);
 }

@@ -5,7 +5,7 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
-from app.db.tables import Customer, Decision, RecoveryCase
+from app.db.tables import AuditEvent, Customer, Decision, RecoveryCase
 from app.domain.models import DecisionResponse, StructuredDecision
 from app.policy import evaluate_policy
 from app.recovery.actions import execute_action
@@ -34,6 +34,23 @@ def run_decision(
             raise ValueError("idempotency key belongs to another decision")
         result = None
         if approved:
+            approval = existing.reason_json.get("approval")
+            already_granted = isinstance(approval, dict) and approval.get("granted") is True
+            if not already_granted:
+                existing.reason_json = {
+                    **existing.reason_json,
+                    "approval": {"required": True, "granted": True},
+                }
+                session.add(
+                    AuditEvent(
+                        case_id=case.case_id,
+                        event_type="human.approval_granted",
+                        payload={
+                            "decision_id": existing.decision_id,
+                            "selected_action": existing.selected_action,
+                        },
+                    )
+                )
             result, _ = execute_action(
                 session,
                 case,
@@ -104,12 +121,11 @@ def run_decision(
                 "evidence": evidence,
                 "selection_source": selection_source,
                 "rejection": rejection,
+                "approval": {"required": True, "granted": approved},
             },
         )
     )
     if not approved:
-        from app.db.tables import AuditEvent
-
         session.add(
             AuditEvent(
                 case_id=case.case_id,
@@ -130,6 +146,13 @@ def run_decision(
             ),
             False,
         )
+    session.add(
+        AuditEvent(
+            case_id=case.case_id,
+            event_type="human.approval_granted",
+            payload={"decision_id": decision_id, "selected_action": selected_action},
+        )
+    )
     result, duplicate = execute_action(
         session,
         case,

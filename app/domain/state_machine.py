@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.tables import ActionEvent, AuditEvent, PaymentEvent, RecoveryCase
+from app.db.tables import ActionEvent, AuditEvent, Outcome, PaymentEvent, RecoveryCase
 from app.domain.enums import CaseState, PaymentEventType
 from app.domain.models import NormalizedPaymentEvent
 
@@ -59,12 +59,31 @@ def _find_case(session: Session, event: NormalizedPaymentEvent) -> RecoveryCase 
             return case
         # fallback for legacy rows without obligation
         return session.scalar(
-            select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
+            select(RecoveryCase).where(
+                RecoveryCase.payment_id == event.payment_id,
+                RecoveryCase.obligation_reference.is_(None),
+            )
         )
-    # isolated attempt when no durable reference exists
+    # An event without a durable reference must not be attributed to an obligation case.
     return session.scalar(
-        select(RecoveryCase).where(RecoveryCase.payment_id == event.payment_id)
+        select(RecoveryCase).where(
+            RecoveryCase.payment_id == event.payment_id,
+            RecoveryCase.obligation_reference.is_(None),
+        )
     )
+
+
+def _matching_failure_exists(session: Session, case: RecoveryCase) -> bool:
+    query = select(PaymentEvent.event_id).where(
+        PaymentEvent.event_type == PaymentEventType.FAILED
+    )
+    if case.obligation_reference:
+        query = query.where(
+            PaymentEvent.obligation_reference == case.obligation_reference
+        )
+    else:
+        query = query.where(PaymentEvent.payment_id == case.payment_id)
+    return session.scalar(query) is not None
 
 
 def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
@@ -112,6 +131,12 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
         )
         return case.case_id
     if event.event_type == PaymentEventType.CAPTURED and case:
+        has_matching_failure = _matching_failure_exists(session, case)
+        capture_matches_case = case.obligation_reference is None or (
+            event.amount == case.amount_at_risk and has_matching_failure
+        )
+        if not capture_matches_case:
+            return case.case_id
         if case.state not in {CaseState.RECOVERED, CaseState.ESCALATED, CaseState.STOPPED}:
             # Provider capture is authoritative and can arrive before the next planned transition.
             case.state = CaseState.RECOVERED
@@ -140,5 +165,34 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
                     payload={"action": action.tool, "idempotency_key": action.idempotency_key},
                 )
             )
+        if has_matching_failure and event.provider == "razorpay_test":
+            outcome = session.scalar(select(Outcome).where(Outcome.case_id == case.case_id))
+            if outcome is None:
+                session.add(
+                    Outcome(
+                        case_id=case.case_id,
+                        recovered=True,
+                        recovered_amount=event.amount,
+                        contact_cost=0,
+                        discount_cost=0,
+                        resolved_at=event.occurred_at,
+                        source="razorpay_test",
+                    )
+                )
+                session.add(
+                    AuditEvent(
+                        case_id=case.case_id,
+                        event_type="outcome.recorded",
+                        payload={
+                            "event_id": event.event_id,
+                            "provider_event_id": event.provider_event_id,
+                            "payment_id": event.payment_id,
+                            "obligation_reference": event.obligation_reference,
+                            "amount": event.amount,
+                            "occurred_at": event.occurred_at.isoformat(),
+                            "source": "razorpay_test",
+                        },
+                    )
+                )
         return case.case_id
     return case.case_id if case else None
