@@ -29,6 +29,15 @@ def _unapproved_decision(session: Session, case_id: str) -> Decision | None:
     return None
 
 
+def _approved_decision(session: Session, case_id: str) -> Decision | None:
+    decisions = session.scalars(select(Decision).where(Decision.case_id == case_id)).all()
+    for decision in decisions:
+        approval = decision.reason_json.get("approval")
+        if isinstance(approval, dict) and approval.get("granted") is True:
+            return decision
+    return None
+
+
 def execute_action(
     session: Session,
     case: RecoveryCase,
@@ -61,7 +70,8 @@ def execute_action(
         raise PermissionError(["invalid_state"])
 
     pending_approval = _unapproved_decision(session, case.case_id)
-    if pending_approval is not None:
+    approved_decision = _approved_decision(session, case.case_id)
+    if pending_approval is not None or approved_decision is None:
         session.add(
             AuditEvent(
                 case_id=case.case_id,
@@ -70,7 +80,11 @@ def execute_action(
                     "action": action,
                     "idempotency_key": idempotency_key,
                     "reasons": ["approval_required"],
-                    "decision_id": pending_approval.decision_id,
+                    "decision_id": (
+                        pending_approval.decision_id
+                        if pending_approval is not None
+                        else None
+                    ),
                 },
             )
         )

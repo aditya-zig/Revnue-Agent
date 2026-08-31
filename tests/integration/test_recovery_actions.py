@@ -41,6 +41,16 @@ def app(database_url):
                     state="eligible",
                     attempts=0,
                 ),
+                Decision(
+                    decision_id="approval_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["payment_link", "contact", "retry", "promise", "escalate"],
+                    selected_action="payment_link",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
             ]
         )
         session.commit()
@@ -269,6 +279,31 @@ async def test_actions_require_an_eligible_case(app):
 
 
 @pytest.mark.asyncio
+async def test_actions_require_an_approved_decision(app):
+    with app.state.session_factory() as session:
+        session.add(
+            RecoveryCase(
+                case_id="case_without_approval",
+                customer_id="cust_001",
+                payment_id="pay_without_approval",
+                amount_at_risk=249900,
+                state="eligible",
+                attempts=0,
+            )
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_without_approval/actions",
+            json={"action": "payment_link", "idempotency_key": "link-without-approval"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": ["approval_required"]}
+
+
+@pytest.mark.asyncio
 async def test_action_records_any_provider_failure(database_url):
     def reject_payment_link(amount: int, idempotency_key: str) -> str:
         raise ValueError("provider unavailable")
@@ -289,6 +324,16 @@ async def test_action_records_any_provider_failure(database_url):
                     amount_at_risk=249900,
                     state="eligible",
                     attempts=0,
+                ),
+                Decision(
+                    decision_id="approval_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["payment_link"],
+                    selected_action="payment_link",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
                 ),
             ]
         )
@@ -336,6 +381,16 @@ async def test_action_records_provider_failure_without_creating_a_pending_action
                     amount_at_risk=249900,
                     state="eligible",
                     attempts=0,
+                ),
+                Decision(
+                    decision_id="approval_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["payment_link"],
+                    selected_action="payment_link",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
                 ),
             ]
         )
