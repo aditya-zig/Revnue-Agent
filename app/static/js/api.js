@@ -144,6 +144,18 @@ export function getFinding(findingId, options = {}) {
   return requestJSON(`/findings/${encodeURIComponent(findingId)}`, options);
 }
 
+export function createFindingAnalysis(findingId, payload, options = {}) {
+  return requestJSON(`/findings/${encodeURIComponent(findingId)}/analysis`, {
+    ...options,
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function getFindingAnalysis(findingId, options = {}) {
+  return requestJSON(`/findings/${encodeURIComponent(findingId)}/analysis`, options);
+}
+
 export function getPublishedEvaluation(options = {}) {
   return requestJSON("/evaluations/published", options);
 }

@@ -16,7 +16,7 @@ the supplied Razorpay lockup.
 - RecoveryCase detail with the persisted execution trace
 - PaymentExceptions
 - Governance with versioned owner controls
-- Investigation
+- Investigation with an Explain finding control and saved deterministic results
 - Evaluation
 - Mock Inbox
 
@@ -32,8 +32,9 @@ not manufacture trace steps or recovery results.
 ## Evidence boundaries
 
 Executive values retain their existing labels and sources. Estimated values come from persisted
-leak findings, Test Mode recovery comes from recorded outcomes, and evaluation values remain
-SIMULATED. Empty, blocked, failed, loading, and unavailable-data states are rendered explicitly.
+leak findings, saved finding analyses are deterministic and advisory, Test Mode recovery comes
+from recorded outcomes, and evaluation values remain SIMULATED. Empty, blocked, failed, loading,
+and unavailable-data states are rendered explicitly.
 
 ## Validation
 

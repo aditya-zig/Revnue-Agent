@@ -3,7 +3,8 @@
 ReRoute is a FastAPI prototype for investigating recoverable payment failures.
 It ingests Razorpay Test Mode webhooks or normalized CSV events, groups failure
 cohorts, ranks policy-permitted actions, and writes an audit trail for every
-case transition and action attempt.
+case transition and action attempt. Operators can also save an immutable,
+deterministic explanation of a finding from its sanitized aggregate snapshot.
 
 This repository contains synthetic data only. It does not send real customer
 messages or include production credentials. When local Razorpay Test Mode keys
@@ -50,6 +51,12 @@ curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
   the raw request body before storing a normalized event.
 - `POST /api/v1/data/import` imports a UTF-8 normalized CSV body.
 - `POST /api/v1/findings/detect` calculates and persists ranked failure cohorts.
+- `POST /api/v1/findings/{finding_id}/analysis` explicitly saves a deterministic,
+  sanitized finding analysis; repeat requests with the same idempotency key return
+  the original record.
+- `GET /api/v1/findings/{finding_id}/analysis` and
+  `GET /api/v1/finding-analyses/{analysis_id}` retrieve saved analyses without
+  generating a new one.
 - `GET /api/v1/cases`, `/api/v1/audit/{case_id}`, and
   `/api/v1/cases/{case_id}/policy` expose case state, audit events, and policy.
 - `POST /api/v1/cases/{case_id}/actions` executes a permitted mock action or
