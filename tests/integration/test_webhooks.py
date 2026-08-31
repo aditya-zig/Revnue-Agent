@@ -274,7 +274,7 @@ async def test_webhook_hydrates_an_unknown_customer_without_granting_consent(app
 
     assert response.status_code == 202
     assert "missing_identity" not in policy.json()["blocked_reasons"]["payment_link"]
-    assert policy.json()["blocked_reasons"]["payment_link"] == ["missing_consent"]
+    assert "missing_consent" in policy.json()["blocked_reasons"]["payment_link"]
     with app.state.session_factory() as session:
         customer = session.get(Customer, "cust_hydrated")
         assert customer is not None

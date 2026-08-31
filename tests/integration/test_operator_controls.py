@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.db.tables import Customer, RecoveryCase
+from app.db.tables import Customer, Decision, RecoveryCase
 from app.main import create_app
 
 NOW = datetime(2026, 8, 24, 10, tzinfo=UTC)
@@ -31,6 +31,16 @@ def app(database_url):
                     amount_at_risk=99900,
                     state="investigated",
                     attempts=0,
+                ),
+                Decision(
+                    decision_id="approval_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["contact"],
+                    selected_action="contact",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
                 ),
             ]
         )

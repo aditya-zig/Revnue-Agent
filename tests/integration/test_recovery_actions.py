@@ -92,6 +92,32 @@ async def test_payment_link_uses_the_outstanding_amount_and_idempotency_key(app)
 
 @pytest.mark.asyncio
 async def test_case_accepts_only_one_action_transition(app):
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Decision(
+                    decision_id="approval_contact_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["contact"],
+                    selected_action="contact",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
+                Decision(
+                    decision_id="approval_retry_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["retry"],
+                    selected_action="retry",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
+            ]
+        )
+        session.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         first = await client.post(
             "/api/v1/cases/case_001/actions",
@@ -451,6 +477,20 @@ async def test_successful_payment_cancels_pending_retry(app):
         separators=(",", ":"),
     ).encode()
     signature = hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
+    with app.state.session_factory() as session:
+        session.add(
+            Decision(
+                decision_id="approval_retry_case_001",
+                case_id="case_001",
+                policy_version="v1",
+                model_version="v1",
+                allowed_actions=["retry"],
+                selected_action="retry",
+                expected_value=1,
+                reason_json={"approval": {"required": True, "granted": True}},
+            )
+        )
+        session.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         scheduled = await client.post(
             "/api/v1/cases/case_001/actions",

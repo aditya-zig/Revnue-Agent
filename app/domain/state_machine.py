@@ -6,10 +6,23 @@ from app.domain.enums import CaseState, PaymentEventType
 from app.domain.models import NormalizedPaymentEvent
 
 TRANSITIONS = {
-    CaseState.DETECTED: {CaseState.INVESTIGATED},
-    CaseState.INVESTIGATED: {CaseState.ELIGIBLE, CaseState.STOPPED},
-    CaseState.ELIGIBLE: {CaseState.ACTION_SELECTED, CaseState.ESCALATED, CaseState.STOPPED},
-    CaseState.ACTION_SELECTED: {CaseState.AWAITING_OUTCOME, CaseState.ESCALATED},
+    CaseState.DETECTED: {CaseState.INVESTIGATED, CaseState.RECOVERED},
+    CaseState.INVESTIGATED: {
+        CaseState.ELIGIBLE,
+        CaseState.STOPPED,
+        CaseState.RECOVERED,
+    },
+    CaseState.ELIGIBLE: {
+        CaseState.ACTION_SELECTED,
+        CaseState.ESCALATED,
+        CaseState.STOPPED,
+        CaseState.RECOVERED,
+    },
+    CaseState.ACTION_SELECTED: {
+        CaseState.AWAITING_OUTCOME,
+        CaseState.ESCALATED,
+        CaseState.RECOVERED,
+    },
     CaseState.AWAITING_OUTCOME: {
         CaseState.ELIGIBLE,
         CaseState.RECOVERED,
@@ -141,7 +154,7 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
             return case.case_id
         if case.state != CaseState.RECOVERED:
             # Provider capture is authoritative and can arrive before the next planned transition.
-            recovered_payload: dict[str, str | None] = {"payment_id": event.payment_id}
+            recovered_payload: dict[str, object] = {"payment_id": event.payment_id}
             if event.obligation_reference is not None:
                 recovered_payload["obligation_reference"] = event.obligation_reference
             transition_case(

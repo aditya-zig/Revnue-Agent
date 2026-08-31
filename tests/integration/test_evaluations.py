@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.db.tables import Customer, RecoveryCase
+from app.db.tables import Customer, Decision, RecoveryCase
 from app.main import create_app
 
 NOW = datetime(2026, 8, 24, 10, tzinfo=UTC)
@@ -104,6 +104,46 @@ async def test_exception_audit_records_match_published_evidence(app):
                 RecoveryCase(
                     case_id="case_late", customer_id="late_customer", payment_id="late",
                     amount_at_risk=249900, state="eligible", attempts=0,
+                ),
+                Decision(
+                    decision_id="approval_case_opt_out",
+                    case_id="case_opt_out",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["contact"],
+                    selected_action="contact",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
+                Decision(
+                    decision_id="approval_case_hard_decline",
+                    case_id="case_hard_decline",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["retry"],
+                    selected_action="retry",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
+                Decision(
+                    decision_id="approval_case_provider",
+                    case_id="case_provider",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["payment_link"],
+                    selected_action="payment_link",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
+                Decision(
+                    decision_id="approval_case_late",
+                    case_id="case_late",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["retry"],
+                    selected_action="retry",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
                 ),
             ]
         )

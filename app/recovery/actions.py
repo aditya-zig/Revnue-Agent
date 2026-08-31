@@ -20,20 +20,18 @@ class ProviderError(Exception):
     pass
 
 
-def _unapproved_decision(session: Session, case_id: str) -> Decision | None:
-    decisions = session.scalars(select(Decision).where(Decision.case_id == case_id)).all()
+def _decision_with_approval(
+    session: Session, case_id: str, action: str, granted: bool
+) -> Decision | None:
+    decisions = session.scalars(
+        select(Decision).where(
+            Decision.case_id == case_id,
+            Decision.selected_action == action,
+        )
+    ).all()
     for decision in decisions:
         approval = decision.reason_json.get("approval")
-        if isinstance(approval, dict) and approval.get("granted") is False:
-            return decision
-    return None
-
-
-def _approved_decision(session: Session, case_id: str) -> Decision | None:
-    decisions = session.scalars(select(Decision).where(Decision.case_id == case_id)).all()
-    for decision in decisions:
-        approval = decision.reason_json.get("approval")
-        if isinstance(approval, dict) and approval.get("granted") is True:
+        if isinstance(approval, dict) and approval.get("granted") is granted:
             return decision
     return None
 
@@ -69,13 +67,9 @@ def execute_action(
     if case.state != CaseState.ELIGIBLE:
         raise PermissionError(["invalid_state"])
 
-    pending_approval = _unapproved_decision(session, case.case_id)
-    approved_decision = _approved_decision(session, case.case_id)
-    if (
-        pending_approval is not None
-        or approved_decision is None
-        or approved_decision.selected_action != action
-    ):
+    pending_approval = _decision_with_approval(session, case.case_id, action, granted=False)
+    approved_decision = _decision_with_approval(session, case.case_id, action, granted=True)
+    if pending_approval is not None or approved_decision is None:
         session.add(
             AuditEvent(
                 case_id=case.case_id,
