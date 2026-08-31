@@ -40,7 +40,12 @@ def post_finding_analysis(
         if finding is None:
             raise HTTPException(status_code=404, detail="finding not found")
         try:
-            analysis, created = create_analysis(session, finding, idempotency_key)
+            analysis, created = create_analysis(
+                session,
+                finding,
+                idempotency_key,
+                provider=request.app.state.finding_analysis_provider,
+            )
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         session.commit()

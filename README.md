@@ -51,9 +51,11 @@ curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
   the raw request body before storing a normalized event.
 - `POST /api/v1/data/import` imports a UTF-8 normalized CSV body.
 - `POST /api/v1/findings/detect` calculates and persists ranked failure cohorts.
-- `POST /api/v1/findings/{finding_id}/analysis` explicitly saves a deterministic,
-  sanitized finding analysis; repeat requests with the same idempotency key return
-  the original record.
+- `POST /api/v1/findings/{finding_id}/analysis` explicitly requests an OpenRouter
+  `openrouter/free` advisory analysis from the sanitized snapshot; it persists
+  provider metadata and returns a deterministic fallback when the key, a compatible
+  free model, or a valid response is unavailable. Repeat requests with the same
+  idempotency key return the original record.
 - `GET /api/v1/findings/{finding_id}/analysis` and
   `GET /api/v1/finding-analyses/{analysis_id}` retrieve saved analyses without
   generating a new one.

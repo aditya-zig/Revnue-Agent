@@ -14,6 +14,7 @@ from app.api.payment_exceptions import router as payment_exceptions_router
 from app.api.webhooks import router as webhooks_router
 from app.core.config import Settings
 from app.db.session import create_session_factory
+from app.finding_analysis import FindingAnalysisProvider, OpenRouterProvider
 from app.recovery import RecoveryModel
 
 
@@ -39,6 +40,8 @@ def create_app(
     create_payment_link: Callable[[int, str], str] | None = None,
     decide_recovery_action: Callable[[dict], object] | None = None,
     kill_switch: bool | None = None,
+    finding_analysis_provider: FindingAnalysisProvider | None = None,
+    openrouter_api_key: str | None = None,
 ) -> FastAPI:
     settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
@@ -65,6 +68,11 @@ def create_app(
         create_payment_link or razorpay_creator or _payment_link_not_configured
     )
     app.state.decide_recovery_action = decide_recovery_action
+    app.state.finding_analysis_provider = finding_analysis_provider or OpenRouterProvider(
+        api_key=settings.openrouter_api_key if openrouter_api_key is None else openrouter_api_key,
+        timeout=settings.openrouter_timeout_seconds,
+        http_referer=settings.openrouter_http_referer or None,
+    )
     app.state.recovery_model = RecoveryModel()
     app.include_router(webhooks_router)
     app.include_router(cases_router)

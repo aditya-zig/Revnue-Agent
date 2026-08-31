@@ -1,13 +1,20 @@
+from datetime import UTC, datetime
+
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.db.tables import FindingAnalysis, RecoveryCase
+from app.finding_analysis import OpenRouterCompletion, OpenRouterProviderError
 from app.main import create_app
 
 
 @pytest.fixture
 def app(database_url):
-    return create_app(database_url=database_url)
+    return create_app(
+        database_url=database_url,
+        policy_now=lambda: datetime(2026, 8, 24, 12, tzinfo=UTC),
+    )
 
 
 def finding_csv() -> str:
@@ -103,6 +110,148 @@ async def test_analysis_is_explicit_sanitized_idempotent_and_survives_detector_r
         assert replacement.status_code == 200
         assert all(item["finding_id"] != finding_id for item in replacement.json())
         assert (await client.get(f"/api/v1/findings/{finding_id}/analysis")).status_code == 200
+
+
+@pytest.mark.asyncio
+class FakeOpenRouter:
+    requested_model = "openrouter/free"
+
+    def __init__(self, completion=None, error=None):
+        self.completion = completion
+        self.error = error
+        self.snapshots = []
+
+    def generate(self, snapshot):
+        self.snapshots.append(snapshot)
+        if self.error:
+            raise self.error
+        return self.completion
+
+
+@pytest.mark.asyncio
+async def test_analysis_uses_openrouter_strict_output_and_persists_metadata(database_url):
+    provider = FakeOpenRouter(
+        completion=OpenRouterCompletion(
+            output='{"hypotheses":["The cohort may reflect a method-specific issue."],'
+            '"next_validation_steps":["Compare the next detector run."]}',
+            resolved_model="free/test-model",
+            generation_id="gen_123",
+            usage={"prompt_tokens": 120, "completion_tokens": 24, "total_tokens": 144},
+        )
+    )
+    app = create_app(database_url=database_url, finding_analysis_provider=provider)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        finding = await detect_one(client)
+        response = await client.post(
+            f"/api/v1/findings/{finding['finding_id']}/analysis",
+            json={"idempotency_key": "openrouter-valid"},
+        )
+
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved["provider_metadata"] == {
+        "provider": "openrouter",
+        "requested_model": "openrouter/free",
+        "resolved_model": "free/test-model",
+        "provider_generation_id": "gen_123",
+        "prompt_version": "openrouter-finding-analysis-v1",
+        "usage": {"prompt_tokens": 120, "completion_tokens": 24, "total_tokens": 144},
+        "tool_usage": {"requested": False, "used": False, "tools": []},
+        "failure_reason": None,
+        "fallback_used": False,
+    }
+    assert saved["result"]["external_model_generated"] is True
+    assert saved["result"]["observed_facts"]
+    assert saved["result"]["hypotheses"] == ["The cohort may reflect a method-specific issue."]
+    assert saved["result"]["next_validation_steps"] == ["Compare the next detector run."]
+    assert provider.snapshots and "customer_id" not in provider.snapshots[0]
+
+
+@pytest.mark.asyncio
+async def test_analysis_falls_back_on_invalid_output_and_provider_errors(database_url):
+    for suffix, error in (
+        ("invalid", None),
+        ("rate-limit", OpenRouterProviderError("rate_limited", status_code=429)),
+        ("no-model", OpenRouterProviderError("no_compatible_model")),
+        ("provider", OpenRouterProviderError("provider_unavailable", status_code=503)),
+    ):
+        completion = (
+            OpenRouterCompletion(
+                output="not json", resolved_model="free/test-model", generation_id="gen_bad"
+            )
+            if error is None
+            else None
+        )
+        provider = FakeOpenRouter(completion=completion, error=error)
+        app = create_app(database_url=database_url, finding_analysis_provider=provider)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            finding = await detect_one(client)
+            response = await client.post(
+                f"/api/v1/findings/{finding['finding_id']}/analysis",
+                json={"idempotency_key": f"openrouter-{suffix}"},
+            )
+        assert response.status_code == 201
+        saved = response.json()
+        assert saved["result"]["external_model_generated"] is False
+        assert saved["result"]["model_statement"] == "No external model generated this analysis."
+        assert saved["provider_metadata"]["fallback_used"] is True
+        assert saved["provider_metadata"]["requested_model"] == "openrouter/free"
+        assert saved["provider_metadata"]["failure_reason"]
+
+
+@pytest.mark.asyncio
+async def test_missing_openrouter_credentials_do_not_call_provider(database_url):
+    app = create_app(database_url=database_url, openrouter_api_key="")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        finding = await detect_one(client)
+        response = await client.post(
+            f"/api/v1/findings/{finding['finding_id']}/analysis",
+            json={"idempotency_key": "openrouter-missing-key"},
+        )
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved["provider_metadata"]["failure_reason"] == "missing_credentials"
+    assert saved["provider_metadata"]["fallback_used"] is True
+
+
+def test_openrouter_request_is_strict_bounded_and_denies_provider_collection(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured.update({"url": url, **kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "id": "gen_request",
+                "model": "free/test-model",
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"hypotheses":["h"],"next_validation_steps":["s"]}'
+                        }
+                    }
+                ],
+                "usage": {"total_tokens": 2},
+            },
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    from app.finding_analysis import OpenRouterProvider
+
+    completion = OpenRouterProvider(api_key="secret-key").generate({"support": 3})
+
+    assert completion.generation_id == "gen_request"
+    assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer secret-key"
+    assert captured["json"]["model"] == "openrouter/free"
+    assert captured["json"]["max_tokens"] == 400
+    assert captured["json"]["provider"] == {"allow_fallbacks": False, "data_collection": "deny"}
+    assert "tools" not in captured["json"]
+    assert captured["json"]["response_format"]["json_schema"]["strict"] is True
+    assert (
+        captured["json"]["response_format"]["json_schema"]["schema"]["additionalProperties"]
+        is False
+    )
 
 
 @pytest.mark.asyncio

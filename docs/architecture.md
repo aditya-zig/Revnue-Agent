@@ -2,7 +2,8 @@
 
 ReRoute has one FastAPI process and one SQLite database in the local demo. The
 same process owns ingestion, analysis, policy, action execution, and the
-dashboard. There is no queue, background worker, or external model service.
+dashboard. There is no queue or background worker. FindingAnalysis may call the
+optional OpenRouter adapter, but it is isolated from policy and action paths.
 
 ```text
 Razorpay Test Mode webhook or normalized CSV
@@ -34,11 +35,13 @@ It stores source event identifiers, support, failure count, attempted value,
 unresolved value, and the recovery probability used in the estimate.
 
 `app/finding_analysis.py` creates an analysis only for an explicit operator
-request. It stores a sanitized aggregate snapshot and a deterministic result
-that separates observed facts from hypotheses and states that no external model
-generated it. The analysis keeps the finding identifier as provenance only, so
-detector runs may replace `LeakFinding` rows without invalidating saved records;
-retrieval endpoints never generate analyses.
+request. It stores a sanitized aggregate snapshot and either a strict,
+400-token-capped OpenRouter result or a deterministic fallback. Application
+observed facts remain separate from model hypotheses and next validation steps;
+no tools are sent and provider collection is denied. The analysis keeps the
+finding identifier as provenance only, so detector runs may replace
+`LeakFinding` rows without invalidating saved records; retrieval endpoints never
+generate analyses.
 
 `app/policy/evaluate.py` determines which actions are allowed. The recovery
 model ranks only that list. `app/recovery/controller.py` rejects malformed or
