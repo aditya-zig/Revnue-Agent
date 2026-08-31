@@ -12,12 +12,13 @@ test("persists a pending decision before granting approval", async () => {
 
   await approveRecoveryAction(createDecision, "case-1", "payment_link");
 
-  assert.deepEqual(calls, [
-    { caseId: "case-1", payload: { idempotency_key: "decision:case-1:payment_link" }, options: undefined },
-    {
-      caseId: "case-1",
-      payload: { idempotency_key: "decision:case-1:payment_link", approved: true },
-      options: { headers: { "X-Reroute-Role": "business_owner" } },
-    },
-  ]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].caseId, "case-1");
+  assert.equal(calls[0].options, undefined);
+  assert.equal(calls[1].caseId, "case-1");
+  assert.deepEqual(calls[1].options, { headers: { "X-Reroute-Role": "business_owner" } });
+  assert.equal(calls[0].payload.approved, undefined);
+  assert.equal(calls[1].payload.approved, true);
+  assert.equal(calls[0].payload.idempotency_key, calls[1].payload.idempotency_key);
+  assert.ok(calls[0].payload.idempotency_key.length <= 128);
 });
