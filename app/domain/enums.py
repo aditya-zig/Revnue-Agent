@@ -12,6 +12,13 @@ class PaymentStatus(StrEnum):
     CAPTURED = "captured"
 
 
+class ClaimTag(StrEnum):
+    ESTIMATED = "ESTIMATED"
+    SIMULATED = "SIMULATED"
+    TEST_MODE = "TEST MODE"
+    MOCK = "MOCK"
+
+
 class CaseState(StrEnum):
     DETECTED = "detected"
     INVESTIGATED = "investigated"

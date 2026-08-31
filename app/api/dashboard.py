@@ -10,12 +10,14 @@ from app.db.tables import (
     ActionEvent,
     AuditEvent,
     Decision,
+    FindingAnalysis,
     LeakFinding,
     Outcome,
     PaymentEvent,
     PaymentException,
     RecoveryCase,
 )
+from app.finding_analysis import analysis_response
 from app.leak_analysis import finding_sort_key
 from app.policy import evaluate_policy, get_policy_configuration
 
@@ -101,7 +103,7 @@ def get_dashboard(request: Request) -> dict:
 
         return {
             "executive": {
-                "top_leak": _finding(findings[0]) if findings else None,
+                "top_leak": _finding(session, findings[0]) if findings else None,
                 "revenue_at_risk": revenue_at_risk,
                 "estimated_value": estimated_value,
                 "test_mode_value": test_mode_value,
@@ -109,7 +111,7 @@ def get_dashboard(request: Request) -> dict:
                     case["state"] not in {"recovered", "closed", "stopped"} for case in worklist
                 ),
             },
-            "investigation": _finding(findings[0]) if findings else None,
+            "investigation": _finding(session, findings[0]) if findings else None,
             "worklist": worklist,
             "timeline": [_timeline(session, case) for case in cases],
             "payment_exceptions": [_payment_exception(exception) for exception in exceptions],
@@ -291,13 +293,19 @@ def _timeline(session, case: RecoveryCase) -> dict:
     return {"case_id": case.case_id, "events": events}
 
 
-def _finding(finding: LeakFinding) -> dict:
+def _finding(session, finding: LeakFinding) -> dict:
+    analysis = session.scalar(
+        select(FindingAnalysis)
+        .where(FindingAnalysis.source_finding_id == finding.finding_id)
+        .order_by(FindingAnalysis.created_at.desc(), FindingAnalysis.analysis_id.desc())
+    )
     return {
         "finding_id": finding.finding_id,
         "cohort_filter": finding.cohort_filter,
         "recoverable_impact": finding.recoverable_impact,
         "confidence": finding.confidence,
         "evidence": finding.evidence_json,
+        "analysis": analysis_response(analysis) if analysis else None,
     }
 
 

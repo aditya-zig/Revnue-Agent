@@ -121,6 +121,10 @@ class PaymentExceptionResolutionRequest(BaseModel):
     evidence: dict
 
 
+class FindingAnalysisRequest(BaseModel):
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class PolicySettingsRequest(BaseModel):
     quiet_hours_start: int = Field(ge=0, le=23)
     quiet_hours_end: int = Field(ge=0, le=23)

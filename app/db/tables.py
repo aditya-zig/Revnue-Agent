@@ -89,6 +89,24 @@ class LeakFinding(Base):
     evidence_json: Mapped[dict] = mapped_column(JSON)
 
 
+class FindingAnalysis(Base):
+    __tablename__ = "finding_analyses"
+
+    analysis_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    # Provenance only: detector runs replace LeakFinding rows, so this is not a FK.
+    source_finding_id: Mapped[str] = mapped_column(String(128), index=True)
+    snapshot_hash: Mapped[str] = mapped_column(String(64))
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    snapshot_json: Mapped[dict] = mapped_column(JSON)
+    result_json: Mapped[dict] = mapped_column(JSON)
+    impact_paise: Mapped[int] = mapped_column(Integer)
+    recoverable_impact_paise: Mapped[int] = mapped_column(Integer)
+    claim_tag: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class Decision(Base):
     __tablename__ = "decisions"
 

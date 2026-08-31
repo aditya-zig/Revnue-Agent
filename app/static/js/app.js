@@ -1,4 +1,4 @@
-import { ApiError, createAction, getDashboard } from "./api.js";
+import { ApiError, createAction, createFindingAnalysis, getDashboard } from "./api.js";
 import { nextFocusIndex } from "./focus-trap.js";
 
 const VIEW_IDS = [
@@ -213,6 +213,18 @@ function tag(value, kind = "") {
   return `<span class="badge ${kind}">${esc(value)}</span>`;
 }
 
+function analysisDetails(analysis) {
+  if (!analysis) return "";
+  const result = analysis.result || {};
+  const facts = (result.observed_facts || []).map((fact) => {
+    const value = fact.value_paise != null ? money(fact.value_paise) : fact.value;
+    const claim = fact.claim_tag ? ` ${tag(fact.claim_tag)}` : "";
+    return `<li><strong>${esc(fact.label)}:</strong> ${esc(value)}${claim}</li>`;
+  }).join("");
+  const hypotheses = (result.hypotheses || []).map((item) => `<li>${esc(item)}</li>`).join("");
+  return `<div class="analysis-result"><p><strong>Saved deterministic result.</strong> ${esc(result.summary)}</p><h4>Observed facts</h4><ul>${facts}</ul><h4>Hypotheses</h4><ul>${hypotheses}</ul><p class="case-sub">${esc(result.model_statement || "No external model generated this analysis.")}</p><p>${tag(analysis.claim_tag)}</p></div>`;
+}
+
 function eventTitle(event) {
   return ({ "raw event": "Provider event", decision: "Policy decision", action: "Recovery action", audit: "Audit record", outcome: "Recorded outcome" })[event.kind] || event.kind;
 }
@@ -238,7 +250,7 @@ function renderViews(data) {
   const detail = trace.length ? `<div class="detail-grid"><article class="panel"><div class="panel-head"><h2 class="panel-title">${esc(focus.case_id)}</h2>${tag("RECORDED TRACE")}</div>${trace.map((event) => `<div class="event"><div class="event-time">${esc(event.at || "No timestamp")}</div><div><h4>${eventTitle(event)} ${tag(event.kind)}</h4><p class="case-sub">${esc(eventSummary(event))}</p><pre>${esc(JSON.stringify(event.data, null, 2))}</pre></div></div>`).join("")}</article><article class="panel"><div class="panel-head"><h2 class="panel-title">Policy and action</h2></div><div class="panel-body">${focus.policy.allowed_actions.length ? focus.policy.allowed_actions.map((action) => tag(action)).join(" ") : tag("Blocked", "warning")}</div></article></div>` : '<div class="state">No case trace is available.</div>';
   const exceptions = data.payment_exceptions?.length ? data.payment_exceptions.map((item) => `<article class="panel"><div class="panel-head"><h2 class="panel-title">${esc(item.kind)}</h2>${tag(item.state)}</div><div class="panel-body"><p>${esc(item.case_id)}</p><h4>Original evidence</h4><pre class="json">${esc(JSON.stringify(item.evidence, null, 2))}</pre>${item.resolution ? `<h4>Resolution</h4><pre class="json">${esc(JSON.stringify(item.resolution, null, 2))}</pre><h4>Resolution evidence</h4><pre class="json">${esc(JSON.stringify(item.resolution_evidence, null, 2))}</pre>` : '<p class="case-sub">Unresolved. Resolution evidence is required.</p>'}</div></article>`).join("") : '<div class="state">No PaymentExceptions have been recorded.</div>';
   const governance = `<article class="panel"><div class="panel-head"><h2 class="panel-title">Governance</h2>${tag(data.policy_settings.policy_version)}</div><div class="panel-body"><div class="notice"><strong>Owner-only controls</strong><p>Operations can inspect the active policy. A business owner is required to change it.</p></div><h3>Active policy</h3><pre class="json">${esc(JSON.stringify(data.policy_settings, null, 2))}</pre></div></article>`;
-  const investigation = data.investigation ? `<article class="panel"><div class="panel-head"><h2 class="panel-title">${esc(data.investigation.finding_id)}</h2>${tag("ESTIMATED")}</div><div class="panel-body"><p>${money(data.investigation.recoverable_impact)} estimated recoverable impact at ${Math.round(data.investigation.confidence * 100)}% confidence.</p><h4>Cohort</h4><pre class="json">${esc(JSON.stringify(data.investigation.cohort_filter, null, 2))}</pre><h4>Supporting PaymentEvents</h4><pre class="json">${esc(JSON.stringify(data.investigation.evidence, null, 2))}</pre></div></article>` : '<div class="state">No persisted LeakFinding is available.</div>';
+  const investigation = data.investigation ? `<article class="panel"><div class="panel-head"><h2 class="panel-title">${esc(data.investigation.finding_id)}</h2>${tag("ESTIMATED")}</div><div class="panel-body"><p>${money(data.investigation.recoverable_impact)} estimated recoverable impact at ${Math.round(data.investigation.confidence * 100)}% confidence.</p><h4>Cohort</h4><pre class="json">${esc(JSON.stringify(data.investigation.cohort_filter, null, 2))}</pre>${data.investigation.analysis ? analysisDetails(data.investigation.analysis) : `<button class="btn btn-primary explain-finding" type="button" data-finding="${esc(data.investigation.finding_id)}">Explain finding</button><p class="case-sub">Creates a saved deterministic analysis; no external model is called.</p>`}</div></article>` : '<div class="state">No persisted LeakFinding is available.</div>';
   const evaluation = `<article class="panel"><div class="panel-head"><h2 class="panel-title">Published evaluation</h2>${tag("SIMULATED")}</div><div class="panel-body"><div class="notice"><strong>Simulation only</strong><p>These values do not measure merchant recovery or provider outcomes.</p></div><pre class="json">${esc(JSON.stringify(data.evaluation, null, 2))}</pre></div></article>`;
   const inbox = data.mock_inbox?.length ? `<article class="panel"><div class="panel-head"><h2 class="panel-title">Mock messages</h2><span class="table-status">${data.mock_inbox.length} records</span></div>${data.mock_inbox.map((item) => `<div class="activity-row"><div class="activity-main"><strong>${esc(item.tool)} · ${esc(item.case_id)}</strong><span>${esc(item.reply || "Awaiting reply")} · ${esc(item.provider_reference || "No provider reference")}</span></div>${item.provider_reference && !item.reply ? `<form class="reply-form" data-provider-reference="${esc(item.provider_reference)}"><label class="sr-only" for="reply-${esc(item.provider_reference)}">Reply</label><select id="reply-${esc(item.provider_reference)}"><option>pay</option><option>ignore</option><option>promise</option><option>help</option><option>opt_out</option></select><button class="btn" type="submit">Record reply</button></form>` : tag(item.reply ? "Recorded" : "No provider reference")}</div>`).join("")}</article>` : '<div class="state">No mock messages have been recorded.</div>';
   const contentByView = { overview, queue, detail, exceptions, governance, investigation, evaluation, inbox };
@@ -250,6 +262,19 @@ function bindRenderedActions() {
   document.querySelectorAll("#app [data-view]").forEach((button) => button.addEventListener("click", () => {
     state.selectedCase = button.dataset.case || state.selectedCase;
     setView(button.dataset.view);
+  }));
+  document.querySelectorAll(".explain-finding").forEach((button) => button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "Saving explanation…";
+    try {
+      await createFindingAnalysis(button.dataset.finding, { idempotency_key: `${button.dataset.finding}:analysis:${crypto.randomUUID()}` });
+      await loadDashboard();
+      announce("Finding explanation saved.");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Explain finding";
+      announce(error.message || "Finding explanation could not be saved.");
+    }
   }));
   document.querySelectorAll(".review").forEach((button) => button.addEventListener("click", async () => {
     const caseButtons = [...document.querySelectorAll(".review")].filter((candidate) => candidate.dataset.case === button.dataset.case);
