@@ -17,6 +17,8 @@ test("persists a pending decision before granting approval", async () => {
   assert.equal(calls[0].options, undefined);
   assert.equal(calls[1].caseId, "case-1");
   assert.deepEqual(calls[1].options, { headers: { "X-Reroute-Role": "business_owner" } });
+  assert.equal(calls[0].payload.selected_action, "payment_link");
+  assert.equal(calls[1].payload.selected_action, "payment_link");
   assert.equal(calls[0].payload.approved, undefined);
   assert.equal(calls[1].payload.approved, true);
   assert.equal(calls[0].payload.idempotency_key, calls[1].payload.idempotency_key);

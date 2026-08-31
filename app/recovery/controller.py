@@ -23,6 +23,7 @@ def run_decision(
     recovery_model: RecoveryModel,
     decide_recovery_action: Callable[[dict], object] | None,
     approved: bool = False,
+    requested_action: str | None = None,
     kill_switch: bool = False,
     contact_limit: int = 3,
     policy_version: str = "v1",
@@ -32,6 +33,8 @@ def run_decision(
     if existing is not None:
         if existing.case_id != case.case_id:
             raise ValueError("idempotency key belongs to another decision")
+        if requested_action is not None and existing.selected_action != requested_action:
+            raise ValueError("idempotency key belongs to another action")
         result = None
         if approved:
             approval = existing.reason_json.get("approval")
@@ -101,9 +104,14 @@ def run_decision(
         "policy": policy.model_dump(),
         "scores": scores,
     }
-    selected_action, selection_source, rejection = _select_action(
-        evidence, policy.allowed_actions, decide_recovery_action
-    )
+    if requested_action is not None:
+        if requested_action not in policy.allowed_actions:
+            raise PermissionError(policy.blocked_reasons.get(requested_action, ["action_not_allowed"]))
+        selected_action, selection_source, rejection = requested_action, "fallback", None
+    else:
+        selected_action, selection_source, rejection = _select_action(
+            evidence, policy.allowed_actions, decide_recovery_action
+        )
     session.add(
         Decision(
             decision_id=decision_id,

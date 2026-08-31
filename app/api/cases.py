@@ -312,6 +312,7 @@ def create_decision(
                 request.app.state.recovery_model,
                 request.app.state.decide_recovery_action,
                 decision.approved,
+                decision.selected_action,
                 configuration.kill_switch,
                 configuration.contact_limit,
                 configuration.policy_version,

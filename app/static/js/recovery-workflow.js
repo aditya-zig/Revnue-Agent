@@ -3,10 +3,10 @@ export async function approveRecoveryAction(createDecision, caseId, action) {
   // failed ActionEvent's key. The button is disabled while this attempt runs.
   const attemptId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
   const idempotencyKey = `decision:${attemptId}`;
-  await createDecision(caseId, { idempotency_key: idempotencyKey });
+  await createDecision(caseId, { idempotency_key: idempotencyKey, selected_action: action });
   return createDecision(
     caseId,
-    { idempotency_key: idempotencyKey, approved: true },
+    { idempotency_key: idempotencyKey, selected_action: action, approved: true },
     { headers: { "X-Reroute-Role": "business_owner" } },
   );
 }
