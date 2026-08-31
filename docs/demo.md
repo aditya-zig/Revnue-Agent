@@ -38,18 +38,24 @@ The policy excludes `retry` because the synthetic payment has `HARD_DECLINE`.
 The audit trail contains `action.blocked` with `hard_decline`. The ranking code
 only receives permitted actions, so it cannot turn that retry back on.
 
-## 1:35 to 2:15. Graceful failure
+## 1:35 to 2:15. Human approval and graceful failure
 
-Run:
+The recovery queue shows the selected action and its approval pause. An action
+cannot execute until a business owner approves the persisted decision. For a
+provider failure, the action writes `action.failed`, assigns the case to the
+business owner, and returns HTTP 502; the business owner can resume it only
+after the current policy is checked again. The failure and approval records
+remain in the audit trail. No real link or customer message is created.
+
+Inspect the trace with:
 
 ```sh
-curl http://127.0.0.1:8000/api/v1/audit/case_demo_provider_failure
+curl http://127.0.0.1:8000/api/v1/audit/case_order_provider_failure
 ```
 
-The default payment-link provider is intentionally absent. The replay attempts
-that allowed action against a synthetic case, records `action.started` followed
-by `action.failed`, and leaves the error in the audit trail. No real link or
-customer message was created.
+The default payment-link provider is intentionally absent. A manually approved
+attempt against this synthetic case records `action.started` followed by
+`action.failed`; the seed replay does not execute unapproved actions.
 
 ## 2:15 to 3:05. Results and limits
 

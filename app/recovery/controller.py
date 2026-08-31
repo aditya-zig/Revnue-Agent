@@ -104,9 +104,12 @@ def run_decision(
         "policy": policy.model_dump(),
         "scores": scores,
     }
+    selection_source: Literal["model", "fallback"]
     if requested_action is not None:
         if requested_action not in policy.allowed_actions:
-            raise PermissionError(policy.blocked_reasons.get(requested_action, ["action_not_allowed"]))
+            raise PermissionError(
+                policy.blocked_reasons.get(requested_action, ["action_not_allowed"])
+            )
         selected_action, selection_source, rejection = requested_action, "fallback", None
     else:
         selected_action, selection_source, rejection = _select_action(
