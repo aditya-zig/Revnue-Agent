@@ -228,11 +228,7 @@ def test_openrouter_request_is_strict_bounded_and_denies_provider_collection(mon
                 "id": "gen_request",
                 "model": "free/test-model",
                 "choices": [
-                    {
-                        "message": {
-                            "content": '{"hypotheses":["h"],"next_validation_steps":["s"]}'
-                        }
-                    }
+                    {"message": {"content": '{"hypotheses":["h"],"next_validation_steps":["s"]}'}}
                 ],
                 "usage": {"total_tokens": 2},
             },

@@ -10,7 +10,7 @@ Razorpay Test Mode webhook or normalized CSV
   -> ingestion and deduplication
   -> payment event and recovery case
   -> leak detector and ranked finding
-  -> explicit operator request and immutable deterministic finding analysis
+  -> explicit operator request and immutable advisory finding analysis
   -> policy filter
   -> recovery scorer and structured decision
   -> persisted human approval

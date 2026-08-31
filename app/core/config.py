@@ -14,9 +14,7 @@ class Settings(BaseSettings):
     )
     razorpay_webhook_secret: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "REROUTE_RAZORPAY_WEBHOOK_SECRET", "RAZORPAY_WEBHOOK_SECRET"
-        ),
+        validation_alias=AliasChoices("REROUTE_RAZORPAY_WEBHOOK_SECRET", "RAZORPAY_WEBHOOK_SECRET"),
     )
     max_request_body_bytes: int = 1_000_000
     quiet_hours_start: int = 21

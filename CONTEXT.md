@@ -37,7 +37,7 @@ A cohort aggregation with at least three supporting PaymentEvents, ranked by rec
 _Avoid_: Leak, insight, root cause
 
 **FindingAnalysis**:
-An immutable, deterministic advisory record created by an explicit operator request from a sanitized LeakFinding aggregate snapshot. It preserves finding provenance without depending on the detector row and separates observed facts from hypotheses.
+An immutable advisory record created by an explicit operator request from a sanitized LeakFinding aggregate snapshot. It may contain bounded OpenRouter hypotheses and validation steps, or a deterministic local fallback. It preserves finding provenance without depending on the detector row and separates observed facts from hypotheses.
 _Avoid_: Model explanation, diagnosis, forecast
 
 **Policy**:

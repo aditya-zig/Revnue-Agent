@@ -277,9 +277,7 @@ def _failure_reason(error: Exception) -> str:
     return "provider_error"
 
 
-def generate_result(
-    snapshot: dict, provider: FindingAnalysisProvider
-) -> tuple[dict, dict]:
+def generate_result(snapshot: dict, provider: FindingAnalysisProvider) -> tuple[dict, dict]:
     """Return a model result or the deterministic fallback and its audit metadata."""
     completion = None
     try:

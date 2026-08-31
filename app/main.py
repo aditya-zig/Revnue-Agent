@@ -26,9 +26,7 @@ def _build_razorpay_creator_from_settings(settings: Settings):
     if settings.razorpay_key_id and settings.razorpay_key_secret:
         from app.integrations.razorpay import build_payment_link_creator
 
-        return build_payment_link_creator(
-            settings.razorpay_key_id, settings.razorpay_key_secret
-        )
+        return build_payment_link_creator(settings.razorpay_key_id, settings.razorpay_key_secret)
     return None
 
 
