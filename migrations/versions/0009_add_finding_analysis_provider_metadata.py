@@ -36,10 +36,13 @@ def upgrade() -> None:
     op.add_column("finding_analyses", sa.Column("failure_reason", sa.Text(), nullable=True))
     op.add_column("finding_analyses", sa.Column("fallback_used", sa.Boolean(), nullable=True))
 
+    # Migration metadata is provenance for existing rows, so temporarily disable
+    # the immutability trigger while adding those columns.
+    op.execute("DROP TRIGGER finding_analyses_no_update")
     op.get_bind().execute(
         sa.text(
-            "UPDATE finding_analyses SET provider = 'openrouter', "
-            "requested_model = 'openrouter/free', "
+            "UPDATE finding_analyses SET provider = 'deterministic', "
+            "requested_model = 'deterministic-local', "
             "prompt_version = 'deterministic-finding-analysis-v1', "
             "tool_usage_json = :tool_usage, fallback_used = 1"
         ),
@@ -53,6 +56,10 @@ def upgrade() -> None:
         batch_op.alter_column("prompt_version", existing_type=sa.String(length=64), nullable=False)
         batch_op.alter_column("tool_usage_json", existing_type=sa.JSON(), nullable=False)
         batch_op.alter_column("fallback_used", existing_type=sa.Boolean(), nullable=False)
+    op.execute(
+        "CREATE TRIGGER finding_analyses_no_update BEFORE UPDATE ON finding_analyses "
+        "BEGIN SELECT RAISE(ABORT, 'finding analyses are immutable'); END"
+    )
 
 
 def downgrade() -> None:
