@@ -5,6 +5,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPOSITORY_ROOT))
 
+
 def unavailable_payment_link(amount: int, idempotency_key: str) -> str:
     raise RuntimeError("demo payment-link provider is not configured")
 
