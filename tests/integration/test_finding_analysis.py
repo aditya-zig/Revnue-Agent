@@ -35,8 +35,7 @@ async def detect_one(client: AsyncClient) -> dict:
     return next(
         finding
         for finding in response.json()
-        if finding["cohort_filter"]
-        == {"dimension": "error_reason", "value": "insufficient funds"}
+        if finding["cohort_filter"] == {"dimension": "error_reason", "value": "insufficient funds"}
     )
 
 

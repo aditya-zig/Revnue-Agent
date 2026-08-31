@@ -75,9 +75,7 @@ def get_finding_analysis_by_id(analysis_id: str, request: Request) -> dict:
 @router.get("/findings/{finding_id}")
 def get_finding(finding_id: str, request: Request) -> dict:
     with request.app.state.session_factory() as session:
-        finding = session.scalar(
-            select(LeakFinding).where(LeakFinding.finding_id == finding_id)
-        )
+        finding = session.scalar(select(LeakFinding).where(LeakFinding.finding_id == finding_id))
         if finding is None:
             raise HTTPException(status_code=404, detail="finding not found")
         return _finding_response(finding)

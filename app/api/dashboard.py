@@ -176,7 +176,9 @@ def _case_summary(
     else:
         expected_value = None
     contact_count = session.scalar(
-        select(func.count()).select_from(ActionEvent).where(
+        select(func.count())
+        .select_from(ActionEvent)
+        .where(
             ActionEvent.case_id == case.case_id,
             ActionEvent.tool.in_(["contact", "promise"]),
         )

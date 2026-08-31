@@ -36,6 +36,10 @@ _Avoid_: RecoveryCase, refund case, failed payment
 A cohort aggregation with at least three supporting PaymentEvents, ranked by recoverable impact.
 _Avoid_: Leak, insight, root cause
 
+**FindingAnalysis**:
+An immutable, deterministic advisory record created by an explicit operator request from a sanitized LeakFinding aggregate snapshot. It preserves finding provenance without depending on the detector row and separates observed facts from hypotheses.
+_Avoid_: Model explanation, diagnosis, forecast
+
 **Policy**:
 The deterministic gate that decides which Actions are allowed for a Case before any scoring.
 _Avoid_: Guardrail, rule engine, filter

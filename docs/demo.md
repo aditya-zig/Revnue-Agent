@@ -21,6 +21,9 @@ curl http://127.0.0.1:8000/api/v1/findings
 Point to the finding's cohort filter, support, source event identifiers, failed
 value, unresolved value, recovery probability, confidence, and recoverable
 impact. Call the impact an estimate. It is not booked revenue or a forecast.
+Use Explain finding to explicitly save the deterministic result. The saved
+presentation separates observed facts from hypotheses and states that no
+external model generated it; refreshing the dashboard retrieves that record.
 
 ## 0:40 to 1:35. Bounded action
 
