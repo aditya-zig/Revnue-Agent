@@ -6,4 +6,5 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.chrome-scratch/
 rzp-test-key.csv

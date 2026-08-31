@@ -21,9 +21,10 @@ curl http://127.0.0.1:8000/api/v1/findings
 Point to the finding's cohort filter, support, source event identifiers, failed
 value, unresolved value, recovery probability, confidence, and recoverable
 impact. Call the impact an estimate. It is not booked revenue or a forecast.
-Use Explain finding to explicitly save the deterministic result. The saved
-presentation separates observed facts from hypotheses and states that no
-external model generated it; refreshing the dashboard retrieves that record.
+Use Explain finding to explicitly save an advisory result. If no OpenRouter key
+is configured, or the provider request fails, it records the deterministic
+fallback; when the request succeeds, it records bounded model hypotheses and
+validation steps. Refreshing the dashboard retrieves that record.
 
 ## 0:40 to 1:35. Bounded action
 
@@ -81,7 +82,8 @@ idempotency.
 ## 4:05 to 5:00. Close on boundaries
 
 Show `docs/model-limits.md` and `docs/threat-model.md`. The model trains on
-generated rows. It has no production data, no external model service, and no
-authority to bypass policy. This repository is a Test Mode and mock prototype.
+generated rows. FindingAnalysis may use the optional OpenRouter adapter, but it
+has no authority to bypass policy. This repository is a Test Mode and mock
+prototype.
 It has no authentication, real delivery provider, production secret manager,
 or claim of revenue lift.

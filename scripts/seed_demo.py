@@ -5,6 +5,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPOSITORY_ROOT))
 
+
 def unavailable_payment_link(amount: int, idempotency_key: str) -> str:
     raise RuntimeError("demo payment-link provider is not configured")
 
@@ -31,7 +32,8 @@ def main() -> None:
     database_url = Settings().database_url
     session_factory = create_session_factory(database_url)
     # SyntheticCorpus is deterministic and separate from EvaluationComparison (30x30 SIMULATED).
-    # Use generator for >=500 events with PaymentObligation identity; fallback to demo CSV for offline small demo.
+    # Use generator for >=500 events with PaymentObligation identity; fall back to demo CSV for
+    # offline small demo.
     try:
         from simulator.generator import generate_csv
 
@@ -49,15 +51,21 @@ def main() -> None:
         session.commit()
 
         # named edge cases with deterministic Policy/AuditEvent behavior
-        # case ids derive from obligation_reference when present (case_<obligation>), else case_<payment_id>
+        # Case IDs derive from obligation_reference when present (case_<obligation>), else
+        # case_<payment_id>.
         edge_cases = {
             "hard_decline": ("case_order_hard_decline", "retry", "demo-hard-decline-retry"),
-            "provider_failure": ("case_order_provider_failure", "payment_link", "demo-provider-failure"),
+            "provider_failure": (
+                "case_order_provider_failure",
+                "payment_link",
+                "demo-provider-failure",
+            ),
             "opt_out": ("case_order_opt_out", "contact", "demo-opt-out-contact"),
             "promise": ("case_order_promise", "promise", "demo-promise-contact"),
             "eligible": ("case_order_eligible", None, None),
         }
-        # make all edge cases eligible so Policy can be evaluated; keep eligible unacted without action
+        # Make all edge cases eligible so Policy can be evaluated; keep eligible unacted without
+        # action.
         for name, (case_id, action, key) in edge_cases.items():
             try:
                 case = make_eligible(session, case_id)
@@ -79,8 +87,14 @@ def main() -> None:
             except (PermissionError, ProviderError):
                 pass
 
-    print(f"Imported {imported} synthetic events ({source}) into {database_url} (duplicates={duplicates}).")
-    print("Recorded hard-decline block, provider failure, opt-out block, promise, and eligible unacted.")
+    print(
+        f"Imported {imported} synthetic events ({source}) into {database_url} "
+        f"(duplicates={duplicates})."
+    )
+    print(
+        "Recorded hard-decline block, provider failure, opt-out block, promise, "
+        "and eligible unacted."
+    )
 
 
 if __name__ == "__main__":

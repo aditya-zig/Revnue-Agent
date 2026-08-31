@@ -63,7 +63,8 @@ def _generated_row(index: int, random_source: random.Random) -> dict[str, str]:
     occurred_at = datetime(2026, 8, 1, tzinfo=UTC) + timedelta(minutes=index * 13)
     amount = random_source.choice([49900, 99900, 149900, 249900, 499900])
     payment_id = f"demo_generated_{index:05d}"
-    # obligation_reference is the verified PaymentObligation; each generated row has unique order except periodic isolated attempts
+    # obligation_reference is the verified PaymentObligation; each generated row has a unique
+    # order except periodic isolated attempts.
     if index % 97 == 0:
         obligation_reference = ""  # isolated attempt stays isolated, no durable reference
     else:
