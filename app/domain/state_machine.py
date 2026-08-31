@@ -16,7 +16,7 @@ TRANSITIONS = {
         CaseState.ESCALATED,
         CaseState.STOPPED,
     },
-    CaseState.ESCALATED: {CaseState.ELIGIBLE},
+    CaseState.ESCALATED: {CaseState.ELIGIBLE, CaseState.RECOVERED},
 }
 
 
@@ -137,18 +137,18 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
         )
         if not capture_matches_case:
             return case.case_id
-        if case.state not in {CaseState.RECOVERED, CaseState.ESCALATED, CaseState.STOPPED}:
+        if case.state == CaseState.STOPPED:
+            return case.case_id
+        if case.state != CaseState.RECOVERED:
             # Provider capture is authoritative and can arrive before the next planned transition.
-            case.state = CaseState.RECOVERED
             recovered_payload: dict[str, str | None] = {"payment_id": event.payment_id}
             if event.obligation_reference is not None:
                 recovered_payload["obligation_reference"] = event.obligation_reference
-            session.add(
-                AuditEvent(
-                    case_id=case.case_id,
-                    event_type="case.recovered",
-                    payload=recovered_payload,
-                )
+            transition_case(
+                session,
+                case,
+                CaseState.RECOVERED,
+                payload_extra=recovered_payload,
             )
         pending_actions = session.scalars(
             select(ActionEvent).where(

@@ -359,6 +359,99 @@ async def test_captured_webhook_does_not_attribute_failure_from_another_obligati
 
 
 @pytest.mark.asyncio
+async def test_captured_webhook_reconciles_escalated_case_but_preserves_stopped_case(app):
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                RecoveryCase(
+                    case_id="case_escalated_capture",
+                    payment_id="pay_escalated_capture",
+                    amount_at_risk=249900,
+                    state="escalated",
+                    attempts=1,
+                ),
+                RecoveryCase(
+                    case_id="case_stopped_capture",
+                    payment_id="pay_stopped_capture",
+                    amount_at_risk=249900,
+                    state="stopped",
+                    attempts=1,
+                ),
+                PaymentEvent(
+                    event_id="evt_escalated_failure",
+                    provider_event_id="provider_escalated_failure",
+                    event_type="payment.failed",
+                    payment_id="pay_escalated_capture",
+                    amount=249900,
+                    currency="INR",
+                    status="failed",
+                    occurred_at=datetime(2024, 8, 24, 6, 31, tzinfo=UTC),
+                    provider="razorpay_test",
+                    raw_hash="escalated-failure-hash",
+                ),
+                PaymentEvent(
+                    event_id="evt_stopped_failure",
+                    provider_event_id="provider_stopped_failure",
+                    event_type="payment.failed",
+                    payment_id="pay_stopped_capture",
+                    amount=249900,
+                    currency="INR",
+                    status="failed",
+                    occurred_at=datetime(2024, 8, 24, 6, 31, tzinfo=UTC),
+                    provider="razorpay_test",
+                    raw_hash="stopped-failure-hash",
+                ),
+            ]
+        )
+        session.commit()
+
+    def payload(payment_id: str) -> bytes:
+        return json.dumps(
+            {
+                "event": "payment.captured",
+                "payload": {
+                    "payment": {
+                        "entity": {
+                            "id": payment_id,
+                            "amount": 249900,
+                            "currency": "INR",
+                            "status": "captured",
+                            "created_at": 1724481100,
+                        }
+                    }
+                },
+            },
+            separators=(",", ":"),
+        ).encode()
+
+    escalated_body = payload("pay_escalated_capture")
+    stopped_body = payload("pay_stopped_capture")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        escalated_response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=escalated_body,
+            headers={"X-Razorpay-Signature": signature(escalated_body)},
+        )
+        stopped_response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=stopped_body,
+            headers={"X-Razorpay-Signature": signature(stopped_body)},
+        )
+
+    assert escalated_response.status_code == 202
+    assert stopped_response.status_code == 202
+    with app.state.session_factory() as session:
+        escalated = session.get(RecoveryCase, "case_escalated_capture")
+        stopped = session.get(RecoveryCase, "case_stopped_capture")
+        assert escalated is not None
+        assert stopped is not None
+        assert escalated.state == "recovered"
+        assert stopped.state == "stopped"
+        assert session.scalar(select(Outcome).where(Outcome.case_id == escalated.case_id)) is not None
+        assert session.scalar(select(Outcome).where(Outcome.case_id == stopped.case_id)) is None
+
+
+@pytest.mark.asyncio
 async def test_matching_captured_webhook_records_one_outcome_on_duplicate_delivery(app):
     def body(event: str, created_at: int) -> bytes:
         entity = {
