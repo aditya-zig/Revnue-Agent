@@ -73,7 +73,9 @@ def evaluate_policy(
             blocked_reasons.setdefault(action, []).append("payment_exception")
 
     contact_count = session.scalar(
-        select(func.count()).select_from(ActionEvent).where(
+        select(func.count())
+        .select_from(ActionEvent)
+        .where(
             ActionEvent.case_id == case.case_id,
             ActionEvent.tool.in_(CONTACT_ACTIONS),
         )

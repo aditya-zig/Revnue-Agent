@@ -778,9 +778,7 @@ async def test_resume_idempotency_key_cannot_cross_cases(app):
 
 def test_audit_events_are_append_only(app):
     with app.state.session_factory() as session:
-        session.add(
-            AuditEvent(case_id="case_001", event_type="test.audit", payload={"ok": True})
-        )
+        session.add(AuditEvent(case_id="case_001", event_type="test.audit", payload={"ok": True}))
         session.commit()
         with pytest.raises(IntegrityError, match="audit events are immutable"):
             session.execute(

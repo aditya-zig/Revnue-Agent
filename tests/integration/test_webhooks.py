@@ -447,7 +447,9 @@ async def test_captured_webhook_reconciles_escalated_case_but_preserves_stopped_
         assert stopped is not None
         assert escalated.state == "recovered"
         assert stopped.state == "stopped"
-        assert session.scalar(select(Outcome).where(Outcome.case_id == escalated.case_id)) is not None
+        assert (
+            session.scalar(select(Outcome).where(Outcome.case_id == escalated.case_id)) is not None
+        )
         assert session.scalar(select(Outcome).where(Outcome.case_id == stopped.case_id)) is None
 
 

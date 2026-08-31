@@ -87,13 +87,9 @@ def _find_case(session: Session, event: NormalizedPaymentEvent) -> RecoveryCase 
 
 
 def _matching_failure_exists(session: Session, case: RecoveryCase) -> bool:
-    query = select(PaymentEvent.event_id).where(
-        PaymentEvent.event_type == PaymentEventType.FAILED
-    )
+    query = select(PaymentEvent.event_id).where(PaymentEvent.event_type == PaymentEventType.FAILED)
     if case.obligation_reference:
-        query = query.where(
-            PaymentEvent.obligation_reference == case.obligation_reference
-        )
+        query = query.where(PaymentEvent.obligation_reference == case.obligation_reference)
     else:
         query = query.where(PaymentEvent.payment_id == case.payment_id)
     return session.scalar(query) is not None

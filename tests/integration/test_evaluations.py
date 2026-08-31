@@ -98,12 +98,20 @@ async def test_exception_audit_records_match_published_evidence(app):
                 Customer(customer_id="provider_customer", consent=True),
                 Customer(customer_id="late_customer", consent=True),
                 RecoveryCase(
-                    case_id="case_provider", customer_id="provider_customer", payment_id="provider",
-                    amount_at_risk=249900, state="eligible", attempts=0,
+                    case_id="case_provider",
+                    customer_id="provider_customer",
+                    payment_id="provider",
+                    amount_at_risk=249900,
+                    state="eligible",
+                    attempts=0,
                 ),
                 RecoveryCase(
-                    case_id="case_late", customer_id="late_customer", payment_id="late",
-                    amount_at_risk=249900, state="eligible", attempts=0,
+                    case_id="case_late",
+                    customer_id="late_customer",
+                    payment_id="late",
+                    amount_at_risk=249900,
+                    state="eligible",
+                    attempts=0,
                 ),
                 Decision(
                     decision_id="approval_case_opt_out",
@@ -150,9 +158,7 @@ async def test_exception_audit_records_match_published_evidence(app):
         session.commit()
 
     duplicate_body = _webhook_body("duplicate", "payment.failed")
-    opt_out_body = _webhook_body(
-        "opt_out", "payment.failed", customer_id="opt_out_customer"
-    )
+    opt_out_body = _webhook_body("opt_out", "payment.failed", customer_id="opt_out_customer")
     hard_decline_body = _webhook_body(
         "hard_decline", "payment.failed", "HARD_DECLINE", "hard_decline_customer"
     )
