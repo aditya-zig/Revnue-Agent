@@ -197,6 +197,9 @@ async def test_analysis_falls_back_on_invalid_output_and_provider_errors(databas
         assert saved["provider_metadata"]["fallback_used"] is True
         assert saved["provider_metadata"]["requested_model"] == "openrouter/free"
         assert saved["provider_metadata"]["failure_reason"]
+        if suffix == "invalid":
+            assert saved["provider_metadata"]["resolved_model"] == "free/test-model"
+            assert saved["provider_metadata"]["provider_generation_id"] == "gen_bad"
 
 
 @pytest.mark.asyncio

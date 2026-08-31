@@ -281,6 +281,7 @@ def generate_result(
     snapshot: dict, provider: FindingAnalysisProvider
 ) -> tuple[dict, dict]:
     """Return a model result or the deterministic fallback and its audit metadata."""
+    completion = None
     try:
         completion = provider.generate(snapshot)
         if completion.tool_usage and completion.tool_usage.get("used"):
@@ -288,7 +289,7 @@ def generate_result(
         parsed = FindingAnalysisOutput.model_validate_json(completion.output)
     except Exception as error:  # Provider boundary must never affect the request path.
         return deterministic_result(snapshot), _metadata(
-            provider, failure_reason=_failure_reason(error)
+            provider, completion=completion, failure_reason=_failure_reason(error)
         )
 
     result = deterministic_result(snapshot)
