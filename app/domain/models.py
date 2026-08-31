@@ -93,6 +93,13 @@ class ActionResponse(BaseModel):
 class DecisionRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128)
     approved: bool = False
+    selected_action: Literal["payment_link", "contact", "retry", "promise", "escalate"] | None = (
+        None
+    )
+
+
+class ResumeRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=128)
 
 
 class StructuredDecision(BaseModel):

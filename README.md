@@ -29,17 +29,17 @@ REROUTE_DATABASE_URL=sqlite:///./demo.db uv run uvicorn app.main:app --reload
 
 Open `http://127.0.0.1:8000/` for the dashboard. The source data is
 `demo/payment_events.csv`. The replay imports it, computes findings, and adds
-two controlled records for the demo. One demonstrates a hard-decline retry
-block. The other records the default payment-link provider failure. Both use
-synthetic identifiers.
+controlled edge cases for the demo. These include policy-blocked and eligible
+cases with synthetic identifiers; provider actions require a persisted human
+approval before they are attempted.
 
 Use these commands in another terminal to inspect the demo state:
 
 ```sh
 curl http://127.0.0.1:8000/api/v1/findings
-curl http://127.0.0.1:8000/api/v1/cases/case_demo_hard_decline/policy
-curl http://127.0.0.1:8000/api/v1/audit/case_demo_hard_decline
-curl http://127.0.0.1:8000/api/v1/audit/case_demo_provider_failure
+curl http://127.0.0.1:8000/api/v1/cases/case_order_hard_decline/policy
+curl http://127.0.0.1:8000/api/v1/audit/case_order_hard_decline
+curl http://127.0.0.1:8000/api/v1/audit/case_order_provider_failure
 curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
 ```
 
@@ -59,8 +59,16 @@ curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
   generating a new one.
 - `GET /api/v1/cases`, `/api/v1/audit/{case_id}`, and
   `/api/v1/cases/{case_id}/policy` expose case state, audit events, and policy.
-- `POST /api/v1/cases/{case_id}/actions` executes a permitted mock action or
-  attempts a Test Mode payment link. Requests need an idempotency key.
+- `POST /api/v1/cases/{case_id}/investigate` moves a detected case through
+  investigation and re-evaluates policy before marking it eligible.
+- `POST /api/v1/cases/{case_id}/decisions` records a policy decision and the
+  required human approval; approvals require the `business_owner` role.
+- `POST /api/v1/cases/{case_id}/actions` executes an approved permitted mock
+  action or attempts a Test Mode payment link. Requests need an idempotency key.
+- `POST /api/v1/cases/{case_id}/resume` lets a business owner resume an
+  escalated or awaiting-outcome case after a current policy check.
+- `GET /api/v1/cases/{case_id}/outcome` exposes a persisted provider outcome
+  and its audit evidence.
 - `POST /api/v1/cases/{case_id}/exceptions` opens a PaymentException. Open
   exceptions block customer-directed actions until evidence resolves them.
 - `GET` and owner-only `PUT /api/v1/policy-settings` expose the versioned

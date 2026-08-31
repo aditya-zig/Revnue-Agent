@@ -12,8 +12,10 @@ Razorpay Test Mode webhook or normalized CSV
   -> explicit operator request and immutable deterministic finding analysis
   -> policy filter
   -> recovery scorer and structured decision
+  -> persisted human approval
   -> mock or Test Mode action
-  -> audit event, outcome, dashboard
+  -> signed payment.captured webhook
+  -> audit event, persisted outcome, dashboard
 ```
 
 The webhook or CSV is the only input the app trusts. Two operator tools sit alongside that flow and are not part of it. See `docs/razorpay-tooling.md`.
@@ -41,8 +43,12 @@ retrieval endpoints never generate analyses.
 `app/policy/evaluate.py` determines which actions are allowed. The recovery
 model ranks only that list. `app/recovery/controller.py` rejects malformed or
 policy-blocked model output and selects the highest-ranked allowed action when
-no model function is present. `app/recovery/actions.py` enforces idempotency,
-records actions and audit events, and turns provider errors into HTTP 502.
+no model function is present. `app/recovery/actions.py` enforces persisted
+action-specific approval, idempotency, and audit events, and turns provider
+errors into HTTP 502. A business owner can resume an escalated or
+awaiting-outcome case after the current policy is checked again. Signed Test
+Mode captures are provider-authoritative and create the persisted Outcome used
+by the dashboard.
 
 The database tables are defined in `app/db/tables.py`. They retain customers,
 payment events, recovery cases, findings, immutable finding analyses, decisions,

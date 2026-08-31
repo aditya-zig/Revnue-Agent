@@ -34,7 +34,7 @@ The target user is a small Indian subscription merchant. Demonstrations use synt
 - Respect configured Asia/Kolkata quiet hours.
 - Use the exact outstanding amount in a payment link.
 - Require an idempotency key for every side effect.
-- Require human approval for discounts or amount changes.
+- Require business-owner approval for every recovery action; discounts or amount changes remain subject to the same Policy boundary.
 - Cancel pending action after a successful payment.
 - Escalate or stop when consent or required identity information is absent.
 
@@ -44,8 +44,8 @@ The target user is a small Indian subscription merchant. Demonstrations use synt
 2. Leak analysis calculates failure cohorts and their recoverable impact.
 3. Recovery scoring estimates action-conditioned recovery probability.
 4. The policy engine filters actions before the controller can select one.
-5. The controller produces structured decisions and calls one allowed tool.
-6. Tools create side effects, record idempotency keys, and write audit records.
+5. The controller produces structured decisions and waits for business-owner approval.
+6. Approved decisions call one allowed tool; tools create side effects, record idempotency keys, and write audit records.
 7. Evaluation separates simulated and Test Mode outcomes from estimates.
 
 ## Data model

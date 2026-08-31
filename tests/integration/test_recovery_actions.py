@@ -5,8 +5,10 @@ from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from app.db.tables import Customer, Decision, RecoveryCase
+from app.db.tables import AuditEvent, Customer, Decision, RecoveryCase
 from app.main import create_app
 
 NOW = datetime(2026, 8, 24, 10, tzinfo=UTC)
@@ -38,6 +40,16 @@ def app(database_url):
                     amount_at_risk=249900,
                     state="eligible",
                     attempts=0,
+                ),
+                Decision(
+                    decision_id="approval_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["payment_link", "contact", "retry", "promise", "escalate"],
+                    selected_action="payment_link",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
                 ),
             ]
         )
@@ -80,6 +92,32 @@ async def test_payment_link_uses_the_outstanding_amount_and_idempotency_key(app)
 
 @pytest.mark.asyncio
 async def test_case_accepts_only_one_action_transition(app):
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Decision(
+                    decision_id="approval_contact_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["contact"],
+                    selected_action="contact",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
+                Decision(
+                    decision_id="approval_retry_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["retry"],
+                    selected_action="retry",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
+            ]
+        )
+        session.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         first = await client.post(
             "/api/v1/cases/case_001/actions",
@@ -133,6 +171,7 @@ async def test_decision_uses_the_highest_ranked_allowed_action_when_model_is_una
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -160,6 +199,7 @@ async def test_decision_executes_a_valid_structured_model_action(app):
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -184,6 +224,7 @@ async def test_decision_rejects_malformed_model_output_and_uses_fallback(app):
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -204,6 +245,7 @@ async def test_decision_rejects_a_policy_blocked_model_action_and_uses_fallback(
         response = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-001", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert response.status_code == 201
@@ -218,13 +260,19 @@ async def test_decision_records_a_proposal_without_executing_until_approved(app)
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-proposal"},
         )
+        unauthorized = await client.post(
+            "/api/v1/cases/case_001/decisions",
+            json={"idempotency_key": "decision-proposal", "approved": True},
+        )
         approved = await client.post(
             "/api/v1/cases/case_001/decisions",
             json={"idempotency_key": "decision-proposal", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
         )
 
     assert proposed.status_code == 201
     assert proposed.json()["action"] is None
+    assert unauthorized.status_code == 403
     assert approved.status_code == 200
     assert approved.json()["action"]["status"] in {"completed", "pending"}
 
@@ -257,6 +305,43 @@ async def test_actions_require_an_eligible_case(app):
 
 
 @pytest.mark.asyncio
+async def test_actions_require_an_approved_decision(app):
+    with app.state.session_factory() as session:
+        session.add(
+            RecoveryCase(
+                case_id="case_without_approval",
+                customer_id="cust_001",
+                payment_id="pay_without_approval",
+                amount_at_risk=249900,
+                state="eligible",
+                attempts=0,
+            )
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_without_approval/actions",
+            json={"action": "payment_link", "idempotency_key": "link-without-approval"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": ["approval_required"]}
+
+
+@pytest.mark.asyncio
+async def test_actions_require_approval_for_the_requested_action(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_001/actions",
+            json={"action": "contact", "idempotency_key": "contact-unapproved"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": ["approval_required"]}
+
+
+@pytest.mark.asyncio
 async def test_action_records_any_provider_failure(database_url):
     def reject_payment_link(amount: int, idempotency_key: str) -> str:
         raise ValueError("provider unavailable")
@@ -277,6 +362,16 @@ async def test_action_records_any_provider_failure(database_url):
                     amount_at_risk=249900,
                     state="eligible",
                     attempts=0,
+                ),
+                Decision(
+                    decision_id="approval_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["payment_link"],
+                    selected_action="payment_link",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
                 ),
             ]
         )
@@ -325,6 +420,16 @@ async def test_action_records_provider_failure_without_creating_a_pending_action
                     state="eligible",
                     attempts=0,
                 ),
+                Decision(
+                    decision_id="approval_case_001",
+                    case_id="case_001",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["payment_link"],
+                    selected_action="payment_link",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                ),
             ]
         )
         session.commit()
@@ -372,6 +477,20 @@ async def test_successful_payment_cancels_pending_retry(app):
         separators=(",", ":"),
     ).encode()
     signature = hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
+    with app.state.session_factory() as session:
+        session.add(
+            Decision(
+                decision_id="approval_retry_case_001",
+                case_id="case_001",
+                policy_version="v1",
+                model_version="v1",
+                allowed_actions=["retry"],
+                selected_action="retry",
+                expected_value=1,
+                reason_json={"approval": {"required": True, "granted": True}},
+            )
+        )
+        session.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         scheduled = await client.post(
             "/api/v1/cases/case_001/actions",
@@ -397,3 +516,276 @@ async def test_successful_payment_cancels_pending_retry(app):
         "payload": {"action": "retry", "idempotency_key": "retry-001"},
     }
     assert audit.json()[-1]["event_type"] == "event.recorded"
+
+
+@pytest.mark.asyncio
+async def test_test_mode_trace_requires_human_resume_and_records_2499(database_url):
+    calls = 0
+
+    def provider(amount: int, idempotency_key: str) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("provider unavailable")
+        return "plink_test_recovery"
+
+    app = create_app(
+        database_url=database_url,
+        webhook_secret="test-secret",
+        policy_now=lambda: NOW,
+        create_payment_link=provider,
+        decide_recovery_action=lambda evidence: {"selected_action": "payment_link"},
+    )
+    failure = json.dumps(
+        {
+            "event": "payment.failed",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": "pay_trace",
+                        "amount": 249900,
+                        "currency": "INR",
+                        "method": "upi",
+                        "status": "failed",
+                        "error_code": "BAD_REQUEST_ERROR",
+                        "error_description": "insufficient funds",
+                        "created_at": 1724481000,
+                        "notes": {"customer_id": "cust_trace"},
+                        "order_id": "order_trace",
+                    }
+                }
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+    captured = json.dumps(
+        {
+            "event": "payment.captured",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": "pay_trace",
+                        "amount": 249900,
+                        "currency": "INR",
+                        "method": "upi",
+                        "status": "captured",
+                        "created_at": 1724481100,
+                        "notes": {"customer_id": "cust_trace"},
+                        "order_id": "order_trace",
+                    }
+                }
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+    with app.state.session_factory() as session:
+        session.add(Customer(customer_id="cust_trace", consent=True))
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        failure_response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=failure,
+            headers={
+                "X-Razorpay-Signature": hmac.new(
+                    b"test-secret", failure, hashlib.sha256
+                ).hexdigest()
+            },
+        )
+        investigated = await client.post("/api/v1/cases/case_order_trace/investigate")
+        proposal = await client.post(
+            "/api/v1/cases/case_order_trace/decisions",
+            json={"idempotency_key": "trace-decision"},
+        )
+        bypassed = await client.post(
+            "/api/v1/cases/case_order_trace/actions",
+            json={"action": "payment_link", "idempotency_key": "trace-bypass"},
+        )
+        failed = await client.post(
+            "/api/v1/cases/case_order_trace/decisions",
+            json={"idempotency_key": "trace-decision", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        denied_resume = await client.post(
+            "/api/v1/cases/case_order_trace/resume",
+            json={"idempotency_key": "trace-resume"},
+        )
+        resumed = await client.post(
+            "/api/v1/cases/case_order_trace/resume",
+            json={"idempotency_key": "trace-resume"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        resumed_duplicate = await client.post(
+            "/api/v1/cases/case_order_trace/resume",
+            json={"idempotency_key": "trace-resume"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        completed = await client.post(
+            "/api/v1/cases/case_order_trace/decisions",
+            json={"idempotency_key": "trace-success", "approved": True},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        capture_response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=captured,
+            headers={
+                "X-Razorpay-Signature": hmac.new(
+                    b"test-secret", captured, hashlib.sha256
+                ).hexdigest()
+            },
+        )
+        dashboard = await client.get("/api/v1/dashboard")
+        outcome = await client.get("/api/v1/cases/case_order_trace/outcome")
+        audit = await client.get("/api/v1/audit/case_order_trace")
+
+    assert failure_response.status_code == 202
+    assert investigated.status_code == 200
+    assert investigated.json()["new_state"] == "eligible"
+    assert investigated.json()["policy"]["allowed_actions"]
+    assert proposal.status_code == 201 and proposal.json()["action"] is None
+    assert bypassed.status_code == 409
+    assert bypassed.json() == {"detail": ["approval_required"]}
+    assert failed.status_code == 502
+    assert denied_resume.status_code == 403
+    assert resumed.json() == {
+        "case_id": "case_order_trace",
+        "previous_state": "escalated",
+        "new_state": "eligible",
+    }
+    assert resumed_duplicate.status_code == 200
+    assert resumed_duplicate.json() == resumed.json()
+    assert completed.status_code == 201
+    assert capture_response.status_code == 202
+    outcome_body = outcome.json()
+    assert outcome_body["outcome"] == {
+        "recovered": True,
+        "recovered_amount": 249900,
+        "contact_cost": 0,
+        "discount_cost": 0,
+        "resolved_at": outcome_body["outcome"]["resolved_at"],
+        "source": "razorpay_test",
+    }
+    assert outcome_body["outcome"]["resolved_at"].startswith("2024-08-24T06:31:40")
+    assert outcome_body["evidence"] == {
+        "event_id": f"evt_{hashlib.sha256(captured).hexdigest()}",
+        "provider_event_id": hashlib.sha256(captured).hexdigest(),
+        "payment_id": "pay_trace",
+        "obligation_reference": "order_trace",
+        "amount": 249900,
+        "occurred_at": "2024-08-24T06:31:40+00:00",
+        "source": "razorpay_test",
+    }
+    assert dashboard.json()["executive"]["test_mode_value"] == 249900
+    event_types = [event["event_type"] for event in audit.json()]
+    assert event_types.count("outcome.recorded") == 1
+    assert "human.approval_required" in event_types
+    assert "human.approval_granted" in event_types
+    assert "case.escalated" in event_types
+    assert audit.json()[event_types.index("case.escalated")]["payload"]["owner"] == "business_owner"
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_resume_rechecks_current_policy_and_leaves_blocked_case_escalated(database_url):
+    app = create_app(
+        database_url=database_url,
+        webhook_secret="test-secret",
+        policy_now=lambda: NOW,
+        kill_switch=True,
+    )
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Customer(customer_id="cust_resume", consent=True),
+                RecoveryCase(
+                    case_id="case_resume",
+                    customer_id="cust_resume",
+                    payment_id="pay_resume",
+                    amount_at_risk=249900,
+                    state="escalated",
+                    attempts=0,
+                ),
+            ]
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        blocked = await client.post(
+            "/api/v1/cases/case_resume/resume",
+            json={"idempotency_key": "resume-policy"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        cases_after_block = await client.get("/api/v1/cases")
+        audit = await client.get("/api/v1/audit/case_resume")
+        app.state.kill_switch = False
+        resumed = await client.post(
+            "/api/v1/cases/case_resume/resume",
+            json={"idempotency_key": "resume-policy"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == {
+        action: ["kill_switch"]
+        for action in ["payment_link", "contact", "retry", "promise", "escalate"]
+    }
+    assert [case for case in cases_after_block.json() if case["case_id"] == "case_resume"][0][
+        "state"
+    ] == "escalated"
+    assert audit.json()[-1]["event_type"] == "case.resume_blocked"
+    assert resumed.status_code == 200
+    assert resumed.json() == {
+        "case_id": "case_resume",
+        "previous_state": "escalated",
+        "new_state": "eligible",
+    }
+
+
+@pytest.mark.asyncio
+async def test_resume_idempotency_key_cannot_cross_cases(app):
+    with app.state.session_factory() as session:
+        case = session.get(RecoveryCase, "case_001")
+        assert case is not None
+        case.state = "escalated"
+        session.add(
+            RecoveryCase(
+                case_id="case_002",
+                customer_id="cust_001",
+                payment_id="pay_002",
+                amount_at_risk=249900,
+                state="escalated",
+                attempts=0,
+            )
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/cases/case_001/resume",
+            json={"idempotency_key": "shared-resume"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+        second = await client.post(
+            "/api/v1/cases/case_002/resume",
+            json={"idempotency_key": "shared-resume"},
+            headers={"X-Reroute-Role": "business_owner"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json() == {"detail": "idempotency key belongs to another case"}
+
+
+def test_audit_events_are_append_only(app):
+    with app.state.session_factory() as session:
+        session.add(AuditEvent(case_id="case_001", event_type="test.audit", payload={"ok": True}))
+        session.commit()
+        with pytest.raises(IntegrityError, match="audit events are immutable"):
+            session.execute(
+                text("UPDATE audit_events SET event_type = 'tampered' WHERE case_id = 'case_001'")
+            )
+            session.commit()
+        session.rollback()
+        with pytest.raises(IntegrityError, match="audit events are immutable"):
+            session.execute(text("DELETE FROM audit_events WHERE case_id = 'case_001'"))
+            session.commit()

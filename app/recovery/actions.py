@@ -9,7 +9,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.tables import ActionEvent, AuditEvent, RecoveryCase
+from app.db.tables import ActionEvent, AuditEvent, Decision, RecoveryCase
 from app.domain.enums import CaseState
 from app.domain.models import ActionResponse
 from app.domain.state_machine import transition_case
@@ -18,6 +18,22 @@ from app.policy import evaluate_policy
 
 class ProviderError(Exception):
     pass
+
+
+def _decision_with_approval(
+    session: Session, case_id: str, action: str, granted: bool
+) -> Decision | None:
+    decisions = session.scalars(
+        select(Decision).where(
+            Decision.case_id == case_id,
+            Decision.selected_action == action,
+        )
+    ).all()
+    for decision in decisions:
+        approval = decision.reason_json.get("approval")
+        if isinstance(approval, dict) and approval.get("granted") is granted:
+            return decision
+    return None
 
 
 def execute_action(
@@ -50,6 +66,30 @@ def execute_action(
 
     if case.state != CaseState.ELIGIBLE:
         raise PermissionError(["invalid_state"])
+
+    pending_approval = _decision_with_approval(session, case.case_id, action, granted=False)
+    approved_decision = _decision_with_approval(session, case.case_id, action, granted=True)
+    if pending_approval is not None or approved_decision is None:
+        session.add(
+            AuditEvent(
+                case_id=case.case_id,
+                event_type="action.blocked",
+                payload={
+                    "action": action,
+                    "idempotency_key": idempotency_key,
+                    "reasons": ["approval_required"],
+                    "decision_id": (
+                        pending_approval.decision_id
+                        if pending_approval is not None
+                        else approved_decision.decision_id
+                        if approved_decision is not None
+                        else None
+                    ),
+                },
+            )
+        )
+        session.commit()
+        raise PermissionError(["approval_required"])
 
     policy = evaluate_policy(
         session,
@@ -167,7 +207,12 @@ def execute_action(
                     },
                 )
             )
-            transition_case(session, case, CaseState.ESCALATED)
+            transition_case(
+                session,
+                case,
+                CaseState.ESCALATED,
+                payload_extra={"owner": "business_owner", "reason": "provider_failure"},
+            )
             session.commit()
             raise ProviderError(str(error)) from error
 

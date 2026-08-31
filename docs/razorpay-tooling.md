@@ -177,7 +177,9 @@ payload = {
 
 Via `app/recovery/actions.py:107` the `payment_link` action calls it with `(case.amount_at_risk, idempotency_key)`. It returns `short_url` like `https://rzp.io/rzp/...` or the link `id`. On failure it raises and the action is recorded as `action.failed` with `502`.
 
-You can also create one directly via MCP or CLI without touching code.
+You can also create one directly via MCP or CLI without touching code. Within
+ReRoute, a persisted decision and business-owner approval are required before
+the action endpoint attempts the provider call.
 
 ## Test it
 
@@ -197,7 +199,10 @@ curl -X POST http://127.0.0.1:8000/api/v1/cases/case_demo_hard_decline/actions \
 # check audit: curl http://127.0.0.1:8000/api/v1/audit/case_demo_hard_decline
 ```
 
-If keys are empty you will get `payment link provider is not configured`. That is the mock path the demo uses.
+The direct action call is gated with `approval_required` until a persisted
+decision is approved by a business owner. If keys are empty after approval,
+you will get `payment link provider is not configured`. That is the mock path
+the demo uses.
 
 ## Webhook payload
 
@@ -232,6 +237,7 @@ CLI or dashboard creates Test Mode payment
   -> app/api/webhooks.py verifies HMAC, stores raw body
   -> ingestion normalizes to PaymentEvent
   -> detector, policy, recovery scorer
+  -> persisted decision and business-owner approval
   -> action: mock or Test Mode payment_link via provider callback
   -> audit events and dashboard
 
@@ -260,7 +266,8 @@ See `docs/architecture.md` for the core flow and `README.md` for the five-minute
 5. Ranker scores allowed actions
    -> expected value 0.40 * 500 - 25 = 175 INR
 
-6. Agent executes payment_link via app/recovery/actions.py
+6. Business owner approves the persisted payment_link decision
+   -> app/recovery/actions.py executes the approved action
    -> calls app/integrations/razorpay.py with amount 50000 and reference_id case_123
 
 7. Razorpay returns link

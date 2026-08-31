@@ -26,8 +26,9 @@ The FastAPI app serves local assets at `/static` from `app/static`.
 
 The first persisted case is the overview story. The UI shows its amount at risk, failed provider
 evidence, recorded policy decision, recovery action, audit records, and provider outcome in API
-order. Approval controls keep the existing action endpoint and idempotency behavior. The UI does
-not manufacture trace steps or recovery results.
+order. Approval controls create a persisted, action-specific decision before
+the existing execution path runs, while retaining idempotency behavior. The
+UI does not manufacture trace steps or recovery results.
 
 ## Evidence boundaries
 

@@ -1,8 +1,8 @@
 {
   "duplicate_delivery": ["case.detected", "event.recorded", "event.duplicate"],
   "late_success": [
-    "action.started",
     "case.action_selected",
+    "action.started",
     "case.awaiting_outcome",
     "action.pending",
     "case.recovered",
@@ -11,5 +11,10 @@
   ],
   "opt_out": ["case.detected", "event.recorded", "action.blocked"],
   "hard_decline": ["case.detected", "event.recorded", "action.blocked"],
-  "provider_failure": ["action.started", "action.failed", "case.escalated"]
+  "provider_failure": [
+    "case.action_selected",
+    "action.started",
+    "action.failed",
+    "case.escalated"
+  ]
 }

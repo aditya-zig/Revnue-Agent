@@ -5,7 +5,7 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
-from app.db.tables import Customer, Decision, RecoveryCase
+from app.db.tables import AuditEvent, Customer, Decision, RecoveryCase
 from app.domain.models import DecisionResponse, StructuredDecision
 from app.policy import evaluate_policy
 from app.recovery.actions import execute_action
@@ -23,6 +23,7 @@ def run_decision(
     recovery_model: RecoveryModel,
     decide_recovery_action: Callable[[dict], object] | None,
     approved: bool = False,
+    requested_action: str | None = None,
     kill_switch: bool = False,
     contact_limit: int = 3,
     policy_version: str = "v1",
@@ -32,8 +33,27 @@ def run_decision(
     if existing is not None:
         if existing.case_id != case.case_id:
             raise ValueError("idempotency key belongs to another decision")
+        if requested_action is not None and existing.selected_action != requested_action:
+            raise ValueError("idempotency key belongs to another action")
         result = None
         if approved:
+            approval = existing.reason_json.get("approval")
+            already_granted = isinstance(approval, dict) and approval.get("granted") is True
+            if not already_granted:
+                existing.reason_json = {
+                    **existing.reason_json,
+                    "approval": {"required": True, "granted": True},
+                }
+                session.add(
+                    AuditEvent(
+                        case_id=case.case_id,
+                        event_type="human.approval_granted",
+                        payload={
+                            "decision_id": existing.decision_id,
+                            "selected_action": existing.selected_action,
+                        },
+                    )
+                )
             result, _ = execute_action(
                 session,
                 case,
@@ -84,9 +104,17 @@ def run_decision(
         "policy": policy.model_dump(),
         "scores": scores,
     }
-    selected_action, selection_source, rejection = _select_action(
-        evidence, policy.allowed_actions, decide_recovery_action
-    )
+    selection_source: Literal["model", "fallback"]
+    if requested_action is not None:
+        if requested_action not in policy.allowed_actions:
+            raise PermissionError(
+                policy.blocked_reasons.get(requested_action, ["action_not_allowed"])
+            )
+        selected_action, selection_source, rejection = requested_action, "fallback", None
+    else:
+        selected_action, selection_source, rejection = _select_action(
+            evidence, policy.allowed_actions, decide_recovery_action
+        )
     session.add(
         Decision(
             decision_id=decision_id,
@@ -104,10 +132,18 @@ def run_decision(
                 "evidence": evidence,
                 "selection_source": selection_source,
                 "rejection": rejection,
+                "approval": {"required": True, "granted": approved},
             },
         )
     )
     if not approved:
+        session.add(
+            AuditEvent(
+                case_id=case.case_id,
+                event_type="human.approval_required",
+                payload={"decision_id": decision_id, "selected_action": selected_action},
+            )
+        )
         session.commit()
         return (
             DecisionResponse(
@@ -121,6 +157,13 @@ def run_decision(
             ),
             False,
         )
+    session.add(
+        AuditEvent(
+            case_id=case.case_id,
+            event_type="human.approval_granted",
+            payload={"decision_id": decision_id, "selected_action": selected_action},
+        )
+    )
     result, duplicate = execute_action(
         session,
         case,
