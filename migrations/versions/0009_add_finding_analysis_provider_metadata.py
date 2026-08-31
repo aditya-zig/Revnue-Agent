@@ -38,6 +38,7 @@ def upgrade() -> None:
 
     # Migration metadata is provenance for existing rows, so temporarily disable
     # the immutability trigger while adding those columns.
+    op.execute("DROP TRIGGER finding_analyses_no_delete")
     op.execute("DROP TRIGGER finding_analyses_no_update")
     op.get_bind().execute(
         sa.text(
@@ -60,9 +61,15 @@ def upgrade() -> None:
         "CREATE TRIGGER finding_analyses_no_update BEFORE UPDATE ON finding_analyses "
         "BEGIN SELECT RAISE(ABORT, 'finding analyses are immutable'); END"
     )
+    op.execute(
+        "CREATE TRIGGER finding_analyses_no_delete BEFORE DELETE ON finding_analyses "
+        "BEGIN SELECT RAISE(ABORT, 'finding analyses are immutable'); END"
+    )
 
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER finding_analyses_no_delete")
+    op.execute("DROP TRIGGER finding_analyses_no_update")
     with op.batch_alter_table("finding_analyses") as batch_op:
         batch_op.drop_column("fallback_used")
         batch_op.drop_column("failure_reason")
@@ -73,3 +80,11 @@ def downgrade() -> None:
         batch_op.drop_column("resolved_model")
         batch_op.drop_column("requested_model")
         batch_op.drop_column("provider")
+    op.execute(
+        "CREATE TRIGGER finding_analyses_no_update BEFORE UPDATE ON finding_analyses "
+        "BEGIN SELECT RAISE(ABORT, 'finding analyses are immutable'); END"
+    )
+    op.execute(
+        "CREATE TRIGGER finding_analyses_no_delete BEFORE DELETE ON finding_analyses "
+        "BEGIN SELECT RAISE(ABORT, 'finding analyses are immutable'); END"
+    )

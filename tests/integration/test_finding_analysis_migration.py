@@ -72,4 +72,10 @@ def test_provider_metadata_migration_preserves_historical_deterministic_provenan
                 "UPDATE finding_analyses SET provider = 'openrouter' "
                 "WHERE analysis_id = 'analysis_historical'"
             )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "DELETE FROM finding_analyses WHERE analysis_id = 'analysis_historical'"
+            )
     engine.dispose()
