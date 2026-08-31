@@ -22,9 +22,9 @@ Point to the finding's cohort filter, support, source event identifiers, failed
 value, unresolved value, recovery probability, confidence, and recoverable
 impact. Call the impact an estimate. It is not booked revenue or a forecast.
 Use Explain finding to explicitly save an advisory result. If no OpenRouter key
-is configured, it records the deterministic fallback; with a key, it records
-bounded model hypotheses and validation steps. Refreshing the dashboard
-retrieves that record.
+is configured, or the provider request fails, it records the deterministic
+fallback; when the request succeeds, it records bounded model hypotheses and
+validation steps. Refreshing the dashboard retrieves that record.
 
 ## 0:40 to 1:35. Bounded action
 
