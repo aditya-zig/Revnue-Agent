@@ -304,6 +304,18 @@ async def test_actions_require_an_approved_decision(app):
 
 
 @pytest.mark.asyncio
+async def test_actions_require_approval_for_the_requested_action(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_001/actions",
+            json={"action": "contact", "idempotency_key": "contact-unapproved"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": ["approval_required"]}
+
+
+@pytest.mark.asyncio
 async def test_action_records_any_provider_failure(database_url):
     def reject_payment_link(amount: int, idempotency_key: str) -> str:
         raise ValueError("provider unavailable")

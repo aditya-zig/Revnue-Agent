@@ -71,7 +71,11 @@ def execute_action(
 
     pending_approval = _unapproved_decision(session, case.case_id)
     approved_decision = _approved_decision(session, case.case_id)
-    if pending_approval is not None or approved_decision is None:
+    if (
+        pending_approval is not None
+        or approved_decision is None
+        or approved_decision.selected_action != action
+    ):
         session.add(
             AuditEvent(
                 case_id=case.case_id,
@@ -83,6 +87,8 @@ def execute_action(
                     "decision_id": (
                         pending_approval.decision_id
                         if pending_approval is not None
+                        else approved_decision.decision_id
+                        if approved_decision is not None
                         else None
                     ),
                 },
