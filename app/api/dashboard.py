@@ -93,9 +93,9 @@ def get_dashboard(request: Request) -> dict:
             case.amount_at_risk for case in cases if case.state not in {"recovered", "stopped"}
         )
         revenue_sources = {
-            item["evidence"]["provider"]
+            item["evidence"].get("provider") if item["evidence"] else None
             for item in worklist
-            if item["state"] not in {"recovered", "stopped"} and item["evidence"]
+            if item["state"] not in {"recovered", "stopped"}
         }
         revenue_at_risk_claim_tag = (
             "MOCK"
