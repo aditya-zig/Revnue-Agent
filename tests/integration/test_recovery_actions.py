@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.db.tables import AuditEvent, Customer, Decision, RecoveryCase
+from app.db.tables import AuditEvent, CheckoutOrder, Customer, Decision, RecoveryCase
 from app.integrations.razorpay import PaymentLinkReference
 from app.main import create_app
 
@@ -606,7 +606,23 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
         separators=(",", ":"),
     ).encode()
     with app.state.session_factory() as session:
-        session.add(Customer(customer_id="cust_trace", consent=True))
+        session.add_all(
+            [
+                Customer(customer_id="cust_trace", consent=True),
+                CheckoutOrder(
+                    checkout_id="checkout_trace",
+                    idempotency_key="trace-checkout",
+                    provider_order_id="order_trace",
+                    obligation_reference="order_trace",
+                    product_code="dumbbell_5kg",
+                    product_name="5 kg Dumbbell",
+                    amount=249900,
+                    currency="INR",
+                    status="created",
+                    provider="razorpay_test",
+                ),
+            ]
+        )
         session.commit()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

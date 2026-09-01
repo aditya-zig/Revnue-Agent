@@ -8,7 +8,14 @@ from sqlalchemy import select
 
 from app.core.requests import read_limited_body
 from app.core.security import verify_razorpay_signature
-from app.db.tables import ActionEvent, AuditEvent, CheckoutOrder, PaymentException, RecoveryCase
+from app.db.tables import (
+    ActionEvent,
+    AuditEvent,
+    CheckoutOrder,
+    PaymentEvent,
+    PaymentException,
+    RecoveryCase,
+)
 from app.domain.models import NormalizedPaymentEvent
 from app.ingestion.record_event import record_event_and_update_case
 
@@ -50,23 +57,32 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
 
     factory = request.app.state.session_factory
     with factory() as session:
-        _validate_checkout_order_terms(session, event)
-        _correlate_recovery_payment(session, payload, event)
-        if not record_event_and_update_case(session, event):
-            case = _case_for_event(session, event)
-            if case:
-                session.add(
-                    AuditEvent(
-                        case_id=case.case_id,
-                        event_type="event.duplicate",
-                        payload={"event_id": event.event_id, "event_type": event.event_type},
-                    )
-                )
-                session.commit()
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content={"event_id": event.event_id, "status": "duplicate"},
+        # Check the signed identity before any payload-derived correlation. A
+        # provider event ID is immutable evidence: a second signed body with
+        # the same ID is a conflict, not a duplicate delivery.
+        existing_event = session.scalar(
+            select(PaymentEvent).where(
+                PaymentEvent.provider_event_id == event.provider_event_id
             )
+        )
+        if existing_event is not None:
+            if existing_event.raw_hash != event.raw_hash:
+                return _conflict_response(session, existing_event, event)
+            return _duplicate_response(session, event)
+
+        _correlate_recovery_payment(session, payload, event)
+        _validate_checkout_order_terms(session, event)
+        if not record_event_and_update_case(session, event):
+            # Another worker may have inserted the event after the identity
+            # check. Re-read the authoritative row before classifying it.
+            existing_event = session.scalar(
+                select(PaymentEvent).where(
+                    PaymentEvent.provider_event_id == event.provider_event_id
+                )
+            )
+            if existing_event is not None and existing_event.raw_hash != event.raw_hash:
+                return _conflict_response(session, existing_event, event)
+            return _duplicate_response(session, event)
         if event.error_reason == "payment_reversed":
             case = _case_for_event(session, event)
             if case is not None:
@@ -75,8 +91,54 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
     return {"event_id": event.event_id, "status": "accepted"}
 
 
+def _conflict_response(
+    session, existing_event: PaymentEvent, event: NormalizedPaymentEvent
+) -> JSONResponse:
+    case = _case_for_identity(
+        session, existing_event.payment_id, existing_event.obligation_reference
+    )
+    if case:
+        session.add(
+            AuditEvent(
+                case_id=case.case_id,
+                event_type="event.conflict",
+                payload={
+                    "event_id": existing_event.event_id,
+                    "provider_event_id": existing_event.provider_event_id,
+                },
+            )
+        )
+        session.commit()
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"event_id": event.event_id, "status": "conflict"},
+    )
+
+
+def _duplicate_response(session, event: NormalizedPaymentEvent) -> JSONResponse:
+    case = _case_for_event(session, event)
+    if case:
+        session.add(
+            AuditEvent(
+                case_id=case.case_id,
+                event_type="event.duplicate",
+                payload={"event_id": event.event_id, "event_type": event.event_type},
+            )
+        )
+        session.commit()
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"event_id": event.event_id, "status": "duplicate"},
+    )
+
+
 def _validate_checkout_order_terms(session, event: NormalizedPaymentEvent) -> None:
-    """Reject signed events that contradict a persisted storefront order."""
+    """Reject unowned or contradictory signed order-linked events.
+
+    A storefront CheckoutOrder is the authoritative owner of its amount and
+    currency. An unknown reference can never bootstrap a PaymentEvent or case
+    from provider-supplied terms.
+    """
     if not event.obligation_reference:
         return
     order = session.scalar(
@@ -84,9 +146,12 @@ def _validate_checkout_order_terms(session, event: NormalizedPaymentEvent) -> No
             CheckoutOrder.provider_order_id == event.obligation_reference
         )
     )
-    if order is not None and (
-        event.amount != order.amount or event.currency != order.currency
-    ):
+    if order is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="webhook order reference is not owned",
+        )
+    if event.amount != order.amount or event.currency != order.currency:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="webhook amount or currency does not match checkout order",
@@ -126,27 +191,33 @@ def _correlate_recovery_payment(session, payload: dict, event: NormalizedPayment
         event.obligation_reference = case.obligation_reference
 
 
-def _case_for_event(session, event: NormalizedPaymentEvent) -> RecoveryCase | None:
-    if event.obligation_reference:
+def _case_for_identity(
+    session, payment_id: str, obligation_reference: str | None
+) -> RecoveryCase | None:
+    if obligation_reference:
         case = session.scalar(
             select(RecoveryCase).where(
-                RecoveryCase.obligation_reference == event.obligation_reference
+                RecoveryCase.obligation_reference == obligation_reference
             )
         )
         if case is not None:
             return case
         return session.scalar(
             select(RecoveryCase).where(
-                RecoveryCase.payment_id == event.payment_id,
+                RecoveryCase.payment_id == payment_id,
                 RecoveryCase.obligation_reference.is_(None),
             )
         )
     return session.scalar(
         select(RecoveryCase).where(
-            RecoveryCase.payment_id == event.payment_id,
+            RecoveryCase.payment_id == payment_id,
             RecoveryCase.obligation_reference.is_(None),
         )
     )
+
+
+def _case_for_event(session, event: NormalizedPaymentEvent) -> RecoveryCase | None:
+    return _case_for_identity(session, event.payment_id, event.obligation_reference)
 
 
 def _open_provider_reversal_exception(

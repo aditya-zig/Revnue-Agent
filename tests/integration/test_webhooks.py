@@ -7,7 +7,15 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
-from app.db.tables import ActionEvent, CheckoutOrder, Customer, Outcome, PaymentEvent, RecoveryCase
+from app.db.tables import (
+    ActionEvent,
+    AuditEvent,
+    CheckoutOrder,
+    Customer,
+    Outcome,
+    PaymentEvent,
+    RecoveryCase,
+)
 from app.main import create_app
 
 
@@ -96,6 +104,43 @@ async def test_verified_failure_creates_one_case_and_audit_record(app):
             },
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_order_linked_webhook_without_an_owned_checkout_is_rejected_without_ingestion(
+    app,
+):
+    payload = {
+        "id": "signed_unowned_order_event",
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_unowned_order",
+                    "amount": 249900,
+                    "currency": "INR",
+                    "status": "failed",
+                    "created_at": 1724481000,
+                    "order_id": "order_not_created_by_storefront",
+                }
+            }
+        },
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=body,
+            headers={"X-Razorpay-Signature": signature(body)},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "webhook order reference is not owned"}
+    with app.state.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(PaymentEvent)) == 0
+        assert session.scalar(select(func.count()).select_from(RecoveryCase)) == 0
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == 0
 
 
 @pytest.mark.asyncio
@@ -188,6 +233,63 @@ async def test_same_signed_webhook_with_changed_unsigned_event_header_is_duplica
     assert duplicate.json() == {"event_id": "evt_signed_event_001", "status": "duplicate"}
     with app.state.session_factory() as session:
         assert session.scalar(select(func.count()).select_from(PaymentEvent)) == 1
+
+
+@pytest.mark.asyncio
+async def test_same_signed_event_id_with_changed_raw_hash_is_a_conflict(app):
+    def body(description: str) -> bytes:
+        return json.dumps(
+            {
+                "id": "signed_event_conflict",
+                "event": "payment.failed",
+                "payload": {
+                    "payment": {
+                        "entity": {
+                            "id": "pay_event_conflict",
+                            "amount": 50000,
+                            "currency": "INR",
+                            "status": "failed",
+                            "error_description": description,
+                            "created_at": 1567610214,
+                        }
+                    }
+                },
+            },
+            separators=(",", ":"),
+        ).encode()
+
+    original_body = body("first signed description")
+    changed_body = body("changed signed description")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=original_body,
+            headers={"X-Razorpay-Signature": signature(original_body)},
+        )
+        conflict = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=changed_body,
+            headers={"X-Razorpay-Signature": signature(changed_body)},
+        )
+        audit = await client.get("/api/v1/audit/case_pay_event_conflict")
+
+    assert first.status_code == 202
+    assert conflict.status_code == 409
+    assert conflict.json() == {
+        "event_id": "evt_signed_event_conflict",
+        "status": "conflict",
+    }
+    with app.state.session_factory() as session:
+        event = session.get(PaymentEvent, "evt_signed_event_conflict")
+        assert event is not None
+        assert event.raw_hash == hashlib.sha256(original_body).hexdigest()
+        assert event.error_reason == "first signed description"
+        assert session.scalar(select(func.count()).select_from(PaymentEvent)) == 1
+    assert [item["event_type"] for item in audit.json()] == [
+        "case.detected",
+        "event.recorded",
+        "event.conflict",
+    ]
 
 
 @pytest.mark.asyncio
@@ -383,6 +485,18 @@ async def test_captured_webhook_does_not_attribute_failure_from_another_obligati
             [
                 Customer(customer_id="cust_obligation_a", consent=True),
                 Customer(customer_id="cust_obligation_b", consent=True),
+                CheckoutOrder(
+                    checkout_id="checkout_order_a",
+                    idempotency_key="checkout-order-a",
+                    provider_order_id="order_a",
+                    obligation_reference="order_a",
+                    product_code="dumbbell_5kg",
+                    product_name="5 kg Dumbbell",
+                    amount=249900,
+                    currency="INR",
+                    status="created",
+                    provider="razorpay_test",
+                ),
                 RecoveryCase(
                     case_id="case_order_a",
                     customer_id="cust_obligation_a",
@@ -451,6 +565,101 @@ async def test_captured_webhook_does_not_attribute_failure_from_another_obligati
         case_a = session.get(RecoveryCase, "case_order_a")
         assert case_a is not None
         assert case_a.state == "awaiting_outcome"
+
+
+@pytest.mark.asyncio
+async def test_recovery_link_capture_currency_mismatch_is_rejected_before_recovery(
+    app,
+):
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                CheckoutOrder(
+                    checkout_id="checkout_link_currency",
+                    idempotency_key="link-currency",
+                    provider_order_id="order_link_currency",
+                    obligation_reference="order_link_currency",
+                    product_code="dumbbell_5kg",
+                    product_name="5 kg Dumbbell",
+                    amount=249900,
+                    currency="INR",
+                    status="created",
+                    provider="razorpay_test",
+                ),
+                RecoveryCase(
+                    case_id="case_order_link_currency",
+                    payment_id="pay_link_failure",
+                    obligation_reference="order_link_currency",
+                    amount_at_risk=249900,
+                    state="awaiting_outcome",
+                    attempts=0,
+                ),
+                PaymentEvent(
+                    event_id="evt_link_currency_failure",
+                    provider_event_id="provider_link_currency_failure",
+                    event_type="payment.failed",
+                    payment_id="pay_link_failure",
+                    obligation_reference="order_link_currency",
+                    amount=249900,
+                    currency="INR",
+                    status="failed",
+                    occurred_at=datetime(2024, 8, 24, 6, 31, tzinfo=UTC),
+                    provider="razorpay_test",
+                    raw_hash="link-currency-failure-hash",
+                ),
+                ActionEvent(
+                    action_id="action_link_currency",
+                    case_id="case_order_link_currency",
+                    idempotency_key="link-currency-action",
+                    tool="payment_link",
+                    input_hash="link-currency-action-hash",
+                    status="completed",
+                    provider_reference="https://rzp.io/rzp/link-currency",
+                    provider_reference_id="plink_link_currency",
+                ),
+            ]
+        )
+        session.commit()
+
+    payload = {
+        "id": "signed_link_currency_capture",
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_link_capture",
+                    "payment_link_id": "plink_link_currency",
+                    "amount": 249900,
+                    "currency": "USD",
+                    "status": "captured",
+                    "created_at": 1724481100,
+                }
+            }
+        },
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=body,
+            headers={"X-Razorpay-Signature": signature(body)},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "webhook amount or currency does not match checkout order"
+    }
+    with app.state.session_factory() as session:
+        case = session.get(RecoveryCase, "case_order_link_currency")
+        order = session.get(CheckoutOrder, "checkout_link_currency")
+        assert case is not None
+        assert case.state == "awaiting_outcome"
+        assert order is not None
+        assert order.status == "created"
+        assert order.payment_id is None
+        assert session.scalar(select(Outcome).where(Outcome.case_id == case.case_id)) is None
+        assert session.scalar(select(func.count()).select_from(PaymentEvent)) == 1
 
 
 @pytest.mark.asyncio
@@ -664,6 +873,22 @@ async def test_matching_captured_webhook_records_one_outcome_on_duplicate_delive
 
     failure = body("payment.failed", 1724481000)
     capture = body("payment.captured", 1724481100)
+    with app.state.session_factory() as session:
+        session.add(
+            CheckoutOrder(
+                checkout_id="checkout_duplicate_capture",
+                idempotency_key="duplicate-capture",
+                provider_order_id="order_duplicate_capture",
+                obligation_reference="order_duplicate_capture",
+                product_code="dumbbell_5kg",
+                product_name="5 kg Dumbbell",
+                amount=249900,
+                currency="INR",
+                status="created",
+                provider="razorpay_test",
+            )
+        )
+        session.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         failed = await client.post(
             "/api/v1/webhooks/razorpay",
