@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.requests import read_limited_body
 from app.core.security import verify_razorpay_signature
-from app.db.tables import ActionEvent, AuditEvent, PaymentException, RecoveryCase
+from app.db.tables import ActionEvent, AuditEvent, CheckoutOrder, PaymentException, RecoveryCase
 from app.domain.models import NormalizedPaymentEvent
 from app.ingestion.record_event import record_event_and_update_case
 
@@ -44,12 +44,13 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
         event.raw_body = body
     except (KeyError, TypeError, ValueError) as error:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="invalid webhook payload",
         ) from error
 
     factory = request.app.state.session_factory
     with factory() as session:
+        _validate_checkout_order_terms(session, event)
         _correlate_recovery_payment(session, payload, event)
         if not record_event_and_update_case(session, event):
             case = _case_for_event(session, event)
@@ -72,6 +73,24 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
                 _open_provider_reversal_exception(session, case, event)
         session.commit()
     return {"event_id": event.event_id, "status": "accepted"}
+
+
+def _validate_checkout_order_terms(session, event: NormalizedPaymentEvent) -> None:
+    """Reject signed events that contradict a persisted storefront order."""
+    if not event.obligation_reference:
+        return
+    order = session.scalar(
+        select(CheckoutOrder).where(
+            CheckoutOrder.provider_order_id == event.obligation_reference
+        )
+    )
+    if order is not None and (
+        event.amount != order.amount or event.currency != order.currency
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="webhook amount or currency does not match checkout order",
+        )
 
 
 def _correlate_recovery_payment(session, payload: dict, event: NormalizedPaymentEvent) -> None:

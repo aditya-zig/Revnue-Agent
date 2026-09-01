@@ -287,16 +287,21 @@ async def test_uncertain_order_creation_reconciles_the_same_receipt_without_a_se
     database_url,
 ):
     provider_calls = 0
-    lookup_receipts: list[str] = []
+    lookup_terms: list[tuple[str, int, str]] = []
 
     def create_order(amount: int, idempotency_key: str) -> str:
         nonlocal provider_calls
         provider_calls += 1
         raise TimeoutError("provider response was lost")
 
-    def find_order(receipt: str) -> dict[str, str]:
-        lookup_receipts.append(receipt)
-        return {"id": "order_reconciled_after_timeout", "receipt": receipt}
+    def find_order(receipt: str, amount: int, currency: str) -> dict[str, str | int]:
+        lookup_terms.append((receipt, amount, currency))
+        return {
+            "id": "order_reconciled_after_timeout",
+            "receipt": receipt,
+            "amount": amount,
+            "currency": currency,
+        }
 
     app = create_app(
         database_url=database_url,
@@ -334,7 +339,7 @@ async def test_uncertain_order_creation_reconciles_the_same_receipt_without_a_se
     assert recovered.status_code == 200
     assert recovered.json()["order_id"] == "order_reconciled_after_timeout"
     assert provider_calls == 1
-    assert lookup_receipts == [receipt]
+    assert lookup_terms == [(receipt, 249900, "INR")]
     with app.state.session_factory() as session:
         order = session.scalar(
             select(CheckoutOrder).where(CheckoutOrder.idempotency_key == "uncertain-checkout")
@@ -394,6 +399,97 @@ async def test_stale_order_without_provider_match_is_created_once_after_reconcil
     assert response.json()["order_id"] == "order_created_after_stale_recovery"
     assert provider_calls == [(249900, idempotency_key)]
     assert lookup_receipts == [receipt]
+    with app.state.session_factory() as session:
+        order = session.scalar(
+            select(CheckoutOrder).where(CheckoutOrder.idempotency_key == "stale-checkout")
+        )
+        assert order is not None
+        assert order.amount == 249900
+        assert order.currency == "INR"
+        assert order.status == "created"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lookup_shape", ["sparse", "multiple", "unrelated"])
+async def test_stale_order_reconciliation_fails_closed_without_a_blind_post(
+    database_url, lookup_shape: str
+):
+    provider_calls: list[tuple[int, str]] = []
+    idempotency_key = f"ambiguous-{lookup_shape}"
+    receipt = order_receipt_for_idempotency_key(idempotency_key)
+    created_at = datetime.now(UTC) - timedelta(minutes=10)
+
+    def create_order(amount: int, key: str) -> str:
+        provider_calls.append((amount, key))
+        return "order_must_not_be_created"
+
+    def find_order(receipt_to_find: str) -> dict[str, object]:
+        if lookup_shape == "sparse":
+            return {"id": "order_sparse", "receipt": receipt_to_find}
+        if lookup_shape == "multiple":
+            return {
+                "items": [
+                    {
+                        "id": "order_a",
+                        "receipt": receipt_to_find,
+                        "amount": 249900,
+                        "currency": "INR",
+                    },
+                    {
+                        "id": "order_b",
+                        "receipt": receipt_to_find,
+                        "amount": 249900,
+                        "currency": "INR",
+                    },
+                ]
+            }
+        return {
+            "id": "order_unrelated",
+            "receipt": "other-receipt",
+            "amount": 249900,
+            "currency": "INR",
+        }
+
+    app = create_app(
+        database_url=database_url,
+        razorpay_key_id="rzp_test_local",
+        razorpay_key_secret=CHECKOUT_SECRET,
+        create_order=create_order,
+        find_order_by_receipt=find_order,
+    )
+    with app.state.session_factory() as session:
+        session.add(
+            CheckoutOrder(
+                checkout_id=f"checkout_{lookup_shape}",
+                idempotency_key=idempotency_key,
+                provider_receipt=receipt,
+                product_code="dumbbell_5kg",
+                product_name="5 kg Dumbbell",
+                amount=249900,
+                currency="INR",
+                status="creating",
+                creating_started_at=created_at,
+                provider="razorpay_test",
+                created_at=created_at,
+            )
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/orders", json={"idempotency_key": idempotency_key}
+        )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Razorpay Test Mode order creation failed"}
+    assert provider_calls == []
+    with app.state.session_factory() as session:
+        order = session.scalar(
+            select(CheckoutOrder).where(CheckoutOrder.idempotency_key == idempotency_key)
+        )
+        assert order is not None
+        assert order.provider_order_id is None
+        assert order.status == "creating"
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
-from app.db.tables import ActionEvent, Customer, Outcome, PaymentEvent, RecoveryCase
+from app.db.tables import ActionEvent, CheckoutOrder, Customer, Outcome, PaymentEvent, RecoveryCase
 from app.main import create_app
 
 
@@ -451,6 +451,96 @@ async def test_captured_webhook_does_not_attribute_failure_from_another_obligati
         case_a = session.get(RecoveryCase, "case_order_a")
         assert case_a is not None
         assert case_a.state == "awaiting_outcome"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("amount", "currency"),
+    [(249899, "INR"), (249900, "USD")],
+)
+async def test_checkout_order_webhook_mismatch_is_rejected_without_case_or_outcome_mutation(
+    app, amount: int, currency: str
+):
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                CheckoutOrder(
+                    checkout_id="checkout_webhook_guard",
+                    idempotency_key="webhook-guard",
+                    provider_order_id="order_webhook_guard",
+                    obligation_reference="order_webhook_guard",
+                    product_code="dumbbell_5kg",
+                    product_name="5 kg Dumbbell",
+                    amount=249900,
+                    currency="INR",
+                    status="created",
+                    provider="razorpay_test",
+                ),
+                RecoveryCase(
+                    case_id="case_order_webhook_guard",
+                    payment_id="pay_webhook_failure",
+                    obligation_reference="order_webhook_guard",
+                    amount_at_risk=249900,
+                    state="awaiting_outcome",
+                    attempts=0,
+                ),
+                PaymentEvent(
+                    event_id="evt_webhook_guard_failure",
+                    provider_event_id="provider_webhook_guard_failure",
+                    event_type="payment.failed",
+                    payment_id="pay_webhook_failure",
+                    obligation_reference="order_webhook_guard",
+                    amount=249900,
+                    currency="INR",
+                    status="failed",
+                    occurred_at=datetime(2024, 8, 24, 6, 31, tzinfo=UTC),
+                    provider="razorpay_test",
+                    raw_hash="webhook-guard-failure-hash",
+                ),
+            ]
+        )
+        session.commit()
+
+    payload = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_webhook_capture",
+                    "amount": amount,
+                    "currency": currency,
+                    "status": "captured",
+                    "created_at": 1724481100,
+                    "order_id": "order_webhook_guard",
+                }
+            }
+        },
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=body,
+            headers={"X-Razorpay-Signature": signature(body)},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "webhook amount or currency does not match checkout order"
+    }
+    with app.state.session_factory() as session:
+        case = session.get(RecoveryCase, "case_order_webhook_guard")
+        order = session.get(CheckoutOrder, "checkout_webhook_guard")
+        assert case is not None
+        assert case.state == "awaiting_outcome"
+        assert order is not None
+        assert order.status == "created"
+        assert order.payment_id is None
+        assert session.scalar(
+            select(Outcome).where(Outcome.case_id == "case_order_webhook_guard")
+        ) is None
+        assert session.scalar(select(func.count()).select_from(PaymentEvent)) == 1
 
 
 @pytest.mark.asyncio

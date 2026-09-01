@@ -118,14 +118,37 @@ def order_receipt_for_idempotency_key(idempotency_key: str) -> str:
     return f"reroute_{sha256(idempotency_key.encode()).hexdigest()[:24]}"
 
 
-def _is_expected_order(order: dict, receipt: str) -> bool:
+def _order_lookup_error(diagnostic: str) -> RazorpayProviderError:
+    return RazorpayProviderError(
+        ORDER_PROVIDER_ERROR,
+        diagnostic=diagnostic,
+        uncertain=True,
+    )
+
+
+def _is_complete_order(order: object) -> bool:
     return (
-        order.get("receipt") in (None, receipt)
-        and order.get("amount") in (None, DUMBBELL_AMOUNT_PAISE)
-        and order.get("currency") in (None, DUMBBELL_CURRENCY)
+        isinstance(order, dict)
         and isinstance(order.get("id"), str)
         and bool(order["id"])
+        and order["id"].startswith("order_")
+        and type(order.get("receipt")) is str
+        and type(order.get("amount")) is int
+        and type(order.get("currency")) is str
     )
+
+
+def _validate_order_lookup_match(
+    order: object, receipt: str, amount: int, currency: str
+) -> dict:
+    if not _is_complete_order(order):
+        raise _order_lookup_error("order_lookup_response_sparse")
+    assert isinstance(order, dict)
+    if order["receipt"] != receipt:
+        raise _order_lookup_error("order_lookup_response_no_exact_match")
+    if order["amount"] != amount or order["currency"] != currency:
+        raise _order_lookup_error("order_lookup_response_amount_currency_mismatch")
+    return order
 
 
 def find_order_by_receipt(
@@ -133,8 +156,16 @@ def find_order_by_receipt(
     key_secret: str,
     receipt: str,
     timeout_seconds: int = 10,
+    amount: int = DUMBBELL_AMOUNT_PAISE,
+    currency: str = DUMBBELL_CURRENCY,
 ) -> dict | None:
-    """Find an existing provider order without exposing its response or errors."""
+    """Find exactly one matching Test Mode order without exposing provider details.
+
+    ``None`` is reserved for a provider response that explicitly says there are
+    no orders. Every non-empty response must contain one complete order whose
+    receipt, amount, and currency all match the request; otherwise reconciliation
+    stops rather than linking an unrelated order or issuing another POST.
+    """
     _require_test_mode_key(key_id, key_secret)
     query = urllib.parse.urlencode({"receipt": receipt})
     req = urllib.request.Request(
@@ -143,37 +174,35 @@ def find_order_by_receipt(
     req.add_header("Authorization", _basic_auth_header(key_id, key_secret))
     try:
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            response = json.loads(resp.read())
+            body = resp.read()
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return None
-        raise RazorpayProviderError(
-            ORDER_PROVIDER_ERROR,
-            diagnostic=f"order_lookup_http_status={exc.code}",
-            uncertain=True,
-        ) from exc
+        raise _order_lookup_error(f"order_lookup_http_status={exc.code}") from exc
     except Exception as exc:
-        raise RazorpayProviderError(
-            ORDER_PROVIDER_ERROR,
-            diagnostic=f"order_lookup_exception={type(exc).__name__}",
-            uncertain=True,
-        ) from exc
+        raise _order_lookup_error(f"order_lookup_exception={type(exc).__name__}") from exc
 
+    try:
+        response = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise _order_lookup_error("order_lookup_response_invalid") from exc
     if not isinstance(response, dict):
-        raise RazorpayProviderError(
-            ORDER_PROVIDER_ERROR,
-            diagnostic="order_lookup_response_invalid",
-            uncertain=True,
-        )
-    if _is_expected_order(response, receipt):
-        return response
-    items = response.get("items")
+        raise _order_lookup_error("order_lookup_response_invalid")
+
+    if "items" not in response:
+        return _validate_order_lookup_match(response, receipt, amount, currency)
+
+    items = response["items"]
     if not isinstance(items, list):
+        raise _order_lookup_error("order_lookup_response_invalid")
+    count = response.get("count")
+    if count is not None and (type(count) is not int or count != len(items)):
+        raise _order_lookup_error("order_lookup_response_invalid")
+    if not items:
         return None
-    for item in items:
-        if isinstance(item, dict) and _is_expected_order(item, receipt):
-            return item
-    return None
+    if len(items) != 1:
+        raise _order_lookup_error("order_lookup_response_multiple_matches")
+    return _validate_order_lookup_match(items[0], receipt, amount, currency)
 
 
 class RazorpayOrderCreator:
@@ -194,8 +223,19 @@ class RazorpayOrderCreator:
         )
         return response["id"]
 
-    def reconcile(self, receipt: str) -> dict | None:
-        return find_order_by_receipt(self.key_id, self.key_secret, receipt)
+    def reconcile(
+        self,
+        receipt: str,
+        amount: int = DUMBBELL_AMOUNT_PAISE,
+        currency: str = DUMBBELL_CURRENCY,
+    ) -> dict | None:
+        return find_order_by_receipt(
+            self.key_id,
+            self.key_secret,
+            receipt,
+            amount=amount,
+            currency=currency,
+        )
 
 
 def build_order_creator(key_id: str, key_secret: str):

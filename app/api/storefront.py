@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import inspect
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -60,6 +61,46 @@ def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _call_order_reconciler(reconciler, order: CheckoutOrder, receipt: str):
+    """Call old injected seams safely while passing persisted order terms when supported."""
+    try:
+        parameters = inspect.signature(reconciler).parameters.values()
+    except (TypeError, ValueError):
+        return reconciler(receipt)
+    positional = [
+        parameter
+        for parameter in parameters
+        if parameter.kind
+        in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    accepts_terms = any(
+        parameter.kind == inspect.Parameter.VAR_POSITIONAL for parameter in parameters
+    ) or len(positional) >= 3
+    if accepts_terms:
+        return reconciler(receipt, order.amount, order.currency)
+    return reconciler(receipt)
+
+
+def _validated_reconciled_order_id(
+    provider_order: object, order: CheckoutOrder, receipt: str
+) -> str:
+    if not isinstance(provider_order, dict):
+        raise ValueError("order reconciliation response is not an order")
+    if (
+        type(provider_order.get("receipt")) is not str
+        or provider_order["receipt"] != receipt
+        or type(provider_order.get("amount")) is not int
+        or provider_order["amount"] != order.amount
+        or type(provider_order.get("currency")) is not str
+        or provider_order["currency"] != order.currency
+    ):
+        raise ValueError("order reconciliation terms do not match")
+    provider_order_id = _provider_order_id(provider_order)
+    if provider_order_id is None:
+        raise ValueError("order reconciliation response has no valid provider ID")
+    return provider_order_id
 
 
 def _claim_order_for_attempt(session, order: CheckoutOrder, now: datetime) -> bool:
@@ -175,6 +216,14 @@ def create_storefront_order(
             select(CheckoutOrder).where(CheckoutOrder.idempotency_key == idempotency_key)
         )
         is_new = existing is None
+        if existing is not None and (
+            existing.amount != DUMBBELL_AMOUNT_PAISE
+            or existing.currency != DUMBBELL_CURRENCY
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="checkout order amount or currency is invalid",
+            )
         if existing is not None and existing.provider_order_id:
             response.status_code = status.HTTP_200_OK
             return _checkout_response(existing, key_id)
@@ -231,25 +280,28 @@ def create_storefront_order(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=ORDER_RECONCILIATION_UNAVAILABLE,
                 )
+            reconciliation_receipt = existing.provider_receipt or receipt
             try:
-                reconciled = reconciler(existing.provider_receipt or receipt)
+                reconciled = _call_order_reconciler(
+                    reconciler, existing, reconciliation_receipt
+                )
+                reconciled_id = (
+                    None
+                    if reconciled is None
+                    else _validated_reconciled_order_id(
+                        reconciled, existing, reconciliation_receipt
+                    )
+                )
             except Exception as error:
                 # Keep the creating lease. A later request can retry reconciliation,
-                # but must not issue a second provider POST while it is unknown.
+                # but must not issue a second provider POST while it is unknown or
+                # the provider response is malformed/ambiguous.
                 existing.creating_started_at = datetime.now(UTC)
                 session.commit()
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=ORDER_PROVIDER_ERROR,
                 ) from error
-            reconciled_id = _provider_order_id(reconciled)
-            if reconciled is not None and reconciled_id is None:
-                existing.creating_started_at = datetime.now(UTC)
-                session.commit()
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=ORDER_PROVIDER_ERROR,
-                )
             if reconciled_id is not None:
                 _link_provider_order(session, existing, reconciled_id)
                 response.status_code = status.HTTP_200_OK

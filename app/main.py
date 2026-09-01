@@ -58,7 +58,7 @@ def create_app(
     policy_now: Callable[[], datetime] | None = None,
     create_payment_link: Callable[[int, str], str] | None = None,
     create_order: Callable[[int, str], str | dict] | None = None,
-    find_order_by_receipt: Callable[[str], dict | str | None] | None = None,
+    find_order_by_receipt: Callable[..., dict | str | None] | None = None,
     razorpay_key_id: str | None = None,
     razorpay_key_secret: str | None = None,
     decide_recovery_action: Callable[[dict], object] | None = None,

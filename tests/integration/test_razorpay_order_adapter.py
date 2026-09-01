@@ -81,7 +81,10 @@ def test_order_adapter_reconciles_by_the_deterministic_receipt(monkeypatch):
             return None
 
         def read(self):
-            return b'{"items":[{"id":"order_reconciled","receipt":"reroute_receipt"}]}'
+            return (
+                b'{"items":[{"id":"order_reconciled","receipt":"reroute_receipt",'
+                b'"amount":249900,"currency":"INR"}]}'
+            )
 
     def urlopen(request: Request, timeout: int):
         observed["url"] = request.full_url
@@ -93,11 +96,77 @@ def test_order_adapter_reconciles_by_the_deterministic_receipt(monkeypatch):
         "rzp_test_adapter", "local-test-secret", "reroute_receipt"
     )
 
-    assert result == {"id": "order_reconciled", "receipt": "reroute_receipt"}
+    assert result == {
+        "id": "order_reconciled",
+        "receipt": "reroute_receipt",
+        "amount": 249900,
+        "currency": "INR",
+    }
     assert observed == {
         "url": "https://api.razorpay.com/v1/orders?receipt=reroute_receipt",
         "method": "GET",
     }
+
+
+def test_order_adapter_treats_an_empty_lookup_as_explicitly_empty(monkeypatch):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b'{"items":[]}'
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: Response())
+
+    assert find_order_by_receipt(
+        "rzp_test_adapter", "local-test-secret", "reroute_receipt"
+    ) is None
+
+
+@pytest.mark.parametrize(
+    ("body", "diagnostic"),
+    [
+        (b"[]", "order_lookup_response_invalid"),
+        (
+            b'{"items":[{"id":"order_sparse","receipt":"reroute_receipt"}]}',
+            "order_lookup_response_sparse",
+        ),
+        (
+            b'{"items":[{"id":"order_a","receipt":"reroute_receipt","amount":249900,"currency":"INR"},{"id":"order_b","receipt":"reroute_receipt","amount":249900,"currency":"INR"}]}',
+            "order_lookup_response_multiple_matches",
+        ),
+        (
+            b'{"items":[{"id":"order_unrelated","receipt":"other_receipt","amount":249900,"currency":"INR"}]}',
+            "order_lookup_response_no_exact_match",
+        ),
+    ],
+)
+def test_order_adapter_fails_closed_for_ambiguous_or_unrelated_lookup(
+    monkeypatch, body: bytes, diagnostic: str
+):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return body
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: Response())
+
+    with pytest.raises(
+        RazorpayProviderError, match="Razorpay Test Mode order creation failed"
+    ) as error:
+        find_order_by_receipt(
+            "rzp_test_adapter", "local-test-secret", "reroute_receipt"
+        )
+
+    assert error.value.diagnostic == diagnostic
 
 
 def test_payment_link_adapter_retains_the_durable_provider_id(monkeypatch):
