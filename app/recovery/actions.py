@@ -191,9 +191,12 @@ def execute_action(
 
     status = "pending" if action == "retry" else "completed"
     provider_reference = f"mock_{action}_{idempotency_key}"
+    provider_reference_id: str | None = None
     if action == "payment_link":
         try:
-            provider_reference = create_payment_link(case.amount_at_risk, idempotency_key)
+            provider_result = create_payment_link(case.amount_at_risk, idempotency_key)
+            provider_reference = str(provider_result)
+            provider_reference_id = getattr(provider_result, "provider_id", None)
         except Exception as error:
             action_event.status = "failed"
             session.add(
@@ -222,6 +225,7 @@ def execute_action(
 
     action_event.status = status
     action_event.provider_reference = provider_reference
+    action_event.provider_reference_id = provider_reference_id
     session.add(
         AuditEvent(
             case_id=case.case_id,

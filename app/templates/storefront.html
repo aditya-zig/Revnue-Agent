@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReRoute Dumbbell Store</title>
+    <link rel="stylesheet" href="/static/css/storefront.css" />
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script src="/static/js/storefront.js" defer></script>
+  </head>
+  <body>
+    <main class="storefront" aria-labelledby="store-title">
+      <section class="product-card">
+        <p class="eyebrow">ReRoute Test Mode shop</p>
+        <div class="product-art" aria-hidden="true">🏋️</div>
+        <h1 id="store-title">5 kg Dumbbell</h1>
+        <p class="description">A compact cast-iron dumbbell for strength training at home.</p>
+        <p class="price">₹2,499</p>
+        <p class="test-note">Test Mode only · no real money moves</p>
+        <button id="buy-now" type="button">Buy Now</button>
+        <p id="checkout-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+  </body>
+</html>

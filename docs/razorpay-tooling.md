@@ -1,6 +1,6 @@
 # Razorpay tooling
 
-ReRoute uses Razorpay Test Mode for webhooks and for payment link creation. Two local tools talk to Razorpay without changing the app: the remote MCP server for the AI agent, and the CLI for manual checks. All three use the same Test Mode key pair. `app/core/config.py` reads the keys from `.env` via `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`, and checks webhook signatures with `RAZORPAY_WEBHOOK_SECRET`.
+ReRoute uses Razorpay Test Mode for the dumbbell storefront, webhooks, and approved recovery payment links. Two local tools talk to Razorpay without changing the app: the remote MCP server for the AI agent, and the CLI for manual checks. All three use the same Test Mode key pair. `app/core/config.py` reads the keys from `.env` via `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`, and checks webhook signatures with `RAZORPAY_WEBHOOK_SECRET`. The app rejects non-`rzp_test_` keys before making a provider request.
 
 ## Keys
 
@@ -141,7 +141,7 @@ In the dashboard:
 1. Go to `Settings → Webhooks`
 2. Click `Add New Webhook`
 3. URL: `https://your-server.com/api/v1/webhooks/razorpay`
-4. Events: check `payment.failed`, `payment.authorized`, `payment.captured`
+4. Events: check `payment.failed` and `payment.captured`
 5. Copy the webhook secret it generates and paste into `.env` as `RAZORPAY_WEBHOOK_SECRET`
 
 For local hackathon testing, expose `http://127.0.0.1:8000`:
@@ -158,6 +158,26 @@ ngrok http 8000
 ```
 
 `app/api/webhooks.py:24` verifies `X-Razorpay-Signature` against the raw body and `settings.razorpay_webhook_secret` before it stores anything.
+
+## Create a storefront order and open Checkout
+
+The customer-facing demo is available at `http://127.0.0.1:8000/storefront`. The
+server owns the fixed 5 kg Dumbbell amount (₹2,499 / `249900` paise), creates a
+Razorpay Test Mode order at `POST /api/v1/orders`, and returns only the public
+Checkout key, order ID, amount, currency, and product description. A client
+idempotency key prevents a double-click from creating a second local order or
+provider order. Checkout.js receives no key secret.
+
+The browser success handler posts the signed Checkout response to
+`POST /api/v1/checkout/callback` for server-side verification only. It does not
+create a `PaymentEvent` or `Outcome`. The browser `payment.failed` callback is
+also presentation-only; ReRoute creates the failure `PaymentEvent` and
+`RecoveryCase` only after the signed `payment.failed` webhook reaches
+`POST /api/v1/webhooks/razorpay`.
+
+A real Test Mode run requires the external setup below: Test Mode API keys, a
+public HTTPS tunnel, and the Test Mode webhook configured to send
+`payment.failed` and (for the later recovery capture) `payment.captured`.
 
 ## Create a payment link
 
@@ -273,7 +293,9 @@ See `docs/architecture.md` for the core flow and `README.md` for the five-minute
 7. Razorpay returns link
    -> short_url https://rzp.io/rzp/... stored as provider_reference
 
-8. Audit writes action.completed and case moves to AWAITING_OUTCOME
+8. Audit writes action.completed and case moves to AWAITING_OUTCOME. The
+   provider payment-link ID is persisted alongside its customer-facing URL so
+   a later capture can be correlated to the same PaymentObligation.
 
 9. Customer clicks and pays
    -> Razorpay fires payment.captured to the same webhook
@@ -300,7 +322,7 @@ RAZORPAY_WEBHOOK_SECRET=webhook_secret_xyz
 - Settings → API Keys → copy Key ID and Secret
 - Add both to `.env` and to `~/.razorpay/config.yaml` via `razorpay configure`
 - Base64 token for MCP: `echo -n "key_id:key_secret" | base64` → `RAZORPAY_BASIC_TOKEN`
-- Settings → Webhooks → Add `https://your-server.com/api/v1/webhooks/razorpay` with `payment.failed`, `payment.authorized`, `payment.captured` → copy secret to `.env`
+- Settings → Webhooks → Add `https://your-server.com/api/v1/webhooks/razorpay` with `payment.failed`, `payment.captured` → copy secret to `.env`
 - For local: `ngrok http 8000` and use the ngrok URL in the webhook
 - Create a test payment link in dashboard, pay with `4111111111111111`, fail it, check webhook
 - Verify `curl http://127.0.0.1:8000/api/v1/findings` and `curl http://127.0.0.1:8000/api/v1/audit/case_demo_hard_decline` still work

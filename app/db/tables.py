@@ -8,6 +8,29 @@ class Base(DeclarativeBase):
     pass
 
 
+class CheckoutOrder(Base):
+    __tablename__ = "checkout_orders"
+
+    checkout_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    provider_order_id: Mapped[str | None] = mapped_column(
+        String(128), unique=True, nullable=True, index=True
+    )
+    obligation_reference: Mapped[str | None] = mapped_column(
+        String(128), unique=True, nullable=True, index=True
+    )
+    product_code: Mapped[str] = mapped_column(String(64))
+    product_name: Mapped[str] = mapped_column(String(128))
+    amount: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(32))
+    payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class PaymentEvent(Base):
     __tablename__ = "payment_events"
 
@@ -142,6 +165,7 @@ class ActionEvent(Base):
     input_hash: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(32))
     provider_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    provider_reference_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     reply: Mapped[str | None] = mapped_column(String(32), nullable=True)
     replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     executed_at: Mapped[datetime] = mapped_column(

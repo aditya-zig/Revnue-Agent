@@ -11,6 +11,7 @@ from app.api.evaluations import router as evaluations_router
 from app.api.leak_findings import router as leak_findings_router
 from app.api.operator_controls import router as operator_controls_router
 from app.api.payment_exceptions import router as payment_exceptions_router
+from app.api.storefront import router as storefront_router
 from app.api.webhooks import router as webhooks_router
 from app.core.config import Settings
 from app.db.session import create_session_factory
@@ -22,11 +23,31 @@ def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
     raise RuntimeError("payment link provider is not configured")
 
 
-def _build_razorpay_creator_from_settings(settings: Settings):
-    if settings.razorpay_key_id and settings.razorpay_key_secret:
+def _order_not_configured(amount: int, idempotency_key: str) -> str:
+    raise RuntimeError("Razorpay Test Mode order provider is not configured")
+
+
+def _build_razorpay_creator_from_settings(
+    settings: Settings, key_id: str | None = None, key_secret: str | None = None
+):
+    effective_key_id = settings.razorpay_key_id if key_id is None else key_id
+    effective_key_secret = settings.razorpay_key_secret if key_secret is None else key_secret
+    if effective_key_id.startswith("rzp_test_") and effective_key_secret:
         from app.integrations.razorpay import build_payment_link_creator
 
-        return build_payment_link_creator(settings.razorpay_key_id, settings.razorpay_key_secret)
+        return build_payment_link_creator(effective_key_id, effective_key_secret)
+    return None
+
+
+def _build_razorpay_order_creator_from_settings(
+    settings: Settings, key_id: str | None = None, key_secret: str | None = None
+):
+    effective_key_id = settings.razorpay_key_id if key_id is None else key_id
+    effective_key_secret = settings.razorpay_key_secret if key_secret is None else key_secret
+    if effective_key_id.startswith("rzp_test_") and effective_key_secret:
+        from app.integrations.razorpay import build_order_creator
+
+        return build_order_creator(effective_key_id, effective_key_secret)
     return None
 
 
@@ -36,6 +57,9 @@ def create_app(
     max_request_body_bytes: int | None = None,
     policy_now: Callable[[], datetime] | None = None,
     create_payment_link: Callable[[int, str], str] | None = None,
+    create_order: Callable[[int, str], str | dict] | None = None,
+    razorpay_key_id: str | None = None,
+    razorpay_key_secret: str | None = None,
     decide_recovery_action: Callable[[dict], object] | None = None,
     kill_switch: bool | None = None,
     finding_analysis_provider: FindingAnalysisProvider | None = None,
@@ -49,6 +73,12 @@ def create_app(
         webhook_secret if webhook_secret is not None else settings.razorpay_webhook_secret
     )
     app.state.settings = settings
+    app.state.razorpay_key_id = (
+        razorpay_key_id if razorpay_key_id is not None else settings.razorpay_key_id
+    )
+    app.state.razorpay_key_secret = (
+        razorpay_key_secret if razorpay_key_secret is not None else settings.razorpay_key_secret
+    )
     app.state.max_request_body_bytes = (
         max_request_body_bytes
         if max_request_body_bytes is not None
@@ -60,11 +90,25 @@ def create_app(
     app.state.contact_limit = 3
     app.state.mock_identity = "ReRoute demo"
     app.state.kill_switch = kill_switch if kill_switch is not None else settings.kill_switch
-    # Prefer injected creator, then real Razorpay if keys are set, else mock failure
-    razorpay_creator = _build_razorpay_creator_from_settings(settings)
+    # Prefer injected creator, then a Test Mode Razorpay creator, else a deliberate failure.
+    razorpay_creator = _build_razorpay_creator_from_settings(
+        settings, razorpay_key_id, razorpay_key_secret
+    )
     app.state.create_payment_link = (
         create_payment_link or razorpay_creator or _payment_link_not_configured
     )
+    razorpay_order_creator = _build_razorpay_order_creator_from_settings(
+        settings, razorpay_key_id, razorpay_key_secret
+    )
+    app.state.create_order = create_order or razorpay_order_creator or _order_not_configured
+    app.state.checkout_key_id = (
+        app.state.razorpay_key_id
+        if app.state.razorpay_key_id.startswith("rzp_test_")
+        else "rzp_test_local"
+        if create_order is not None and not app.state.razorpay_key_id
+        else ""
+    )
+    app.state.checkout_key_secret = app.state.razorpay_key_secret
     app.state.decide_recovery_action = decide_recovery_action
     app.state.finding_analysis_provider = finding_analysis_provider or OpenRouterProvider(
         api_key=settings.openrouter_api_key if openrouter_api_key is None else openrouter_api_key,
@@ -79,6 +123,7 @@ def create_app(
     app.include_router(leak_findings_router)
     app.include_router(payment_exceptions_router)
     app.include_router(operator_controls_router)
+    app.include_router(storefront_router)
     app.include_router(dashboard_router)
 
     @app.get("/health")

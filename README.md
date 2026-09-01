@@ -9,8 +9,8 @@ generation is optional and falls back to a deterministic local result.
 
 This repository contains synthetic data only. It does not send real customer
 messages or include production credentials. When local Razorpay Test Mode keys
-are configured, it can create a Test Mode payment link. It never handles real
-money.
+are configured, it can create a Test Mode storefront order or approved recovery
+payment link. It never handles real money.
 
 ## Run the public demo
 
@@ -28,9 +28,11 @@ REROUTE_DATABASE_URL=sqlite:///./demo.db uv run python scripts/seed_demo.py
 REROUTE_DATABASE_URL=sqlite:///./demo.db uv run uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/` for the dashboard. The seed script generates the
-999-payment SyntheticCorpus from `simulator/generator.py`, imports it, computes
-findings, and adds controlled edge cases for the demo. The committed `demo/payment_events.csv` remains a
+Open `http://127.0.0.1:8000/` for the dashboard, or
+`http://127.0.0.1:8000/storefront` for the 5 kg Dumbbell Test Mode Checkout.
+The seed script generates the 999-payment SyntheticCorpus from
+`simulator/generator.py`, imports it, computes findings, and adds controlled
+edge cases for the demo. The committed `demo/payment_events.csv` remains a
 small offline fallback. The corpus includes policy-blocked and eligible cases
 with synthetic identifiers; provider actions require a persisted human approval
 before they are attempted.
@@ -49,6 +51,13 @@ curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
 
 ## API
 
+- `GET /storefront` serves the fixed 5 kg Dumbbell product page.
+- `POST /api/v1/orders` creates an idempotent server-owned Razorpay Test Mode
+  order and returns only the public Checkout configuration.
+- `POST /api/v1/checkout/callback` verifies the Checkout handler signature but
+  does not create payment evidence; the signed webhook remains authoritative.
+- `POST /api/v1/checkout/failure` accepts a browser failure notice for display
+  flow only; it does not create payment evidence.
 - `POST /api/v1/webhooks/razorpay` verifies an `X-Razorpay-Signature` against
   the raw request body before storing a normalized event.
 - `POST /api/v1/data/import` imports a UTF-8 normalized CSV body.
@@ -88,7 +97,7 @@ Two local tools talk to Razorpay Test Mode alongside the app. They are not neede
 * **MCP server** at `https://mcp.razorpay.com/mcp`. OpenCode connects as a remote server with `Basic {env:RAZORPAY_BASIC_TOKEN}` from `~/.config/opencode/opencode.json`. See `docs/razorpay-tooling.md` for the token generation `echo -n "key_id:key_secret" | base64` and the `opencode mcp list` check.
 * **CLI** `~/.local/bin/razorpay` `v1.0.9`. Installed from `https://razorpay.com/docs/api/install-cli/`, configured via `razorpay configure` to `~/.razorpay/config.yaml`. Use `razorpay payments list`, `razorpay orders create`, `razorpay payment-links list` for manual Test Mode checks.
 
-Test keys are Test Mode only. `rzp-test-key.csv` is gitignored and should not be committed. The app reads `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` from the local environment only when it creates a Test Mode payment link. It uses `REROUTE_RAZORPAY_WEBHOOK_SECRET` for webhook HMAC in `app/api/webhooks.py`.
+Test keys are Test Mode only. `rzp-test-key.csv` is gitignored and should not be committed. The app reads `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` from the local environment only when it creates a Test Mode storefront order or recovery payment link. It rejects live-mode key IDs and uses `REROUTE_RAZORPAY_WEBHOOK_SECRET` for webhook HMAC in `app/api/webhooks.py`.
 
 Details and troubleshooting in `docs/razorpay-tooling.md`.
 

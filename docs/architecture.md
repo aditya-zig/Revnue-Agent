@@ -6,7 +6,8 @@ dashboard. There is no queue or background worker. FindingAnalysis may call the
 optional OpenRouter adapter, but it is isolated from policy and action paths.
 
 ```text
-Razorpay Test Mode webhook or normalized CSV
+Dumbbell storefront -> server-owned Razorpay Test Mode order -> Checkout.js
+  -> signed Razorpay Test Mode webhook or normalized CSV
   -> ingestion and deduplication
   -> payment event and recovery case
   -> leak detector and ranked finding
@@ -24,8 +25,13 @@ The webhook or CSV is the only input the app trusts. Two operator tools sit alon
 * **MCP server** `https://mcp.razorpay.com/mcp`. Hosted remote, streamable HTTP. OpenCode connects from `~/.config/opencode/opencode.json` as a `remote` server with `Authorization: Basic {env:RAZORPAY_BASIC_TOKEN}`. It exposes about 42 tools like `create_order` and `create_payment_link` against the same Test Mode account the CLI uses. The app does not call the MCP itself.
 * **CLI** `~/.local/bin/razorpay` `v1.0.9`. Installed from the Razorpay docs, configured to `~/.razorpay/config.yaml` via `razorpay configure`. Use it for manual `razorpay payments list` or `razorpay orders create` checks. There is no `razorpay webhook` subcommand, so local webhook tests use a signed `curl` to `POST /api/v1/webhooks/razorpay`.
 
-`app/api/webhooks.py` verifies the HMAC before parsing a webhook. It stores the
-raw body and normalized fields, then calls `record_event_and_update_case`.
+The storefront at `/storefront` owns a fixed 5 kg Dumbbell product. Its
+server-only order endpoint persists an idempotent `CheckoutOrder`, returns only
+Test Mode Checkout configuration, and never trusts a browser callback as
+payment evidence. `app/api/webhooks.py` verifies the HMAC before parsing a
+webhook. It stores the raw body and normalized fields, then calls
+`record_event_and_update_case`. Recovery payment-link captures can resolve via
+the persisted provider-reference mapping before entering the same state machine.
 `app/ingestion/csv_loader.py` uses the same normalized event path for the demo
 CSV.
 

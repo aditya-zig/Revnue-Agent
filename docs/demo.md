@@ -7,6 +7,21 @@ Open `http://127.0.0.1:8000/` in a browser. The seed replay generates the
 reproducible 999-payment SyntheticCorpus with seed 47 into a new `demo.db`;
 `demo/payment_events.csv` is only the small offline fallback.
 
+For the Issue #47 failure-first path, open `http://127.0.0.1:8000/storefront`
+in a separate tab. It is a fixed 5 kg Dumbbell at ₹2,499 and uses only
+Razorpay Test Mode. Click Buy Now once, choose the official Test Mode failure
+path in Checkout, and treat the browser error as presentation only. Verify the
+signed `payment.failed` webhook creates the order-linked `PaymentEvent` and
+`RecoveryCase`; a duplicate delivery must not create another event. Continue
+through the existing investigation, Policy, decision, business-owner approval,
+and recovery action flow. A later signed capture from that recovery action is
+the only source for the persisted `razorpay_test` Outcome.
+
+This browser portion has an external boundary: it requires Test Mode API keys,
+a public HTTPS tunnel, and a Test Mode Razorpay webhook configured for
+`payment.failed` and `payment.captured`. Local tests use deterministic provider
+doubles and signed synthetic payloads; they never call Razorpay.
+
 ## 0:00 to 0:40. Problem and evidence
 
 Open the dashboard's Investigation view. Explain that the app looks for payment

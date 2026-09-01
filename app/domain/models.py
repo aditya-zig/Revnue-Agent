@@ -73,6 +73,23 @@ class NormalizedPaymentEvent(BaseModel):
         )
 
 
+class CheckoutOrderRequest(BaseModel):
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class CheckoutCallbackRequest(BaseModel):
+    razorpay_order_id: str = Field(min_length=1, max_length=128)
+    razorpay_payment_id: str = Field(min_length=1, max_length=128)
+    razorpay_signature: str = Field(min_length=1, max_length=128)
+
+
+class CheckoutFailureRequest(BaseModel):
+    order_id: str | None = Field(default=None, min_length=1, max_length=128)
+    payment_id: str | None = Field(default=None, min_length=1, max_length=128)
+    razorpay_order_id: str | None = Field(default=None, min_length=1, max_length=128)
+    razorpay_payment_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class PolicyResponse(BaseModel):
     allowed_actions: list[str]
     blocked_reasons: dict[str, list[str]]
