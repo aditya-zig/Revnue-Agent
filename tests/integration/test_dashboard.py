@@ -57,6 +57,8 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
         "policy_settings",
     } <= payload.keys()
     assert case["evidence"]["event_id"] == "evt_001"
+    assert case["evidence"]["provider"] == "csv_import"
+    assert payload["executive"]["revenue_at_risk_claim_tag"] == ""
     assert case["policy"]["policy_version"]
     assert case["human_review"]["allowed_actions"]
     assert payload["timeline"][0]["events"][0]["kind"] == "raw event"
