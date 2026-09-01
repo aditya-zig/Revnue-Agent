@@ -22,7 +22,7 @@ the supplied Razorpay lockup.
 
 The FastAPI app serves local assets at `/static` from `app/static`.
 
-## Rs. 2,499 journey
+## ₹INR 2,499 journey
 
 The first persisted case is the overview story. The UI shows its amount at risk, failed provider
 evidence, recorded policy decision, recovery action, audit records, and provider outcome in API
