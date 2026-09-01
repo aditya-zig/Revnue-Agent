@@ -52,9 +52,17 @@ class NormalizedPaymentEvent(BaseModel):
         if obligation_reference == "":
             obligation_reference = None
         customer_id = notes.get("customer_id") if isinstance(notes, dict) else None
+        # ``webhook_event_id`` is retained as a compatibility argument only. It
+        # is an unsigned header value and must never influence deduplication.
+        signed_event_id = payload.get("id")
+        provider_event_id = (
+            signed_event_id
+            if isinstance(signed_event_id, str) and signed_event_id
+            else raw_hash
+        )
         return cls(
-            event_id=f"evt_{webhook_event_id or payload.get('id', raw_hash)}",
-            provider_event_id=webhook_event_id or payload.get("id", raw_hash),
+            event_id=f"evt_{provider_event_id}",
+            provider_event_id=provider_event_id,
             event_type=event_type,
             payment_id=payment_id,
             obligation_reference=obligation_reference,

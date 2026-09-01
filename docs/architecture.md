@@ -26,9 +26,11 @@ The webhook or CSV is the only input the app trusts. Two operator tools sit alon
 * **CLI** `~/.local/bin/razorpay` `v1.0.9`. Installed from the Razorpay docs, configured to `~/.razorpay/config.yaml` via `razorpay configure`. Use it for manual `razorpay payments list` or `razorpay orders create` checks. There is no `razorpay webhook` subcommand, so local webhook tests use a signed `curl` to `POST /api/v1/webhooks/razorpay`.
 
 The storefront at `/storefront` owns a fixed 5 kg Dumbbell product. Its
-server-only order endpoint persists an idempotent `CheckoutOrder`, returns only
-Test Mode Checkout configuration, and never trusts a browser callback as
-payment evidence. `app/api/webhooks.py` verifies the HMAC before parsing a
+server-only order endpoint persists an idempotent `CheckoutOrder` with a
+deterministic provider receipt and recovers stale provider attempts through
+receipt reconciliation, returns only Test Mode Checkout configuration, and
+never trusts a browser callback as payment evidence. `app/api/webhooks.py`
+verifies the HMAC before parsing a
 webhook. It stores the raw body and normalized fields, then calls
 `record_event_and_update_case`. Recovery payment-link captures can resolve via
 the persisted provider-reference mapping before entering the same state machine.

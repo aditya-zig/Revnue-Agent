@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.db.tables import Customer, Outcome, PaymentEvent, RecoveryCase
+from app.db.tables import ActionEvent, Customer, Outcome, PaymentEvent, RecoveryCase
 from app.main import create_app
 
 
@@ -114,7 +114,7 @@ async def test_webhook_rejects_a_signature_that_does_not_match_the_raw_body(app)
 
 
 @pytest.mark.asyncio
-async def test_official_failure_payload_with_empty_notes_uses_webhook_event_id(app):
+async def test_official_failure_payload_with_empty_notes_uses_signed_body_identity(app):
     payload = {
         "entity": "event",
         "event": "payment.failed",
@@ -149,11 +149,45 @@ async def test_official_failure_payload_with_empty_notes_uses_webhook_event_id(a
         duplicate = await client.post("/api/v1/webhooks/razorpay", content=body, headers=headers)
         dashboard = await client.get("/api/v1/dashboard")
 
-    assert first.json() == {"event_id": "evt_event_official_001", "status": "accepted"}
-    assert duplicate.json() == {"event_id": "evt_event_official_001", "status": "duplicate"}
+    body_hash = hashlib.sha256(body).hexdigest()
+    assert first.json() == {"event_id": f"evt_{body_hash}", "status": "accepted"}
+    assert duplicate.json() == {"event_id": f"evt_{body_hash}", "status": "duplicate"}
     evidence = dashboard.json()["worklist"][0]["evidence"]
     assert evidence["error_reason"] == "payment_failed"
     assert "raw_body" not in evidence
+
+
+@pytest.mark.asyncio
+async def test_same_signed_webhook_with_changed_unsigned_event_header_is_duplicate(app):
+    payload = {
+        "id": "signed_event_001",
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_header_replay",
+                    "amount": 50000,
+                    "currency": "INR",
+                    "status": "failed",
+                    "created_at": 1567610214,
+                }
+            }
+        },
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    headers = {"X-Razorpay-Signature": signature(body), "X-Razorpay-Event-Id": "header-a"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/api/v1/webhooks/razorpay", content=body, headers=headers)
+        headers["X-Razorpay-Event-Id"] = "header-b"
+        duplicate = await client.post("/api/v1/webhooks/razorpay", content=body, headers=headers)
+
+    assert first.status_code == 202
+    assert first.json() == {"event_id": "evt_signed_event_001", "status": "accepted"}
+    assert duplicate.status_code == 200
+    assert duplicate.json() == {"event_id": "evt_signed_event_001", "status": "duplicate"}
+    with app.state.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(PaymentEvent)) == 1
 
 
 @pytest.mark.asyncio
@@ -606,6 +640,14 @@ async def test_unreferenced_capture_does_not_attribute_to_an_obligation_case(app
                     provider="razorpay_test",
                     raw_hash="failure-unreferenced-hash",
                 ),
+                ActionEvent(
+                    action_id="action_unrelated_key",
+                    case_id="case_order_unreferenced",
+                    idempotency_key="unrelated-action-key",
+                    tool="contact",
+                    input_hash="unrelated-action-hash",
+                    status="completed",
+                ),
             ]
         )
         session.commit()
@@ -620,7 +662,10 @@ async def test_unreferenced_capture_does_not_attribute_to_an_obligation_case(app
                     "currency": "INR",
                     "status": "captured",
                     "created_at": 1724481100,
-                    "notes": {"customer_id": "cust_unreferenced"},
+                    "notes": {
+                        "customer_id": "cust_unreferenced",
+                        "idempotency_key": "unrelated-action-key",
+                    },
                 }
             }
         },

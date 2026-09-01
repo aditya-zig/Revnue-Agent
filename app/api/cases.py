@@ -278,7 +278,7 @@ def create_action(
         except PermissionError as error:
             raise HTTPException(status_code=409, detail=list(error.args[0])) from error
         except ProviderError as error:
-            raise HTTPException(status_code=502, detail=str(error)) from error
+            raise HTTPException(status_code=502, detail=error.public_message) from error
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         if duplicate:
@@ -322,7 +322,7 @@ def create_decision(
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         except ProviderError as error:
-            raise HTTPException(status_code=502, detail=str(error)) from error
+            raise HTTPException(status_code=502, detail=error.public_message) from error
         if duplicate:
             response.status_code = 200
         return result

@@ -13,11 +13,22 @@ from app.db.tables import ActionEvent, AuditEvent, Decision, RecoveryCase
 from app.domain.enums import CaseState
 from app.domain.models import ActionResponse
 from app.domain.state_machine import transition_case
+from app.integrations.razorpay import PAYMENT_LINK_PROVIDER_ERROR, RazorpayProviderError
 from app.policy import evaluate_policy
 
 
 class ProviderError(Exception):
-    pass
+    def __init__(self, public_message: str, *, diagnostic: str):
+        super().__init__(public_message)
+        self.public_message = public_message
+        self.diagnostic = diagnostic
+
+
+def _provider_diagnostic(error: Exception) -> str:
+    if isinstance(error, RazorpayProviderError):
+        return error.diagnostic
+    # Injected providers are untrusted test seams too; never copy their message.
+    return f"payment_link_provider_exception={type(error).__name__}"
 
 
 def _decision_with_approval(
@@ -198,6 +209,7 @@ def execute_action(
             provider_reference = str(provider_result)
             provider_reference_id = getattr(provider_result, "provider_id", None)
         except Exception as error:
+            diagnostic = _provider_diagnostic(error)
             action_event.status = "failed"
             session.add(
                 AuditEvent(
@@ -206,7 +218,8 @@ def execute_action(
                     payload={
                         "action": action,
                         "idempotency_key": idempotency_key,
-                        "reason": str(error),
+                        "reason": PAYMENT_LINK_PROVIDER_ERROR,
+                        "diagnostic": diagnostic,
                     },
                 )
             )
@@ -217,7 +230,10 @@ def execute_action(
                 payload_extra={"owner": "business_owner", "reason": "provider_failure"},
             )
             session.commit()
-            raise ProviderError(str(error)) from error
+            raise ProviderError(
+                PAYMENT_LINK_PROVIDER_ERROR,
+                diagnostic=diagnostic,
+            ) from error
 
     transition_case(session, case, CaseState.AWAITING_OUTCOME)
     if action == "escalate":

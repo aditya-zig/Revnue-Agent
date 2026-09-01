@@ -16,6 +16,9 @@ class CheckoutOrder(Base):
     provider_order_id: Mapped[str | None] = mapped_column(
         String(128), unique=True, nullable=True, index=True
     )
+    provider_receipt: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True, index=True
+    )
     obligation_reference: Mapped[str | None] = mapped_column(
         String(128), unique=True, nullable=True, index=True
     )
@@ -24,6 +27,9 @@ class CheckoutOrder(Base):
     amount: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3))
     status: Mapped[str] = mapped_column(String(32))
+    creating_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     provider: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(

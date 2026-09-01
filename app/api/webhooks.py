@@ -34,10 +34,12 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
 
     try:
         payload = json.loads(body)
+        # The event ID header is not covered by Razorpay's HMAC and cannot be
+        # allowed to change deduplication identity. The signed payload ID (or
+        # raw-body hash) is normalized by from_razorpay.
         event = NormalizedPaymentEvent.from_razorpay(
             payload,
             hashlib.sha256(body).hexdigest(),
-            request.headers.get("X-Razorpay-Event-Id"),
         )
         event.raw_body = body
     except (KeyError, TypeError, ValueError) as error:
@@ -76,8 +78,8 @@ def _correlate_recovery_payment(session, payload: dict, event: NormalizedPayment
     """Resolve a recovery Payment Link through its persisted ActionEvent.
 
     Payment Link captures may omit ``order_id``. They are still attributable
-    when the provider supplies the durable link ID (or the reference metadata
-    sent while creating it). Amount, Customer, and timing are intentionally not
+    when the provider supplies the durable link ID persisted by a completed
+    payment-link Action. Amount, Customer, and timing are intentionally not
     used as correlation keys.
     """
     if event.obligation_reference:
@@ -85,26 +87,19 @@ def _correlate_recovery_payment(session, payload: dict, event: NormalizedPayment
     payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
     if not isinstance(payment, dict):
         return
-    notes = payment.get("notes")
-    candidates: list[str] = []
-    for value in (
-        payment.get("payment_link_id"),
-        notes.get("reference_id") if isinstance(notes, dict) else None,
-        notes.get("idempotency_key") if isinstance(notes, dict) else None,
-    ):
-        if isinstance(value, str) and value:
-            candidates.append(value)
-    action = None
-    for candidate in candidates:
-        action = session.scalar(
-            select(ActionEvent).where(
-                (ActionEvent.provider_reference_id == candidate)
-                | (ActionEvent.provider_reference == candidate)
-                | (ActionEvent.idempotency_key == candidate)
-            )
+    payment_link_id = payment.get("payment_link_id")
+    if not isinstance(payment_link_id, str) or not payment_link_id:
+        return
+    # Only a completed payment-link action's durable provider ID can establish
+    # this cross-attempt correlation. Customer-facing URLs, notes, and arbitrary
+    # action keys are not authoritative provider references.
+    action = session.scalar(
+        select(ActionEvent).where(
+            ActionEvent.tool == "payment_link",
+            ActionEvent.status == "completed",
+            ActionEvent.provider_reference_id == payment_link_id,
         )
-        if action is not None:
-            break
+    )
     if action is None:
         return
     case = session.get(RecoveryCase, action.case_id)

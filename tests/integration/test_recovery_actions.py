@@ -344,7 +344,7 @@ async def test_actions_require_approval_for_the_requested_action(app):
 @pytest.mark.asyncio
 async def test_action_records_any_provider_failure(database_url):
     def reject_payment_link(amount: int, idempotency_key: str) -> str:
-        raise ValueError("provider unavailable")
+        raise ValueError("provider body leaked secret")
 
     app = create_app(
         database_url=database_url,
@@ -385,14 +385,17 @@ async def test_action_records_any_provider_failure(database_url):
         audit = await client.get("/api/v1/audit/case_001")
 
     assert response.status_code == 502
-    assert response.json() == {"detail": "provider unavailable"}
+    assert response.json() == {"detail": "Razorpay Test Mode payment link creation failed"}
+    assert "provider body leaked secret" not in response.text
+    assert "provider body leaked secret" not in json.dumps(audit.json())
     assert audit.json()[-2] == {
         "case_id": "case_001",
         "event_type": "action.failed",
         "payload": {
             "action": "payment_link",
             "idempotency_key": "link-001",
-            "reason": "provider unavailable",
+            "reason": "Razorpay Test Mode payment link creation failed",
+            "diagnostic": "payment_link_provider_exception=ValueError",
         },
     }
     assert audit.json()[-1]["event_type"] == "case.escalated"
@@ -442,14 +445,15 @@ async def test_action_records_provider_failure_without_creating_a_pending_action
         audit = await client.get("/api/v1/audit/case_001")
 
     assert response.status_code == 502
-    assert response.json() == {"detail": "provider unavailable"}
+    assert response.json() == {"detail": "Razorpay Test Mode payment link creation failed"}
     assert audit.json()[-2] == {
         "case_id": "case_001",
         "event_type": "action.failed",
         "payload": {
             "action": "payment_link",
             "idempotency_key": "link-001",
-            "reason": "provider unavailable",
+            "reason": "Razorpay Test Mode payment link creation failed",
+            "diagnostic": "payment_link_provider_exception=RuntimeError",
         },
     }
     assert audit.json()[-1]["event_type"] == "case.escalated"

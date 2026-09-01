@@ -1,9 +1,23 @@
 import base64
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+
+ORDER_PROVIDER_ERROR = "Razorpay Test Mode order creation failed"
+PAYMENT_LINK_PROVIDER_ERROR = "Razorpay Test Mode payment link creation failed"
+
+
+class RazorpayProviderError(RuntimeError):
+    """A provider error safe to expose after its diagnostic is sanitized."""
+
+    def __init__(self, message: str, *, diagnostic: str, uncertain: bool = False):
+        super().__init__(message)
+        self.diagnostic = diagnostic
+        self.uncertain = uncertain
+
 
 RAZORPAY_TEST_KEY_PREFIX = "rzp_test_"
 
@@ -44,6 +58,7 @@ def create_order(
     amount: int = DUMBBELL_AMOUNT_PAISE,
     receipt: str = "reroute_dumbbell_checkout",
     timeout_seconds: int = 10,
+    idempotency_key: str | None = None,
 ) -> dict:
     """Create a Razorpay order using server-side Test Mode credentials.
 
@@ -67,34 +82,125 @@ def create_order(
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
     req.add_header("Authorization", _basic_auth_header(key_id, key_secret))
+    if idempotency_key:
+        # Razorpay currently reconciles this request by receipt as well. Keep the
+        # provider key on the request when supported so a retried POST is safe.
+        req.add_header("X-Razorpay-Idempotency", idempotency_key)
     try:
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
             response = json.loads(resp.read())
     except urllib.error.HTTPError as exc:
         # Never return provider bodies to a browser; they can contain account data.
-        raise RuntimeError("Razorpay Test Mode order request failed") from exc
+        raise RazorpayProviderError(
+            ORDER_PROVIDER_ERROR,
+            diagnostic=f"order_http_status={exc.code}",
+            uncertain=True,
+        ) from exc
     except Exception as exc:
-        raise RuntimeError("Razorpay Test Mode order request failed") from exc
+        # A timeout or malformed response may mean that the provider accepted the
+        # request. The caller must reconcile the deterministic receipt before retrying.
+        raise RazorpayProviderError(
+            ORDER_PROVIDER_ERROR,
+            diagnostic=f"order_provider_exception={type(exc).__name__}",
+            uncertain=True,
+        ) from exc
     if not isinstance(response, dict) or not isinstance(response.get("id"), str):
-        raise RuntimeError("Razorpay Test Mode order response was invalid")
+        raise RazorpayProviderError(
+            ORDER_PROVIDER_ERROR,
+            diagnostic="order_provider_response_invalid",
+            uncertain=True,
+        )
     return response
+
+
+def order_receipt_for_idempotency_key(idempotency_key: str) -> str:
+    """Return the bounded, deterministic provider receipt for a checkout key."""
+    return f"reroute_{sha256(idempotency_key.encode()).hexdigest()[:24]}"
+
+
+def _is_expected_order(order: dict, receipt: str) -> bool:
+    return (
+        order.get("receipt") in (None, receipt)
+        and order.get("amount") in (None, DUMBBELL_AMOUNT_PAISE)
+        and order.get("currency") in (None, DUMBBELL_CURRENCY)
+        and isinstance(order.get("id"), str)
+        and bool(order["id"])
+    )
+
+
+def find_order_by_receipt(
+    key_id: str,
+    key_secret: str,
+    receipt: str,
+    timeout_seconds: int = 10,
+) -> dict | None:
+    """Find an existing provider order without exposing its response or errors."""
+    _require_test_mode_key(key_id, key_secret)
+    query = urllib.parse.urlencode({"receipt": receipt})
+    req = urllib.request.Request(
+        f"https://api.razorpay.com/v1/orders?{query}", method="GET"
+    )
+    req.add_header("Authorization", _basic_auth_header(key_id, key_secret))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            response = json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise RazorpayProviderError(
+            ORDER_PROVIDER_ERROR,
+            diagnostic=f"order_lookup_http_status={exc.code}",
+            uncertain=True,
+        ) from exc
+    except Exception as exc:
+        raise RazorpayProviderError(
+            ORDER_PROVIDER_ERROR,
+            diagnostic=f"order_lookup_exception={type(exc).__name__}",
+            uncertain=True,
+        ) from exc
+
+    if not isinstance(response, dict):
+        raise RazorpayProviderError(
+            ORDER_PROVIDER_ERROR,
+            diagnostic="order_lookup_response_invalid",
+            uncertain=True,
+        )
+    if _is_expected_order(response, receipt):
+        return response
+    items = response.get("items")
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if isinstance(item, dict) and _is_expected_order(item, receipt):
+            return item
+    return None
+
+
+class RazorpayOrderCreator:
+    """Callable Test Mode order creator with deterministic-receipt recovery."""
+
+    def __init__(self, key_id: str, key_secret: str):
+        _require_test_mode_key(key_id, key_secret)
+        self.key_id = key_id
+        self.key_secret = key_secret
+
+    def __call__(self, amount: int, idempotency_key: str) -> str:
+        response = create_order(
+            key_id=self.key_id,
+            key_secret=self.key_secret,
+            amount=amount,
+            receipt=order_receipt_for_idempotency_key(idempotency_key),
+            idempotency_key=idempotency_key,
+        )
+        return response["id"]
+
+    def reconcile(self, receipt: str) -> dict | None:
+        return find_order_by_receipt(self.key_id, self.key_secret, receipt)
 
 
 def build_order_creator(key_id: str, key_secret: str):
     """Return the narrow callable used by the server-owned checkout route."""
-    _require_test_mode_key(key_id, key_secret)
-
-    def _creator(amount: int, idempotency_key: str) -> str:
-        receipt = f"reroute_{sha256(idempotency_key.encode()).hexdigest()[:24]}"
-        response = create_order(
-            key_id=key_id,
-            key_secret=key_secret,
-            amount=amount,
-            receipt=receipt,
-        )
-        return response["id"]
-
-    return _creator
+    return RazorpayOrderCreator(key_id, key_secret)
 
 
 def create_payment_link(
@@ -142,12 +248,23 @@ def create_payment_link(
     try:
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
             body = resp.read()
-            return json.loads(body)
+            response = json.loads(body)
     except urllib.error.HTTPError as exc:
-        err_body = exc.read().decode() if exc.fp else str(exc)
-        raise RuntimeError(f"Razorpay error {exc.code}: {err_body}") from exc
+        raise RazorpayProviderError(
+            PAYMENT_LINK_PROVIDER_ERROR,
+            diagnostic=f"payment_link_http_status={exc.code}",
+        ) from exc
     except Exception as exc:
-        raise RuntimeError(f"Razorpay request failed: {exc}") from exc
+        raise RazorpayProviderError(
+            PAYMENT_LINK_PROVIDER_ERROR,
+            diagnostic=f"payment_link_provider_exception={type(exc).__name__}",
+        ) from exc
+    if not isinstance(response, dict):
+        raise RazorpayProviderError(
+            PAYMENT_LINK_PROVIDER_ERROR,
+            diagnostic="payment_link_provider_response_invalid",
+        )
+    return response
 
 
 def build_payment_link_creator(key_id: str, key_secret: str):
@@ -167,9 +284,16 @@ def build_payment_link_creator(key_id: str, key_secret: str):
         )
         short_url = resp.get("short_url")
         provider_id = resp.get("id")
-        if isinstance(short_url, str) and isinstance(provider_id, str):
-            return PaymentLinkReference(short_url, provider_id)
-        # Prefer short_url for customer, fallback to id.
-        return short_url or provider_id or str(resp)
+        if not isinstance(provider_id, str) or not provider_id:
+            raise RazorpayProviderError(
+                PAYMENT_LINK_PROVIDER_ERROR,
+                diagnostic="payment_link_provider_response_missing_id",
+            )
+        # Keep the durable provider ID even when a provider response omits its
+        # customer URL. Never turn an arbitrary response body into a reference.
+        return PaymentLinkReference(
+            short_url if isinstance(short_url, str) and short_url else provider_id,
+            provider_id,
+        )
 
     return _creator

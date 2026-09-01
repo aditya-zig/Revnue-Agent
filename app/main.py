@@ -58,6 +58,7 @@ def create_app(
     policy_now: Callable[[], datetime] | None = None,
     create_payment_link: Callable[[int, str], str] | None = None,
     create_order: Callable[[int, str], str | dict] | None = None,
+    find_order_by_receipt: Callable[[str], dict | str | None] | None = None,
     razorpay_key_id: str | None = None,
     razorpay_key_secret: str | None = None,
     decide_recovery_action: Callable[[dict], object] | None = None,
@@ -101,6 +102,9 @@ def create_app(
         settings, razorpay_key_id, razorpay_key_secret
     )
     app.state.create_order = create_order or razorpay_order_creator or _order_not_configured
+    app.state.find_order_by_receipt = find_order_by_receipt or getattr(
+        create_order, "reconcile", None
+    ) or (razorpay_order_creator.reconcile if razorpay_order_creator is not None else None)
     app.state.checkout_key_id = (
         app.state.razorpay_key_id
         if app.state.razorpay_key_id.startswith("rzp_test_")

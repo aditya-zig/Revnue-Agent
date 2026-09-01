@@ -1,11 +1,11 @@
 import hashlib
 import hmac
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.tables import CheckoutOrder
@@ -16,9 +16,13 @@ from app.integrations.razorpay import (
     DUMBBELL_DESCRIPTION,
     DUMBBELL_PRODUCT_CODE,
     DUMBBELL_PRODUCT_NAME,
+    ORDER_PROVIDER_ERROR,
+    order_receipt_for_idempotency_key,
 )
 
 router = APIRouter(tags=["storefront"])
+ORDER_CREATING_STALE_AFTER = timedelta(minutes=5)
+ORDER_RECONCILIATION_UNAVAILABLE = "order provider reconciliation is unavailable"
 STOREFRONT_HTML = (
     Path(__file__).resolve().parent.parent / "templates" / "storefront.html"
 ).read_text(encoding="utf-8")
@@ -37,6 +41,86 @@ def _checkout_response(order: CheckoutOrder, key_id: str) -> dict[str, object]:
         "description": DUMBBELL_DESCRIPTION,
         "status": order.status,
     }
+
+
+def _provider_order_id(provider_order: object) -> str | None:
+    candidate = (
+        provider_order
+        if isinstance(provider_order, str)
+        else provider_order.get("id")
+        if isinstance(provider_order, dict)
+        else None
+    )
+    if isinstance(candidate, str) and candidate.startswith("order_"):
+        return candidate
+    return None
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _claim_order_for_attempt(session, order: CheckoutOrder, now: datetime) -> bool:
+    if order.status == "failed":
+        claim = session.execute(
+            update(CheckoutOrder)
+            .execution_options(synchronize_session=False)
+            .where(
+                CheckoutOrder.checkout_id == order.checkout_id,
+                CheckoutOrder.status == "failed",
+            )
+            .values(status="creating", creating_started_at=now)
+        )
+    elif order.status == "creating":
+        started_at = _as_utc(order.creating_started_at or order.created_at)
+        if started_at > now - ORDER_CREATING_STALE_AFTER:
+            return False
+        cutoff = now - ORDER_CREATING_STALE_AFTER
+        claim = session.execute(
+            update(CheckoutOrder)
+            .execution_options(synchronize_session=False)
+            .where(
+                CheckoutOrder.checkout_id == order.checkout_id,
+                CheckoutOrder.status == "creating",
+                or_(
+                    CheckoutOrder.creating_started_at.is_(None),
+                    CheckoutOrder.creating_started_at <= cutoff,
+                ),
+            )
+            .values(creating_started_at=now)
+        )
+    else:
+        return False
+    if claim.rowcount != 1:
+        session.rollback()
+        return False
+    session.commit()
+    session.refresh(order)
+    return True
+
+
+def _link_provider_order(
+    session, order: CheckoutOrder, provider_order_id: str
+) -> None:
+    order.provider_order_id = provider_order_id
+    order.obligation_reference = provider_order_id
+    order.status = "created"
+    order.creating_started_at = None
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        current = session.get(CheckoutOrder, order.checkout_id)
+        if current is not None:
+            current.status = "creating"
+            current.creating_started_at = datetime.now(UTC)
+            session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="provider order is already linked to another checkout",
+        ) from error
 
 
 @router.get("/storefront", response_class=HTMLResponse, include_in_schema=False)
@@ -84,10 +168,13 @@ def create_storefront_order(
 
     factory = request.app.state.session_factory
     checkout_id = f"checkout_{hashlib.sha256(idempotency_key.encode()).hexdigest()}"
+    receipt = order_receipt_for_idempotency_key(idempotency_key)
+    now = datetime.now(UTC)
     with factory() as session:
         existing = session.scalar(
             select(CheckoutOrder).where(CheckoutOrder.idempotency_key == idempotency_key)
         )
+        is_new = existing is None
         if existing is not None and existing.provider_order_id:
             response.status_code = status.HTTP_200_OK
             return _checkout_response(existing, key_id)
@@ -95,13 +182,15 @@ def create_storefront_order(
             existing = CheckoutOrder(
                 checkout_id=checkout_id,
                 idempotency_key=idempotency_key,
+                provider_receipt=receipt,
                 product_code=DUMBBELL_PRODUCT_CODE,
                 product_name=DUMBBELL_PRODUCT_NAME,
                 amount=DUMBBELL_AMOUNT_PAISE,
                 currency=DUMBBELL_CURRENCY,
                 status="creating",
+                creating_started_at=now,
                 provider="razorpay_test",
-                created_at=datetime.now(UTC),
+                created_at=now,
             )
             session.add(existing)
             try:
@@ -113,57 +202,79 @@ def create_storefront_order(
                         CheckoutOrder.idempotency_key == idempotency_key
                     )
                 )
+                is_new = False
                 if existing is not None and existing.provider_order_id:
                     response.status_code = status.HTTP_200_OK
                     return _checkout_response(existing, key_id)
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="order is already being created",
-                )
-        elif existing.status == "creating":
+                if existing is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="order is already being created",
+                    )
+        if existing.provider_receipt is None:
+            existing.provider_receipt = receipt
+            session.commit()
+
+        # A fresh lease belongs to another request. A stale lease is recovered
+        # only after looking up the deterministic receipt, so an uncertain POST
+        # can never be repeated blindly.
+        if not is_new and not _claim_order_for_attempt(session, existing, now):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="order is already being created",
             )
-        else:
-            existing.status = "creating"
-            session.commit()
+
+        reconciler = request.app.state.find_order_by_receipt
+        if not is_new and existing.provider_order_id is None:
+            if reconciler is None:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=ORDER_RECONCILIATION_UNAVAILABLE,
+                )
+            try:
+                reconciled = reconciler(existing.provider_receipt or receipt)
+            except Exception as error:
+                # Keep the creating lease. A later request can retry reconciliation,
+                # but must not issue a second provider POST while it is unknown.
+                existing.creating_started_at = datetime.now(UTC)
+                session.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=ORDER_PROVIDER_ERROR,
+                ) from error
+            reconciled_id = _provider_order_id(reconciled)
+            if reconciled is not None and reconciled_id is None:
+                existing.creating_started_at = datetime.now(UTC)
+                session.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=ORDER_PROVIDER_ERROR,
+                )
+            if reconciled_id is not None:
+                _link_provider_order(session, existing, reconciled_id)
+                response.status_code = status.HTTP_200_OK
+                return _checkout_response(existing, key_id)
 
         try:
             provider_order = request.app.state.create_order(
                 DUMBBELL_AMOUNT_PAISE, idempotency_key
             )
-            provider_order_id = (
-                provider_order
-                if isinstance(provider_order, str)
-                else provider_order.get("id")
-            )
-            if not isinstance(provider_order_id, str) or not provider_order_id:
-                raise RuntimeError("invalid order provider response")
-            if not provider_order_id.startswith("order_"):
+            provider_order_id = _provider_order_id(provider_order)
+            if provider_order_id is None:
                 raise RuntimeError("invalid order provider response")
         except Exception as error:
-            existing.status = "failed"
+            # Unless the provider explicitly classifies a failure as known-safe,
+            # retain creating status: the request may have been accepted remotely.
+            uncertain = getattr(error, "uncertain", True)
+            existing.status = "creating" if uncertain else "failed"
+            existing.creating_started_at = datetime.now(UTC) if uncertain else None
             session.commit()
-            # Provider details, including account data, never cross this boundary.
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Razorpay Test Mode order creation failed",
+                detail=ORDER_PROVIDER_ERROR,
             ) from error
 
-        existing.provider_order_id = provider_order_id
-        existing.obligation_reference = provider_order_id
-        existing.status = "created"
-        try:
-            session.commit()
-        except IntegrityError as error:
-            session.rollback()
-            existing.status = "failed"
-            session.commit()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="provider order is already linked to another checkout",
-            ) from error
+        _link_provider_order(session, existing, provider_order_id)
         return _checkout_response(existing, key_id)
 
 
