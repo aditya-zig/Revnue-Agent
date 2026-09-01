@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.db.tables import AuditEvent, Customer, Decision, RecoveryCase
+from app.integrations.razorpay import PaymentLinkReference
 from app.main import create_app
 
 NOW = datetime(2026, 8, 24, 10, tzinfo=UTC)
@@ -20,7 +21,7 @@ def app(database_url):
 
     def create_payment_link(amount: int, idempotency_key: str) -> str:
         created_links.append({"amount": amount, "idempotency_key": idempotency_key})
-        return "plink_test_001"
+        return PaymentLinkReference("https://rzp.io/rzp/test-001", "plink_test_001")
 
     app = create_app(
         database_url=database_url,
@@ -73,7 +74,7 @@ async def test_payment_link_uses_the_outstanding_amount_and_idempotency_key(app)
     assert response.status_code == 201
     assert response.json() == {
         "action": "payment_link",
-        "provider_reference": "plink_test_001",
+        "provider_reference": "https://rzp.io/rzp/test-001",
         "status": "completed",
     }
     assert duplicate.status_code == 200
@@ -85,9 +86,29 @@ async def test_payment_link_uses_the_outstanding_amount_and_idempotency_key(app)
         "payload": {
             "action": "payment_link",
             "idempotency_key": "link-001",
-            "provider_reference": "plink_test_001",
+            "provider_reference": "https://rzp.io/rzp/test-001",
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_payment_link_action_rejects_a_reference_without_a_provider_id(app):
+    app.state.create_payment_link = lambda amount, idempotency_key: "https://rzp.io/rzp/no-id"
+
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/cases/case_001/actions",
+            json={"action": "payment_link", "idempotency_key": "link-no-provider-id"},
+        )
+        audit = await client.get("/api/v1/audit/case_001")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Razorpay Test Mode payment link creation failed"}
+    assert audit.json()[-2]["event_type"] == "action.failed"
+    assert audit.json()[-2]["payload"]["reason"] == (
+        "Razorpay Test Mode payment link creation failed"
+    )
+    assert audit.json()[-1]["event_type"] == "case.escalated"
 
 
 @pytest.mark.asyncio
@@ -531,7 +552,9 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
         calls += 1
         if calls == 1:
             raise RuntimeError("provider unavailable")
-        return "plink_test_recovery"
+        return PaymentLinkReference(
+            "https://rzp.io/rzp/recovery", "plink_test_recovery"
+        )
 
     app = create_app(
         database_url=database_url,

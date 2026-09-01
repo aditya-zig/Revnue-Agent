@@ -26,7 +26,20 @@ class ProviderError(Exception):
 
 def _provider_diagnostic(error: Exception) -> str:
     if isinstance(error, RazorpayProviderError):
-        return error.diagnostic
+        diagnostic = error.diagnostic
+        if diagnostic.startswith("payment_link_http_status="):
+            code = diagnostic.removeprefix("payment_link_http_status=")
+            if code.isdigit():
+                return diagnostic
+        if diagnostic.startswith("payment_link_provider_exception="):
+            exception_name = diagnostic.removeprefix("payment_link_provider_exception=")
+            if exception_name.isidentifier():
+                return diagnostic
+        if diagnostic in {
+            "payment_link_provider_response_invalid",
+            "payment_link_provider_response_missing_id",
+        }:
+            return diagnostic
     # Injected providers are untrusted test seams too; never copy their message.
     return f"payment_link_provider_exception={type(error).__name__}"
 
@@ -208,6 +221,8 @@ def execute_action(
             provider_result = create_payment_link(case.amount_at_risk, idempotency_key)
             provider_reference = str(provider_result)
             provider_reference_id = getattr(provider_result, "provider_id", None)
+            if not isinstance(provider_reference_id, str) or not provider_reference_id:
+                raise ValueError("provider response missing durable provider ID")
         except Exception as error:
             diagnostic = _provider_diagnostic(error)
             action_event.status = "failed"
