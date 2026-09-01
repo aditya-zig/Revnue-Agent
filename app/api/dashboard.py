@@ -322,6 +322,7 @@ def _payment(payment: PaymentEvent) -> dict:
         "obligation_reference": getattr(payment, "obligation_reference", None),
         "payment_id": payment.payment_id,
         "provider_event_id": payment.provider_event_id,
+        "provider": payment.provider,
         "raw_hash": payment.raw_hash,
     }
 
