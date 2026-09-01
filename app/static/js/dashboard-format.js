@@ -12,7 +12,7 @@ export function formatMoney(value) {
 export function claimTagForSource(source) {
   if (source === "razorpay_test") return "TEST MODE";
   if (source === "mock") return "MOCK";
-  return String(source || "unknown").toUpperCase();
+  return "";
 }
 
 export function findOutcomeForCase(data, caseId) {

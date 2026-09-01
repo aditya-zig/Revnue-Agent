@@ -11,6 +11,7 @@ test("formats paise as one INR display convention", () => {
 test("keeps outcome source claims distinct", () => {
   assert.equal(claimTagForSource("mock"), "MOCK");
   assert.equal(claimTagForSource("razorpay_test"), "TEST MODE");
+  assert.equal(claimTagForSource("csv_import"), "");
 });
 
 test("finds a persisted outcome from the dashboard timeline", () => {
