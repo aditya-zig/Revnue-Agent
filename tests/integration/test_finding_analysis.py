@@ -4,7 +4,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.db.tables import FindingAnalysis, RecoveryCase
+from app.db.tables import Decision, FindingAnalysis, RecoveryCase
 from app.finding_analysis import OpenRouterCompletion, OpenRouterProviderError
 from app.main import create_app
 
@@ -265,6 +265,18 @@ async def test_analysis_does_not_change_policy_or_action_execution(app):
 
         with app.state.session_factory() as session:
             session.get(RecoveryCase, "case_pay_1").state = "eligible"
+            session.add(
+                Decision(
+                    decision_id="analysis_action_approval",
+                    case_id="case_pay_1",
+                    policy_version="v1",
+                    model_version="v1",
+                    allowed_actions=["contact"],
+                    selected_action="contact",
+                    expected_value=1,
+                    reason_json={"approval": {"required": True, "granted": True}},
+                )
+            )
             session.commit()
         policy = await client.get("/api/v1/cases/case_pay_1/policy")
         action = await client.post(
