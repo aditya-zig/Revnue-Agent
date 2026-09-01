@@ -41,6 +41,6 @@ blocked, failed, loading, and unavailable-data states are rendered explicitly.
 
 - `uv run pytest -q`: passed
 - `uv run mypy`: passed
-- `uv run ruff check .`: existing E501 failures remain in migration, seed, and simulator files
+- `uv run ruff check .`: passed
 - `chrome-devtools-axi` visual capture was unavailable because the installed wrapper only looked
   for Chrome at `/opt/google/chrome/chrome`; Chromium is installed at `/usr/bin/chromium`.
