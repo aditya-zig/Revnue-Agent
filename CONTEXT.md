@@ -61,7 +61,7 @@ An append only record of every state and action transition for a Case timeline.
 _Avoid_: Log, history entry, event log
 
 **ClaimTag**:
-Exactly one of ESTIMATED, SIMULATED, TEST MODE, or MOCK on every money figure. Booked revenue, forecast, and lift are forbidden.
+One of ESTIMATED, SIMULATED, TEST MODE, or MOCK identifies a money figure when its provenance is known and homogeneous. Mixed or unknown-source aggregates omit the tag. Booked revenue, forecast, and lift are forbidden.
 _Avoid_: Provenance, value type, confidence label
 
 **SyntheticCorpus**:
