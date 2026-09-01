@@ -165,14 +165,14 @@ async def test_missing_obligation_stays_isolated(app):
 
 @pytest.mark.asyncio
 async def test_synthetic_corpus_is_deterministic_and_idempotent(app):
-    # generator should be deterministic and produce >=500 PaymentEvents
+    # The demo generator is deterministic and produces exactly 999 PaymentEvents.
     from simulator.generator import generate_csv
 
-    csv_a = generate_csv(seed=7, event_count=500)
-    csv_b = generate_csv(seed=7, event_count=500)
+    csv_a = generate_csv(seed=7, event_count=999)
+    csv_b = generate_csv(seed=7, event_count=999)
     assert csv_a == csv_b
     rows = list(csv.DictReader(StringIO(csv_a)))
-    assert len(rows) >= 500
+    assert len(rows) == 999
     # idempotent import via provider_event_id uniqueness
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         first = await client.post(
@@ -190,7 +190,7 @@ async def test_synthetic_corpus_is_deterministic_and_idempotent(app):
 async def test_corpus_produces_ranked_leak_findings_with_support(app):
     from simulator.generator import generate_csv
 
-    content = generate_csv(seed=7, event_count=500)
+    content = generate_csv(seed=7, event_count=999)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post(
             "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
@@ -214,7 +214,7 @@ async def test_corpus_produces_ranked_leak_findings_with_support(app):
 async def test_named_edge_cases_have_deterministic_policy_behavior(app):
     from simulator.generator import generate_csv
 
-    content = generate_csv(seed=7, event_count=500)
+    content = generate_csv(seed=7, event_count=999)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post(
             "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
@@ -250,7 +250,7 @@ async def test_eligible_unacted_shows_expected_net_value_and_worklist_sorted(app
     from app.domain.state_machine import transition_case
     from simulator.generator import generate_csv
 
-    content = generate_csv(seed=7, event_count=500)
+    content = generate_csv(seed=7, event_count=999)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post(
             "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}
@@ -267,8 +267,8 @@ async def test_eligible_unacted_shows_expected_net_value_and_worklist_sorted(app
             session.commit()
         dash = (await client.get("/api/v1/dashboard")).json()
         worklist = dash["worklist"]
-        # SyntheticCorpus with 500 events yields ~400 failed => ~400 cases; plus edge cases
-        assert len(worklist) >= 400
+        # The Issue #47 corpus has 250 failed events and therefore 250 cases.
+        assert len(worklist) >= 250
         # ADR 0006 sorts escalated, then eligible by expected value, then investigated by age.
         # eligible case should have expected_value and be among top eligible
         eligible_items = [item for item in worklist if item["state"] == "eligible"]
@@ -285,7 +285,7 @@ async def test_eligible_unacted_shows_expected_net_value_and_worklist_sorted(app
 async def test_synthetic_corpus_never_leaks_into_evaluation_and_claimtags(app):
     from simulator.generator import generate_csv
 
-    content = generate_csv(seed=7, event_count=500)
+    content = generate_csv(seed=7, event_count=999)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post(
             "/api/v1/data/import", content=content, headers={"Content-Type": "text/csv"}

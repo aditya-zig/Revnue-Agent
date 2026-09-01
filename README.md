@@ -28,11 +28,12 @@ REROUTE_DATABASE_URL=sqlite:///./demo.db uv run python scripts/seed_demo.py
 REROUTE_DATABASE_URL=sqlite:///./demo.db uv run uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/` for the dashboard. The source data is
-`demo/payment_events.csv`. The replay imports it, computes findings, and adds
-controlled edge cases for the demo. These include policy-blocked and eligible
-cases with synthetic identifiers; provider actions require a persisted human
-approval before they are attempted.
+Open `http://127.0.0.1:8000/` for the dashboard. The seed script generates the
+999-payment SyntheticCorpus from `simulator/generator.py`, imports it, computes
+findings, and adds controlled edge cases for the demo. The committed `demo/payment_events.csv` remains a
+small offline fallback. The corpus includes policy-blocked and eligible cases
+with synthetic identifiers; provider actions require a persisted human approval
+before they are attempted.
 
 Use these commands in another terminal to inspect the demo state:
 

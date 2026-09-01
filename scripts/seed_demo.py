@@ -32,12 +32,12 @@ def main() -> None:
     database_url = Settings().database_url
     session_factory = create_session_factory(database_url)
     # SyntheticCorpus is deterministic and separate from EvaluationComparison (30x30 SIMULATED).
-    # Use generator for >=500 events with PaymentObligation identity; fall back to demo CSV for
-    # offline small demo.
+    # Use the reproducible 999-payment SyntheticCorpus with PaymentObligation identity; fall back
+    # to the committed CSV only for an offline emergency demo.
     try:
-        from simulator.generator import generate_csv
+        from simulator.generator import DEFAULT_SEED, HISTORICAL_PAYMENT_COUNT, generate_csv
 
-        csv_content = generate_csv(seed=7, event_count=500)
+        csv_content = generate_csv(seed=DEFAULT_SEED, event_count=HISTORICAL_PAYMENT_COUNT)
         source = "simulator.generator"
     except Exception:
         csv_path = REPOSITORY_ROOT / "demo" / "payment_events.csv"
