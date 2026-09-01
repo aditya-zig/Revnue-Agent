@@ -13,12 +13,14 @@ from sqlalchemy import func, select
 from app.db.tables import (
     ActionEvent,
     AuditEvent,
+    CheckoutOrder,
     Customer,
     Decision,
     Outcome,
     PaymentEvent,
     RecoveryCase,
 )
+from app.integrations.razorpay import PaymentLinkReference
 from app.main import create_app
 from simulator.generator import generate_csv
 
@@ -39,7 +41,9 @@ def app(database_url):
 
     def create_payment_link(amount: int, idempotency_key: str) -> str:
         provider_calls.append({"amount": amount, "idempotency_key": idempotency_key})
-        return "plink_test_issue47_recovery"
+        return PaymentLinkReference(
+            "plink_test_issue47_recovery", "plink_test_issue47_recovery"
+        )
 
     application = create_app(
         database_url=database_url,
@@ -49,6 +53,25 @@ def app(database_url):
     )
     application.state.provider_calls = provider_calls
     return application
+
+
+def _seed_checkout_order(app, order_id: str) -> None:
+    with app.state.session_factory() as session:
+        session.add(
+            CheckoutOrder(
+                checkout_id=f"checkout_{order_id}",
+                idempotency_key=f"seed_{order_id}",
+                provider_order_id=order_id,
+                obligation_reference=order_id,
+                product_code="dumbbell_5kg",
+                product_name="5 kg Dumbbell",
+                amount=DUMBBELL_AMOUNT,
+                currency="INR",
+                status="created",
+                provider="razorpay_test",
+            )
+        )
+        session.commit()
 
 
 def _payload(
@@ -88,7 +111,9 @@ def _payload(
     return json.dumps(
         {
             "entity": "event",
-            "id": f"wrapper_{event_id}",
+            # The provider event ID is signed payload data; the header below
+            # is only a presentation/replay fixture and cannot override it.
+            "id": event_id,
             "event": event_type,
             "payload": {"payment": {"entity": entity}},
         },
@@ -308,6 +333,7 @@ async def test_issue47_signed_failure_replay_preserves_order_correlation_and_pro
     with app.state.session_factory() as session:
         session.add(Customer(customer_id="cust_live_1000", consent=True))
         session.commit()
+    _seed_checkout_order(app, "order_live_1000")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         imported = await client.post("/api/v1/data/import", content=content)
@@ -414,6 +440,7 @@ async def test_issue47_changed_signed_body_replay_cannot_mutate_event_case_or_ou
     changed_body = body.replace(b"BAD_REQUEST_ERROR", b"NETWORK_ERROR")
     assert changed_body != body
     assert hashlib.sha256(changed_body).hexdigest() != hashlib.sha256(body).hexdigest()
+    _seed_checkout_order(app, "order_immutable_1000")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         first = await client.post(
@@ -477,6 +504,7 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
     with app.state.session_factory() as session:
         session.add(Customer(customer_id="cust_live_1000", consent=True))
         session.commit()
+    _seed_checkout_order(app, "order_live_1000")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         imported = await client.post("/api/v1/data/import", content=content)
@@ -694,6 +722,7 @@ async def test_issue47_webhook_customer_metadata_does_not_grant_consent(app):
         status="failed",
         error_code="BAD_REQUEST_ERROR",
     )
+    _seed_checkout_order(app, "order_no_consent_1000")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/webhooks/razorpay",
@@ -729,6 +758,7 @@ async def test_issue47_standalone_success_is_not_a_recovery_outcome(app):
         event_id="event_standalone_capture_1000",
         status="captured",
     )
+    _seed_checkout_order(app, "order_standalone_1000")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/webhooks/razorpay",
@@ -760,6 +790,7 @@ async def test_issue47_hard_decline_policy_recheck_blocks_a_legacy_approved_retr
     with app.state.session_factory() as session:
         session.add(Customer(customer_id="cust_hard_1000", consent=True))
         session.commit()
+    _seed_checkout_order(app, "order_hard_1000")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         failure = _payload(

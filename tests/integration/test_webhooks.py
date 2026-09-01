@@ -276,8 +276,7 @@ async def test_same_signed_event_id_with_changed_raw_hash_is_a_conflict(app):
     assert first.status_code == 202
     assert conflict.status_code == 409
     assert conflict.json() == {
-        "event_id": "evt_signed_event_conflict",
-        "status": "conflict",
+        "detail": "provider event body conflicts with stored event"
     }
     with app.state.session_factory() as session:
         event = session.get(PaymentEvent, "evt_signed_event_conflict")

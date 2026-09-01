@@ -68,6 +68,7 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
         if existing_event is not None:
             if existing_event.raw_hash != event.raw_hash:
                 return _conflict_response(session, existing_event, event)
+            _correlate_recovery_payment(session, payload, event)
             return _duplicate_response(session, event)
 
         _correlate_recovery_payment(session, payload, event)
@@ -111,7 +112,7 @@ def _conflict_response(
         session.commit()
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
-        content={"event_id": event.event_id, "status": "conflict"},
+        content={"detail": "provider event body conflicts with stored event"},
     )
 
 
