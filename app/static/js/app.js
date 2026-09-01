@@ -101,18 +101,28 @@ function storedTheme() {
   }
 }
 
-function updateKpi(slot, value, note) {
+function updateKpi(slot, value, note, claim = null) {
   const card = kpis.querySelector(`[data-kpi-slot="${slot}"]`);
   if (!card) return;
   const valueNode = card.querySelector("[data-kpi-value]");
   const noteNode = card.querySelector("[data-kpi-note]");
+  const claimNode = card.querySelector("[data-kpi-claim]");
   if (valueNode) valueNode.textContent = value;
   if (noteNode) noteNode.textContent = note;
+  if (claimNode) {
+    claimNode.textContent = claim || "";
+    claimNode.hidden = !claim;
+  }
 }
 
 function renderKpis(data) {
   const executive = data?.executive || {};
-  updateKpi("revenue-at-risk", formatMoney(executive.revenue_at_risk), "Open RecoveryCases");
+  updateKpi(
+    "revenue-at-risk",
+    formatMoney(executive.revenue_at_risk),
+    "Open RecoveryCases",
+    executive.revenue_at_risk_claim_tag,
+  );
   updateKpi(
     "estimated-recoverable",
     formatMoney(executive.estimated_value),

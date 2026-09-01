@@ -92,6 +92,18 @@ def get_dashboard(request: Request) -> dict:
         revenue_at_risk = sum(
             case.amount_at_risk for case in cases if case.state not in {"recovered", "stopped"}
         )
+        revenue_sources = {
+            item["evidence"]["provider"]
+            for item in worklist
+            if item["state"] not in {"recovered", "stopped"} and item["evidence"]
+        }
+        revenue_at_risk_claim_tag = (
+            "MOCK"
+            if revenue_sources == {"mock"}
+            else "TEST MODE"
+            if revenue_sources == {"razorpay_test"}
+            else ""
+        )
         top_recoverable = findings[0].recoverable_impact if findings else 0
         estimated_value = top_recoverable
         outcomes = session.scalars(select(Outcome)).all()
@@ -105,6 +117,7 @@ def get_dashboard(request: Request) -> dict:
             "executive": {
                 "top_leak": _finding(session, findings[0]) if findings else None,
                 "revenue_at_risk": revenue_at_risk,
+                "revenue_at_risk_claim_tag": revenue_at_risk_claim_tag,
                 "estimated_value": estimated_value,
                 "test_mode_value": test_mode_value,
                 "open_cases": sum(
