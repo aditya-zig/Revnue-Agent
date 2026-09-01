@@ -230,6 +230,67 @@ async def test_repeated_failures_for_one_payment_create_distinct_events_and_one_
 
 
 @pytest.mark.asyncio
+async def test_dashboard_aggregates_provenance_for_repeated_attempts_at_http_seam(app):
+    csv = "\n".join(
+        [
+            (
+                "event_id,event_type,payment_id,customer_id,amount,currency,method,status,"
+                "error_code,error_reason,occurred_at,consent"
+            ),
+            (
+                "evt_csv_shared,payment.failed,pay_shared,cust_shared,249900,INR,upi,failed,"
+                "BAD_REQUEST_ERROR,insufficient funds,2026-01-01T00:00:00+00:00,true"
+            ),
+        ]
+    )
+    webhook_payload = {
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_shared",
+                    "amount": 249900,
+                    "currency": "INR",
+                    "method": "upi",
+                    "status": "failed",
+                    "error_code": "BAD_REQUEST_ERROR",
+                    "error_description": "insufficient funds",
+                    "created_at": 1767312000,
+                    "notes": {"customer_id": "cust_shared"},
+                }
+            }
+        },
+    }
+    webhook_body = json.dumps(webhook_payload, separators=(",", ":")).encode()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        imported = await client.post("/api/v1/data/import", content=csv)
+        repeated = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=webhook_body,
+            headers={"X-Razorpay-Signature": signature(webhook_body)},
+        )
+        duplicate = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=webhook_body,
+            headers={"X-Razorpay-Signature": signature(webhook_body)},
+        )
+        cases = await client.get("/api/v1/cases")
+        dashboard = await client.get("/api/v1/dashboard")
+
+    assert imported.status_code == 201
+    assert repeated.status_code == 202
+    assert duplicate.status_code == 200
+    assert duplicate.json()["status"] == "duplicate"
+    assert len(cases.json()) == 1
+    payload = dashboard.json()
+    case = payload["worklist"][0]
+    assert case["evidence"]["provider"] == "razorpay_test"
+    assert case["evidence_providers"] == ["razorpay_test", "csv_import"]
+    assert payload["executive"]["revenue_at_risk_claim_tag"] == ""
+
+
+@pytest.mark.asyncio
 async def test_webhook_rejects_a_modified_body_with_the_original_signature(app):
     original_body = b'{"event":"payment.failed"}'
     modified_body = b'{"event":"payment.captured"}'

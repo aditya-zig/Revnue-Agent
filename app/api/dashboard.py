@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from app.db.tables import (
     PaymentException,
     RecoveryCase,
 )
+from app.domain.enums import ClaimTag
 from app.finding_analysis import analysis_response
 from app.leak_analysis import finding_sort_key
 from app.policy import evaluate_policy, get_policy_configuration
@@ -25,6 +27,26 @@ router = APIRouter(tags=["dashboard"])
 DASHBOARD_HTML = (
     Path(__file__).resolve().parent.parent / "templates" / "dashboard.html"
 ).read_text(encoding="utf-8")
+
+
+def _claim_tag_for_providers(providers: Iterable[str | None]) -> str:
+    sources = set(providers)
+    if sources == {"mock"}:
+        return ClaimTag.MOCK.value
+    if sources == {"razorpay_test"}:
+        return ClaimTag.TEST_MODE.value
+    return ""
+
+
+def _payment_events_for_case(session, case: RecoveryCase) -> list[PaymentEvent]:
+    query = select(PaymentEvent)
+    if getattr(case, "obligation_reference", None):
+        query = query.where(PaymentEvent.obligation_reference == case.obligation_reference)
+    else:
+        query = query.where(PaymentEvent.payment_id == case.payment_id)
+    return session.scalars(
+        query.order_by(PaymentEvent.occurred_at.desc(), PaymentEvent.event_id.desc())
+    ).all()
 
 
 def _worklist_sort_key(item: dict) -> tuple[int, int, str]:
@@ -92,18 +114,13 @@ def get_dashboard(request: Request) -> dict:
         revenue_at_risk = sum(
             case.amount_at_risk for case in cases if case.state not in {"recovered", "stopped"}
         )
-        revenue_sources = {
-            item["evidence"].get("provider") if item["evidence"] else None
+        revenue_sources = [
+            provider
             for item in worklist
             if item["state"] not in {"recovered", "stopped"}
-        }
-        revenue_at_risk_claim_tag = (
-            "MOCK"
-            if revenue_sources == {"mock"}
-            else "TEST MODE"
-            if revenue_sources == {"razorpay_test"}
-            else ""
-        )
+            for provider in item["evidence_providers"]
+        ]
+        revenue_at_risk_claim_tag = _claim_tag_for_providers(revenue_sources)
         top_recoverable = findings[0].recoverable_impact if findings else 0
         estimated_value = top_recoverable
         outcomes = session.scalars(select(Outcome)).all()
@@ -144,18 +161,9 @@ def get_dashboard(request: Request) -> dict:
 def _case_summary(
     session, case: RecoveryCase, request: Request, configuration, open_exception_at: str | None
 ) -> dict:
-    if getattr(case, "obligation_reference", None):
-        payment = session.scalar(
-            select(PaymentEvent)
-            .where(PaymentEvent.obligation_reference == case.obligation_reference)
-            .order_by(PaymentEvent.occurred_at.desc())
-        )
-    else:
-        payment = session.scalar(
-            select(PaymentEvent)
-            .where(PaymentEvent.payment_id == case.payment_id)
-            .order_by(PaymentEvent.occurred_at.desc())
-        )
+    payment_events = _payment_events_for_case(session, case)
+    payment = payment_events[0] if payment_events else None
+    evidence_providers: list[str | None] = [event.provider for event in payment_events] or [None]
     decision = session.scalar(
         select(Decision)
         .where(Decision.case_id == case.case_id)
@@ -205,6 +213,8 @@ def _case_summary(
         "state": case.state,
         "opened_at": case.opened_at.isoformat() if case.opened_at else None,
         "evidence": _payment(payment) if payment else None,
+        # Preserve every contributing provider; None marks missing/unknown evidence.
+        "evidence_providers": evidence_providers,
         "selected_action": (
             decision.selected_action if decision else action.tool if action else None
         ),

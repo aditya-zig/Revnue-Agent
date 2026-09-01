@@ -15,6 +15,11 @@ export function claimTagForSource(source) {
   return "";
 }
 
+export function claimTagForSources(sources) {
+  const uniqueSources = [...new Set(sources || [])];
+  return uniqueSources.length === 1 ? claimTagForSource(uniqueSources[0]) : "";
+}
+
 export function findOutcomeForCase(data, caseId) {
   const timeline = data?.timeline?.find((item) => item.case_id === caseId);
   return timeline?.events?.find((event) => event.kind === "outcome")?.data || null;

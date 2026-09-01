@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.db.tables import PaymentEvent, RecoveryCase
 from app.main import create_app
 
 
@@ -44,6 +47,8 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
 
     assert page.status_code == 200
     assert response.status_code == 200
+    open_cases_card = page.text.split('data-kpi-slot="open-cases"', 1)[1].split("</article>", 1)[0]
+    assert "claim-tag" not in open_cases_card
     payload = response.json()
     case = payload["worklist"][0]
     assert {
@@ -65,3 +70,51 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
     payment_exception = payload["payment_exceptions"][0]
     assert payment_exception["resolution"] == "no_debit"
     assert payment_exception["resolution_evidence"] == {"bank_reference": "ref_001"}
+
+
+@pytest.mark.asyncio
+async def test_dashboard_suppresses_claims_for_missing_and_unknown_payment_evidence(app):
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                RecoveryCase(
+                    case_id="case_missing_evidence",
+                    payment_id="pay_missing_evidence",
+                    amount_at_risk=10000,
+                    state="detected",
+                    attempts=0,
+                ),
+                RecoveryCase(
+                    case_id="case_unknown_evidence",
+                    payment_id="pay_unknown_evidence",
+                    amount_at_risk=20000,
+                    state="detected",
+                    attempts=0,
+                ),
+                PaymentEvent(
+                    event_id="evt_unknown_evidence",
+                    provider_event_id="provider_unknown_evidence",
+                    event_type="payment.failed",
+                    payment_id="pay_unknown_evidence",
+                    amount=20000,
+                    currency="INR",
+                    status="failed",
+                    occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    provider="unknown",
+                    raw_hash="unknown-evidence-hash",
+                ),
+            ]
+        )
+        session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/dashboard")
+
+    assert response.status_code == 200
+    payload = response.json()
+    worklist = {item["case_id"]: item for item in payload["worklist"]}
+    assert worklist["case_missing_evidence"]["evidence"] is None
+    assert worklist["case_missing_evidence"]["evidence_providers"] == [None]
+    assert worklist["case_unknown_evidence"]["evidence"]["provider"] == "unknown"
+    assert worklist["case_unknown_evidence"]["evidence_providers"] == ["unknown"]
+    assert payload["executive"]["revenue_at_risk_claim_tag"] == ""
