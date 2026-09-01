@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.requests import read_limited_body
 from app.core.security import verify_razorpay_signature
-from app.db.tables import AuditEvent, PaymentException, RecoveryCase
+from app.db.tables import ActionEvent, AuditEvent, PaymentEvent, PaymentException, RecoveryCase
 from app.domain.models import NormalizedPaymentEvent
 from app.ingestion.record_event import record_event_and_update_case
 
@@ -48,7 +48,18 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
 
     factory = request.app.state.session_factory
     with factory() as session:
+        _correlate_recovery_payment(session, payload, event)
         if not record_event_and_update_case(session, event):
+            existing_event = session.scalar(
+                select(PaymentEvent).where(
+                    PaymentEvent.provider_event_id == event.provider_event_id
+                )
+            )
+            if existing_event is not None and existing_event.raw_hash != event.raw_hash:
+                return JSONResponse(
+                    status_code=status.HTTP_409_CONFLICT,
+                    content={"detail": "provider event body conflicts with stored event"},
+                )
             case = _case_for_event(session, event)
             if case:
                 session.add(
@@ -69,6 +80,43 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
                 _open_provider_reversal_exception(session, case, event)
         session.commit()
     return {"event_id": event.event_id, "status": "accepted"}
+
+
+def _correlate_recovery_payment(
+    session, payload: dict, event: NormalizedPaymentEvent
+) -> None:
+    """Resolve a provider recovery-link payment to its original obligation.
+
+    Payment Link captures can omit ``order_id``.  A persisted provider link
+    reference is still an explicit correlation key; amount, customer, and time
+    are deliberately not used as substitutes for PaymentObligation identity.
+    """
+    if event.obligation_reference:
+        return
+    payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
+    if not isinstance(payment, dict):
+        return
+    notes = payment.get("notes")
+    references = [
+        payment.get("payment_link_id"),
+        notes.get("reference_id") if isinstance(notes, dict) else None,
+        notes.get("idempotency_key") if isinstance(notes, dict) else None,
+    ]
+    for reference in references:
+        if not isinstance(reference, str) or not reference:
+            continue
+        action = session.scalar(
+            select(ActionEvent).where(
+                (ActionEvent.provider_reference == reference)
+                | (ActionEvent.idempotency_key == reference)
+            )
+        )
+        if action is None:
+            continue
+        case = session.get(RecoveryCase, action.case_id)
+        if case is not None and case.obligation_reference:
+            event.obligation_reference = case.obligation_reference
+            return
 
 
 def _case_for_event(session, event: NormalizedPaymentEvent) -> RecoveryCase | None:
