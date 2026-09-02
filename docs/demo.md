@@ -81,3 +81,18 @@ The webhook URL is:
 A persisted signed Test Mode webhook proves that ReRoute accepted valid HMAC
 evidence. A genuine-provider claim additionally requires observing the delivery
 in Razorpay Test Mode provider tooling or the Razorpay Dashboard.
+
+## Pre-recording proof check
+
+Before recording a genuine provider flow:
+
+```sh
+make genuine-evidence
+```
+
+After `payment.failed`, the sanitized evidence should report signed failure,
+the exact RecoveryCase, raw-body evidence, and Test Mode provenance. After
+recovery capture it should additionally report signed capture, an Outcome,
+`RECOVERED`, and source `razorpay_test`.
+
+Provider delivery must also be confirmed independently in Razorpay Test Mode.

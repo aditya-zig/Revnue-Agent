@@ -52,9 +52,18 @@ def _payment_events_for_case(session, case: RecoveryCase) -> list[PaymentEvent]:
 
 def _signed_test_mode_evidence(
     session,
-    event: PaymentEvent | None,
+    events: list[PaymentEvent],
 ) -> dict[str, object]:
-    if event is None:
+    signed_events = [
+        event
+        for event in events
+        if event.provider == "razorpay_test"
+        and event.raw_body is not None
+        and bool(event.raw_hash)
+    ]
+    event_types = sorted({event.event_type for event in signed_events})
+    latest = signed_events[0] if signed_events else None
+    if latest is None:
         return {
             "present": False,
             "claim_tag": "",
@@ -65,39 +74,38 @@ def _signed_test_mode_evidence(
             "checkout_order_owned": False,
             "signature_boundary": "no signed Test Mode event recorded",
             "provider_delivery_claim": "not established",
+            "signed_event_count": 0,
+            "event_types": [],
+            "payment_failed_present": False,
+            "payment_captured_present": False,
         }
 
-    raw_body_present = event.raw_body is not None
+    raw_body_present = latest.raw_body is not None
     order_owned = False
-    if event.obligation_reference:
+    if latest.obligation_reference:
         order_owned = (
             session.scalar(
                 select(CheckoutOrder.checkout_id).where(
-                    CheckoutOrder.provider_order_id == event.obligation_reference
+                    CheckoutOrder.provider_order_id == latest.obligation_reference
                 )
             )
             is not None
         )
 
-    signed_evidence = (
-        event.provider == "razorpay_test"
-        and raw_body_present
-        and bool(event.raw_hash)
-    )
     return {
-        "present": signed_evidence,
-        "claim_tag": ClaimTag.TEST_MODE.value if signed_evidence else "",
-        "event_type": event.event_type,
-        "status": event.status,
+        "present": True,
+        "claim_tag": ClaimTag.TEST_MODE.value,
+        "event_type": latest.event_type,
+        "status": latest.status,
         "raw_body_present": raw_body_present,
-        "raw_hash_prefix": event.raw_hash[:12] if event.raw_hash else None,
+        "raw_hash_prefix": latest.raw_hash[:12] if latest.raw_hash else None,
         "checkout_order_owned": order_owned,
-        "signature_boundary": (
-            "accepted through signed Razorpay webhook ingestion"
-            if signed_evidence
-            else "no signed webhook evidence"
-        ),
+        "signature_boundary": "accepted through signed Razorpay webhook ingestion",
         "provider_delivery_claim": "external_verification_required",
+        "signed_event_count": len(signed_events),
+        "event_types": event_types,
+        "payment_failed_present": "payment.failed" in event_types,
+        "payment_captured_present": "payment.captured" in event_types,
     }
 
 
@@ -203,26 +211,19 @@ def get_dashboard(request: Request) -> dict:
         )
         failure_rate = payment_failed / payment_total if payment_total else 0.0
 
-        test_mode_event_count = (
-            session.scalar(
-                select(func.count())
-                .select_from(PaymentEvent)
-                .where(PaymentEvent.provider == "razorpay_test")
-            )
-            or 0
-        )
-        latest_test_mode_payment = session.scalar(
+        test_mode_events = session.scalars(
             select(PaymentEvent)
             .where(PaymentEvent.provider == "razorpay_test")
             .order_by(
                 PaymentEvent.occurred_at.desc(),
                 PaymentEvent.event_id.desc(),
             )
-            .limit(1)
-        )
+        ).all()
+        test_mode_event_count = len(test_mode_events)
+        latest_test_mode_payment = test_mode_events[0] if test_mode_events else None
         provider_evidence = _signed_test_mode_evidence(
             session,
-            latest_test_mode_payment,
+            test_mode_events,
         )
 
         return {

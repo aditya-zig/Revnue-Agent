@@ -75,10 +75,11 @@ CHROME_DEVTOOLS_AXI_BROWSER_URL="http://127.0.0.1:$chrome_port" \
 await page.open("http://127.0.0.1:$port/");
 await page.eval("new Promise((resolve) => setTimeout(resolve, 1000))");
 const result = await page.eval("(() => { const policyPanel = [...document.querySelectorAll('#overview .panel')].find((panel) => panel.textContent.includes('Policy signal')); const estimatedBadges = [...(policyPanel?.querySelectorAll('.badge') || [])].filter((badge) => badge.textContent.trim() === 'ESTIMATED'); const openCasesCard = document.querySelector('[data-kpi-slot=\\"open-cases\\"]'); return { estimatedBadges: estimatedBadges.length, openCasesClaimTags: openCasesCard?.querySelectorAll('.claim-tag').length || 0 }; })()");
+const providerEvidenceEmpty = await page.eval("(() => [...document.querySelectorAll('#overview .panel')].find((panel) => panel.textContent.includes('Provider evidence'))?.textContent.includes('No signed Razorpay Test Mode webhook evidence is persisted yet.') || false)");
 await page.eval("document.querySelector('#tab-queue').click()");
 const mixedQueueClaim = await page.eval("(() => { const row = [...document.querySelectorAll('#queue tbody tr')].find((candidate) => candidate.textContent.includes('case_pay_browser_1')); return row ? [...row.querySelectorAll('.case-sub')].some((item) => ['MOCK', 'TEST MODE'].includes(item.textContent.trim())) : true; })()");
-if (result.estimatedBadges !== 1 || result.openCasesClaimTags !== 0 || mixedQueueClaim) {
-  throw new Error(JSON.stringify({ ...result, mixedQueueClaim }));
+if (result.estimatedBadges !== 1 || result.openCasesClaimTags !== 0 || mixedQueueClaim || !providerEvidenceEmpty) {
+  throw new Error(JSON.stringify({ ...result, mixedQueueClaim, providerEvidenceEmpty }));
 }
-console.log(JSON.stringify({ ...result, mixedQueueClaim }));
+console.log(JSON.stringify({ ...result, mixedQueueClaim, providerEvidenceEmpty }));
 EOF

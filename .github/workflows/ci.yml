@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "chatgpt/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync
+        run: uv sync --dev
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: mypy
+        run: uv run mypy
+
+      - name: JavaScript syntax
+        run: |
+          node --check app/static/js/api.js
+          node --check app/static/js/app.js
+          node --check app/static/js/dashboard-view.js
+          node --check app/static/js/dashboard-format.js
+          node --check app/static/js/recovery-workflow.js

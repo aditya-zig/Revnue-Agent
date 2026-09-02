@@ -193,3 +193,19 @@ uv run pytest
 uv run ruff check .
 uv run mypy
 ```
+
+## Release verification
+
+```sh
+make verify
+```
+
+For genuine Razorpay Test Mode preparation:
+
+```sh
+make genuine-prepare CREDENTIALS=/path/to/test-credentials.csv
+make genuine-probe CREDENTIALS=/path/to/test-credentials.csv
+make genuine-preflight PUBLIC_URL=https://example-public-host
+```
+
+No credential values are printed or committed.

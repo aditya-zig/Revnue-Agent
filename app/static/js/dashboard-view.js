@@ -58,7 +58,12 @@ function renderProviderEvidence(evidence) {
       ${evidence.claim_tag ? tag(evidence.claim_tag) : ""}
     </div>
     <div class="panel-body">
+      <div class="provider-evidence-status">
+        ${evidence.payment_failed_present ? tag("payment.failed SIGNED") : tag("payment.failed PENDING")}
+        ${evidence.payment_captured_present ? tag("payment.captured SIGNED") : tag("payment.captured PENDING")}
+      </div>
       <div class="provider-evidence-grid">
+        <div><span>Signed Test Mode events</span><strong>${esc(String(evidence.signed_event_count ?? 0))}</strong></div>
         <div><span>Event</span><strong>${esc(evidence.event_type || "—")}</strong></div>
         <div><span>Status</span><strong>${esc(evidence.status || "—")}</strong></div>
         <div><span>Raw body</span><strong>${evidence.raw_body_present ? "Persisted" : "Absent"}</strong></div>
