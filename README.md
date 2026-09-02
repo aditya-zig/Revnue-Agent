@@ -106,6 +106,9 @@ curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
   flow only; it does not create payment evidence.
 - `POST /api/v1/webhooks/razorpay` verifies an `X-Razorpay-Signature` against
   the raw request body before storing a normalized event.
+- `POST /api/v1/data/simulate-999` creates the deterministic 999-payment
+  demo history through the normal import and leak-detection pipeline and
+  refuses to mix it into a database that already contains PaymentEvents.
 - `POST /api/v1/data/import` imports a UTF-8 normalized CSV body.
 - `POST /api/v1/findings/detect` calculates and persists ranked failure cohorts.
 - `POST /api/v1/findings/{finding_id}/analysis` explicitly requests an OpenRouter
