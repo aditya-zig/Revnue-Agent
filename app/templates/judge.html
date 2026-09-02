@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ReRoute Intelligence | Judge Playground</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; background: #f6f7fb; color: #15171a; }
+    main { max-width: 980px; margin: 0 auto; padding: 56px 24px 72px; }
+    .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #5d6470; }
+    h1 { font-size: clamp(38px, 7vw, 68px); line-height: .98; margin: 14px 0 18px; letter-spacing: -.04em; }
+    .lede { max-width: 760px; font-size: 19px; line-height: 1.6; color: #4a5059; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin-top: 34px; }
+    .card { background: white; border: 1px solid #e4e7ec; border-radius: 18px; padding: 24px; box-shadow: 0 10px 30px rgba(18,24,40,.05); }
+    .step { font-size: 13px; font-weight: 700; color: #69707b; }
+    .card h2 { margin: 8px 0 10px; font-size: 23px; }
+    .card p { margin: 0 0 20px; line-height: 1.55; color: #555c66; }
+    a.button { display: inline-block; padding: 11px 15px; border-radius: 10px; background: #17191c; color: white; text-decoration: none; font-weight: 700; }
+    .note { margin-top: 28px; padding: 18px 20px; border: 1px solid #dedfe4; border-radius: 14px; background: #fff; color: #4d535c; line-height: 1.55; }
+    code { background: #f0f1f4; padding: 2px 6px; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Razorpay Buildathon demo</div>
+    <h1>Try ReRoute Intelligence.</h1>
+    <p class="lede">ReRoute finds recoverable payment failures, applies deterministic policy, ranks only permitted recovery actions, requires human approval, and records the outcome and audit trail.</p>
+
+    <section class="grid" aria-label="Judge demo steps">
+      <article class="card">
+        <div class="step">STEP 1</div>
+        <h2>Open the dashboard</h2>
+        <p>Start from a clean merchant view. Use <strong>Simulate 999 Payments</strong> to create the deterministic historical population and leak findings.</p>
+        <a class="button" href="/">Open dashboard</a>
+      </article>
+
+      <article class="card">
+        <div class="step">STEP 2</div>
+        <h2>Try payment #1000</h2>
+        <p>Open the 5 kg dumbbell storefront. With Razorpay Test Mode credentials configured, this launches the official Razorpay Checkout.</p>
+        <a class="button" href="/storefront">Open storefront</a>
+      </article>
+
+      <article class="card">
+        <div class="step">STEP 3</div>
+        <h2>Inspect recovery</h2>
+        <p>Return to the dashboard to inspect evidence, policy-gated actions, ranking, approval, timeline, provider evidence, and recorded outcomes.</p>
+        <a class="button" href="/">Review recovery</a>
+      </article>
+    </section>
+
+    <div class="note">
+      <strong>Evidence labels matter.</strong> Historical benchmark data is <code>SIMULATED</code>. Persisted leak impact is <code>ESTIMATED</code>. Razorpay provider evidence is shown as <code>TEST MODE</code> only when that evidence exists. No production payment or production revenue claim is made.
+    </div>
+  </main>
+</body>
+</html>
