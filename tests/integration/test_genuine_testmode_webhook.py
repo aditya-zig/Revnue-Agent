@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from scripts import genuine_testmode_webhook as webhook
 
 
