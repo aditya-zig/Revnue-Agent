@@ -12,6 +12,20 @@ messages or include production credentials. When local Razorpay Test Mode keys
 are configured, it can create a Test Mode storefront order or approved recovery
 payment link. It never handles real money.
 
+Boundaries: the 999-payment SyntheticCorpus is SIMULATED and MOCK data from
+`simulator/generator.py` with fixed seed 47. Dashboard findings, cohorts, and
+the `30x30` comparison in `app/evaluation/comparison.py` are SIMULATED. Any
+impact or recoverable impact is ESTIMATED, not booked revenue or a forecast.
+Provider evidence is Razorpay TEST MODE only when local Test Mode keys are
+configured and verified via signed `payment.failed` and `payment.captured`
+webhooks in `app/api/webhooks.py`. Without Test Mode keys the app runs fully
+offline on deterministic provider-shaped fixtures and signed synthetic payloads
+as exercised by `tests/integration/test_webhooks.py` and
+`tests/integration/test_issue47_final_journey.py`. The browser checkout at
+`/storefront` requires Test Mode credentials plus a public HTTPS tunnel and a
+Razorpay Dashboard webhook for `payment.failed` and `payment.captured`; a
+missing key or tunnel prevents live provider calls and must not be masked.
+
 ## Run the public demo
 
 Install [uv](https://docs.astral.sh/uv/) and Python 3.12 or later. The commands
