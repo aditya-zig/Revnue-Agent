@@ -203,9 +203,21 @@ make verify
 For genuine Razorpay Test Mode preparation:
 
 ```sh
+make genuine-session CREDENTIALS=/path/to/test-credentials.csv
+```
+
+This single command prepares the private local Test Mode runtime, migrates a
+fresh demo database, starts ReRoute, imports the deterministic 999-payment
+history, and proves server-side Razorpay Test Mode order creation through an
+exact provider fetch. It does not prove webhook delivery or payment capture.
+
+Use the lower-level commands for diagnostics:
+
+```sh
 make genuine-prepare CREDENTIALS=/path/to/test-credentials.csv
 make genuine-probe CREDENTIALS=/path/to/test-credentials.csv
 make genuine-preflight PUBLIC_URL=https://example-public-host
+make genuine-evidence
 ```
 
 No credential values are printed or committed.

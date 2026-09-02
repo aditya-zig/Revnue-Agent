@@ -1,5 +1,5 @@
 .PHONY: help sync test lint typecheck jscheck verify browser-check \
-	genuine-prepare genuine-probe genuine-preflight genuine-evidence
+	genuine-prepare genuine-probe genuine-preflight genuine-evidence genuine-session
 
 help:
 	@printf '%s\n' \
@@ -11,6 +11,7 @@ help:
 		'make verify            Run normal release verification' \
 		'make browser-check     Run local dashboard DOM test' \
 		'make genuine-prepare   Prepare Test Mode environment; requires CREDENTIALS=...' \
+		'make genuine-session   Start a complete local Test Mode proof session; requires CREDENTIALS=...' \
 		'make genuine-probe     Run genuine provider order probe; requires CREDENTIALS=...' \
 		'make genuine-preflight Check Test Mode/public URL readiness; requires PUBLIC_URL=...' \
 		'make genuine-evidence  Print sanitized local provider evidence'
@@ -43,6 +44,11 @@ browser-check:
 genuine-prepare:
 	@test -n "$(CREDENTIALS)" || (echo "CREDENTIALS path is required" && exit 2)
 	uv run python scripts/genuine_testmode_prepare.py \
+		--credentials-file "$(CREDENTIALS)"
+
+genuine-session:
+	@test -n "$(CREDENTIALS)" || (echo "CREDENTIALS path is required" && exit 2)
+	uv run python scripts/genuine_testmode_session.py \
 		--credentials-file "$(CREDENTIALS)"
 
 genuine-probe:
