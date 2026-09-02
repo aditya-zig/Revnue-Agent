@@ -12,10 +12,11 @@ messages or include production credentials. When local Razorpay Test Mode keys
 are configured, it can create a Test Mode storefront order or approved recovery
 payment link. It never handles real money.
 
-Boundaries: the 999-payment SyntheticCorpus is SIMULATED and MOCK data from
-`simulator/generator.py` with fixed seed 47. Dashboard findings, cohorts, and
-the `30x30` comparison in `app/evaluation/comparison.py` are SIMULATED. Any
-impact or recoverable impact is ESTIMATED, not booked revenue or a forecast.
+Boundaries: the 999-payment SyntheticCorpus is SIMULATED synthetic data from
+`simulator/generator.py` with fixed seed 47. MOCK is reserved for explicit mock
+actions, messages, and outcomes. Dashboard findings, cohorts, and the `30x30`
+comparison in `app/evaluation/comparison.py` are SIMULATED. Any impact or
+recoverable impact is ESTIMATED, not booked revenue or a forecast.
 Provider evidence is Razorpay TEST MODE only when local Test Mode keys are
 configured and verified via signed `payment.failed` and `payment.captured`
 webhooks in `app/api/webhooks.py`. Without Test Mode keys the app runs fully
@@ -25,7 +26,8 @@ payloads that are not live evidence, as exercised by
 `tests/integration/test_issue47_final_journey.py`; `scripts/live_testmode_preflight.py` verifies Test Mode readiness without printing secrets. The browser checkout at
 `/storefront` requires Test Mode credentials plus a public HTTPS tunnel and a
 Razorpay Dashboard webhook for `payment.failed` and `payment.captured`; a
-missing key or tunnel prevents live provider calls and must not be masked.
+missing key or tunnel prevents genuine provider Test Mode calls and must not be
+masked.
 
 ## Run the public demo
 
@@ -39,18 +41,47 @@ uv sync --dev
 cp .env.example .env
 rm -f demo.db
 REROUTE_DATABASE_URL=sqlite:///./demo.db uv run alembic upgrade head
-REROUTE_DATABASE_URL=sqlite:///./demo.db uv run python scripts/seed_demo.py
 REROUTE_DATABASE_URL=sqlite:///./demo.db uv run uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/` for the dashboard, or
-`http://127.0.0.1:8000/storefront` for the 5 kg Dumbbell Test Mode Checkout.
-The seed script generates the 999-payment SyntheticCorpus from
-`simulator/generator.py`, imports it, computes findings, and adds controlled
-edge cases for the demo. The committed `demo/payment_events.csv` remains a
-small offline fallback. The corpus includes policy-blocked and eligible cases
-with synthetic identifiers; provider actions require a persisted human approval
-before they are attempted.
+Open:
+
+- `http://127.0.0.1:8000/` — ReRoute dashboard
+- `http://127.0.0.1:8000/storefront` — fixed 5 kg Dumbbell storefront
+
+On a fresh database, click **Simulate 999 Payments** on the dashboard.
+
+That control runs the real deterministic demo pipeline:
+
+```text
+simulator/generator.py
+→ normalized CSV
+→ import_csv()
+→ PaymentEvents
+→ RecoveryCases
+→ detect_and_store_leaks()
+→ LeakFindings
+```
+
+With seed 47 the persisted population is:
+
+- 999 PaymentEvents
+- 749 captured
+- 250 failed
+- 25.03% failure rate
+- 37 persisted LeakFindings
+
+The planted UPI cohort is detected by the normal detector; the button does not
+insert LeakFinding answers directly.
+
+The dashboard also contains a deterministic hard-decline case. Policy removes
+`retry` before ranking, and the RecoveryModel only receives the remaining
+permitted actions.
+
+For the controlled local Issue #47 rehearsal, the integration suite supplies a
+correctly signed provider-shaped Test Mode fixture. This fixture is not a
+webhook delivered by Razorpay and must not be described as live provider
+evidence.
 
 Use these commands in another terminal to inspect the demo state:
 
@@ -75,6 +106,9 @@ curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
   flow only; it does not create payment evidence.
 - `POST /api/v1/webhooks/razorpay` verifies an `X-Razorpay-Signature` against
   the raw request body before storing a normalized event.
+- `POST /api/v1/data/simulate-999` creates the deterministic 999-payment
+  demo history through the normal import and leak-detection pipeline and
+  refuses to mix it into a database that already contains PaymentEvents.
 - `POST /api/v1/data/import` imports a UTF-8 normalized CSV body.
 - `POST /api/v1/findings/detect` calculates and persists ranked failure cohorts.
 - `POST /api/v1/findings/{finding_id}/analysis` explicitly requests an OpenRouter

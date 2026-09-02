@@ -4,6 +4,7 @@ from collections import Counter
 from io import StringIO
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.db.tables import LeakFinding, PaymentEvent, RecoveryCase
@@ -166,3 +167,47 @@ def test_issue_47_default_is_the_revised_population_not_rejected_failure_shape()
     # population from returning as the default fixture.
     assert (failed, captured) == (250, 749)
     assert failed != 800
+
+
+@pytest.mark.asyncio
+async def test_issue_47_simulate_999_endpoint_runs_real_pipeline(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.post("/api/v1/data/simulate-999")
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["payments_created"] == 999
+        assert payload["payments_total"] == 999
+        assert payload["successes"] == 749
+        assert payload["failures"] == 250
+        assert payload["duplicates"] == 0
+        assert payload["findings"] == 37
+        assert payload["seed"] == ISSUE_47_SEED
+        assert payload["top_finding_id"]
+
+        dashboard = await client.get("/api/v1/dashboard")
+        assert dashboard.status_code == 200
+        assert dashboard.json()["population"] == {
+            "total": 999,
+            "captured": 749,
+            "failed": 250,
+            "failure_rate": pytest.approx(250 / 999),
+            "test_mode_events": 0,
+            "latest_test_mode_payment": None,
+        }
+
+        duplicate = await client.post("/api/v1/data/simulate-999")
+        assert duplicate.status_code == 409
+        assert duplicate.json() == {
+            "detail": "demo payment history requires an empty payment database"
+        }
+
+    with app.state.session_factory() as session:
+        assert len(session.scalars(select(PaymentEvent)).all()) == 999
+        assert len(session.scalars(select(RecoveryCase)).all()) == 250
+        findings = session.scalars(select(LeakFinding)).all()
+        assert len(findings) == 37

@@ -328,6 +328,59 @@ async def test_issue47_999_detector_ranking_is_proven_at_the_http_seam(app):
 
 
 @pytest.mark.asyncio
+async def test_issue47_dashboard_marks_test_mode_payment_1000(app):
+    content = generate_csv(seed=HISTORY_SEED, event_count=HISTORY_COUNT)
+
+    with app.state.session_factory() as session:
+        session.add(Customer(customer_id="cust_dashboard_1000", consent=True))
+        session.commit()
+
+    _seed_checkout_order(app, "order_dashboard_1000")
+
+    body = _payload(
+        "payment.failed",
+        payment_id="pay_dashboard_1000",
+        order_id="order_dashboard_1000",
+        customer_id="cust_dashboard_1000",
+        event_id="event_dashboard_failed_1000",
+        status="failed",
+        error_code="BAD_REQUEST_ERROR",
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        imported = await client.post(
+            "/api/v1/data/import",
+            content=content,
+            headers={"Content-Type": "text/csv"},
+        )
+        webhook = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=body,
+            headers=_webhook_headers(body, "event_dashboard_failed_1000"),
+        )
+        dashboard = await client.get("/api/v1/dashboard")
+
+    assert imported.status_code == 201
+    assert imported.json() == {"imported": 999, "duplicates": 0}
+    assert webhook.status_code == 202
+
+    population = dashboard.json()["population"]
+    assert population["total"] == 1000
+    assert population["captured"] == 749
+    assert population["failed"] == 251
+    assert population["failure_rate"] == pytest.approx(251 / 1000)
+    assert population["test_mode_events"] == 1
+
+    latest = population["latest_test_mode_payment"]
+    assert latest["payment_id"] == "pay_dashboard_1000"
+    assert latest["provider"] == "razorpay_test"
+    assert latest["status"] == "failed"
+
+
+@pytest.mark.asyncio
 async def test_issue47_signed_failure_replay_preserves_order_correlation_and_provenance(app):
     content = generate_csv(seed=HISTORY_SEED, event_count=999)
     with app.state.session_factory() as session:
@@ -582,6 +635,7 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
             content=capture,
             headers=_webhook_headers(capture, "event_live_capture_1000"),
         )
+        dashboard_after_capture = await client.get("/api/v1/dashboard")
         capture_duplicate = await client.post(
             "/api/v1/webhooks/razorpay",
             content=capture,
@@ -644,6 +698,36 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
         "event_id": "evt_event_live_capture_1000",
         "status": "duplicate",
     }
+
+    assert dashboard_after_capture.status_code == 200
+
+    dashboard_body = dashboard_after_capture.json()
+
+    recovered_case = next(
+        item
+        for item in dashboard_body["worklist"]
+        if item["case_id"] == "case_order_live_1000"
+    )
+
+    assert recovered_case["state"] == "recovered"
+
+    recovered_timeline = next(
+        item
+        for item in dashboard_body["timeline"]
+        if item["case_id"] == "case_order_live_1000"
+    )
+
+    recorded_outcome = next(
+        event
+        for event in recovered_timeline["events"]
+        if event["kind"] == "outcome"
+    )
+
+    assert recorded_outcome["data"]["recovered"] is True
+    assert recorded_outcome["data"]["recovered_amount"] == DUMBBELL_AMOUNT
+    assert recorded_outcome["data"]["source"] == "razorpay_test"
+
+    assert dashboard_body["executive"]["test_mode_value"] == DUMBBELL_AMOUNT
 
     assert outcome.status_code == 200
     outcome_body = outcome.json()

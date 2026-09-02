@@ -124,10 +124,38 @@ Status: completed. 30-seed reproducible comparison with frozen published results
 ### Phase 9. Submission
 
 - Document architecture, prior art, threats, evaluation, setup, and limits.
-- Provide demo data and a five-minute video.
-- Audit the public repository for secrets and real customer data.
+- Provide deterministic demo data and a reproducible 999 → #1000 walkthrough.
+- Audit the public repository for credentials and real customer data.
+- Record the final five-minute demonstration.
+- Complete the genuine Razorpay Test Mode proof if rotated credentials, public
+  HTTPS, and webhook registration are available before submission.
 
-Status: deadline is 4 September 2026. Submission is planned for 4 September 2026. No license file per owner decision.
+Status: in progress for the 3 September 2026 deadline.
+
+The controlled local application demo is complete:
+
+- dashboard `Simulate 999 Payments` control
+- exactly 999 deterministic historical PaymentEvents
+- 749 captured and 250 failed
+- persisted detector-generated LeakFindings
+- visible hard-decline retry safety
+- payment #1000 correlation
+- `DETECTED → INVESTIGATED → ELIGIBLE`
+- deterministic Policy
+- Policy-bounded recovery ranking
+- business-owner approval
+- persisted ActionEvent
+- signed provider-shaped Test Mode capture fixture
+- persisted `razorpay_test` Outcome
+- `RECOVERED`
+- full audit trace
+
+The remaining Razorpay item is external proof, not missing application
+architecture: a genuine provider-delivered Test Mode webhook requires rotated
+credentials, a public HTTPS endpoint, and Razorpay Test Mode webhook
+registration for `payment.failed` and `payment.captured`.
+
+No license file is planned per owner decision.
 
 ## Verification targets
 
