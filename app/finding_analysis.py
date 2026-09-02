@@ -5,6 +5,7 @@ only provide hypotheses and validation steps in a strict, bounded response;
 any provider or parsing failure is persisted as the deterministic fallback.
 """
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -60,10 +61,52 @@ class FindingAnalysisOutput(BaseModel):
     next_validation_steps: list[str] = Field(min_length=1, max_length=5)
 
 
+def _provider_error_from_body(body: object) -> OpenRouterProviderError | None:
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return None
+    code = error.get("code")
+    status_code = code if isinstance(code, int) else None
+    if status_code == 429:
+        reason = "rate_limited"
+    elif status_code in {404, 422}:
+        reason = "no_compatible_model"
+    else:
+        reason = "provider_error"
+    return OpenRouterProviderError(reason, status_code=status_code)
+
+
+def _message_content(message: object) -> str:
+    if not isinstance(message, dict):
+        raise OpenRouterProviderError("malformed_provider_response")
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return json.dumps(content, separators=(",", ":"))
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            text = part.get("text")
+            if isinstance(text, str):
+                text_parts.append(text)
+        if text_parts:
+            return "".join(text_parts)
+    parsed = message.get("parsed")
+    if isinstance(parsed, dict):
+        return json.dumps(parsed, separators=(",", ":"))
+    raise OpenRouterProviderError("malformed_provider_response")
+
+
 class OpenRouterProvider:
     """Small synchronous OpenRouter chat-completions adapter.
 
-    This adapter deliberately has no fallback model and does not expose tools.
+    This adapter deliberately exposes no tools. Provider/model failures are
+    contained by the deterministic FindingAnalysis fallback.
     """
 
     def __init__(
@@ -105,6 +148,7 @@ class OpenRouterProvider:
             ],
             "max_tokens": 400,
             "provider": {"allow_fallbacks": False, "data_collection": "deny"},
+            "plugins": [{"id": "response-healing"}],
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -138,18 +182,22 @@ class OpenRouterProvider:
             body = response.json()
         except ValueError as error:
             raise OpenRouterProviderError("malformed_provider_response") from error
+
+        provider_error = _provider_error_from_body(body)
+        if provider_error is not None:
+            raise provider_error
+
         try:
             choice = body["choices"][0]
             message = choice["message"]
-            content = message["content"]
+            content = _message_content(message)
         except (KeyError, IndexError, TypeError) as error:
             raise OpenRouterProviderError("malformed_provider_response") from error
+
         tool_calls = message.get("tool_calls") or []
         tool_usage = {"requested": False, "used": bool(tool_calls), "tools": []}
         if tool_calls:
             tool_usage["tools"] = [call.get("type", "unknown") for call in tool_calls]
-        if not isinstance(content, str):
-            raise OpenRouterProviderError("malformed_provider_response")
         return OpenRouterCompletion(
             output=content,
             resolved_model=body.get("model"),
@@ -160,8 +208,6 @@ class OpenRouterProvider:
 
 
 def _json_for_prompt(value: dict) -> str:
-    import json
-
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
@@ -200,7 +246,6 @@ def create_snapshot(finding: LeakFinding) -> dict:
 
 def snapshot_hash(snapshot: dict) -> str:
     import hashlib
-    import json
 
     encoded = json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
