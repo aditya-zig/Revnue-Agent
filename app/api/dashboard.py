@@ -130,7 +130,58 @@ def get_dashboard(request: Request) -> dict:
         # Keep 0 when no razorpay_test outcomes exist rather than summing all;
         # this preserves ClaimTag discipline.
 
+        payment_total = (
+            session.scalar(select(func.count()).select_from(PaymentEvent)) or 0
+        )
+        payment_captured = (
+            session.scalar(
+                select(func.count())
+                .select_from(PaymentEvent)
+                .where(PaymentEvent.status == "captured")
+            )
+            or 0
+        )
+        payment_failed = (
+            session.scalar(
+                select(func.count())
+                .select_from(PaymentEvent)
+                .where(PaymentEvent.status == "failed")
+            )
+            or 0
+        )
+        failure_rate = payment_failed / payment_total if payment_total else 0.0
+
+        test_mode_event_count = (
+            session.scalar(
+                select(func.count())
+                .select_from(PaymentEvent)
+                .where(PaymentEvent.provider == "razorpay_test")
+            )
+            or 0
+        )
+        latest_test_mode_payment = session.scalar(
+            select(PaymentEvent)
+            .where(PaymentEvent.provider == "razorpay_test")
+            .order_by(
+                PaymentEvent.occurred_at.desc(),
+                PaymentEvent.event_id.desc(),
+            )
+            .limit(1)
+        )
+
         return {
+            "population": {
+                "total": payment_total,
+                "captured": payment_captured,
+                "failed": payment_failed,
+                "failure_rate": failure_rate,
+                "test_mode_events": test_mode_event_count,
+                "latest_test_mode_payment": (
+                    _payment(latest_test_mode_payment)
+                    if latest_test_mode_payment is not None
+                    else None
+                ),
+            },
             "executive": {
                 "top_leak": _finding(session, findings[0]) if findings else None,
                 "revenue_at_risk": revenue_at_risk,

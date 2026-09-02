@@ -57,8 +57,22 @@ export function getDashboard(options = {}) {
   return requestJSON("/dashboard", options);
 }
 
+export function simulate999Payments(options = {}) {
+  return requestJSON("/data/simulate-999", {
+    ...options,
+    method: "POST",
+  });
+}
+
 export function listCases(options = {}) {
   return requestJSON("/cases", options);
+}
+
+export function investigateCase(caseId, options = {}) {
+  return requestJSON(`/cases/${encodeURIComponent(caseId)}/investigate`, {
+    ...options,
+    method: "POST",
+  });
 }
 
 export function getAudit(caseId, options = {}) {

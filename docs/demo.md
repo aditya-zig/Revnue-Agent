@@ -3,9 +3,9 @@
 ## Before the recording
 
 Run the commands in the README. Keep the terminal that runs Uvicorn visible.
-Open `http://127.0.0.1:8000/` in a browser. The seed replay generates the
-reproducible 999-payment SyntheticCorpus with seed 47 into a new `demo.db`;
-`demo/payment_events.csv` is only the small offline fallback.
+Open `http://127.0.0.1:8000/` in a browser. On a fresh database, click
+**Simulate 999 Payments**; it runs the generator → import → PaymentEvents →
+RecoveryCases → detector → LeakFindings pipeline.
 
 For the Issue #47 failure-first path, open `http://127.0.0.1:8000/storefront`
 in a separate tab. It is a fixed 5 kg Dumbbell at ₹2,499 and uses only
@@ -28,7 +28,7 @@ Keep every claim inside its provenance. The narrator must distinguish `ESTIMATED
 
 - **0:00–0:30 problem / ReRoute.** One line on the leak problem: isolated failures hide cohort-level revenue risk. Show the flow `Payments → detect abnormal failure cohorts → estimate recoverable loss → policy filters actions → choose recovery action → track outcome`. Name the four operator questions: where is money leaking, can we safely recover it, what should ReRoute do, did it work.
 
-- **0:30–0:50 exactly 999 `SIMULATED` / `MOCK` history.** Run `REROUTE_DATABASE_URL=sqlite:///./demo.db uv run python scripts/seed_demo.py`. State it is exactly 999 `SIMULATED`/`MOCK` payments from `simulator/generator.py` seed 47, not live merchant data. Seeded shape: 999 events, 250 failures (25.03%) and 749 captures, UPI 225/450 (50%), card 13/275 (4.73%), netbanking 12/274 (4.38%). (Dashboard **Simulate 999 Payments** is future Issue #47 intent, not an existing control.)
+- **0:30–0:50 exactly 999 `SIMULATED` history.** Click **Simulate 999 Payments**. State it is exactly 999 synthetic payments from `simulator/generator.py` seed 47, not live merchant data. Show 999 events, 250 failures (25.03%), 749 captures, and 37 persisted detector-generated `LeakFindings`. MOCK is reserved for explicit mock actions, messages, replies, or Outcomes.
 
 - **0:50–1:30 dumbbell and #1000 failure-first event.** Open `/storefront`. Show the 5 kg Dumbbell at ₹2,499, click **Buy Now**, open official Razorpay Test Mode Checkout, deliberately trigger the supported Test Mode failure. Note the browser error is presentation only; the backend source of truth is the signed `payment.failed` webhook that creates the order-linked `PaymentEvent` and `RecoveryCase` with deduplication.
 
