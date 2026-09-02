@@ -8,6 +8,7 @@ from app.api.cases import router as cases_router
 from app.api.dashboard import router as dashboard_router
 from app.api.data import router as data_router
 from app.api.evaluations import router as evaluations_router
+from app.api.judge import router as judge_router
 from app.api.leak_findings import router as leak_findings_router
 from app.api.operator_controls import router as operator_controls_router
 from app.api.payment_exceptions import router as payment_exceptions_router
@@ -128,6 +129,7 @@ def create_app(
     app.include_router(payment_exceptions_router)
     app.include_router(operator_controls_router)
     app.include_router(storefront_router)
+    app.include_router(judge_router)
     app.include_router(dashboard_router)
 
     @app.get("/health")
