@@ -1,26 +1,31 @@
 .PHONY: help sync test lint typecheck jscheck verify browser-check \
 	genuine-prepare genuine-probe genuine-preflight genuine-evidence genuine-session \
+	genuine-webhook-start genuine-webhook-status genuine-webhook-stop openrouter-smoke \
 	demo-start demo-start-with-credentials demo-status demo-stop demo-restart demo-open demo-logs demo-public-status
 
 help:
 	@printf '%s\n' \
-		'make sync              Install development dependencies' \
-		'make test              Run all Python tests' \
-		'make lint              Run Ruff' \
-		'make typecheck         Run mypy' \
-		'make jscheck           Syntax-check dashboard JavaScript' \
-		'make verify            Run normal release verification' \
-		'make browser-check     Run local dashboard DOM test' \
-		'make genuine-prepare   Prepare Test Mode environment; requires CREDENTIALS=...' \
-		'make genuine-session   Start a complete local Test Mode proof session; requires CREDENTIALS=...' \
-		'make genuine-probe     Run genuine provider order probe; requires CREDENTIALS=...' \
-		'make genuine-preflight Check Test Mode/public URL readiness; requires PUBLIC_URL=...' \
-		'make genuine-evidence  Print sanitized local provider evidence' \
-		'make demo-start       Start the local ReRoute demo' \
-		'make demo-status      Show local ReRoute runtime status' \
-		'make demo-open        Open dashboard and storefront' \
-		'make demo-logs        Show recent local server logs' \
-		'make demo-stop        Stop the local ReRoute demo'
+		'make sync                    Install development dependencies' \
+		'make test                    Run all Python tests' \
+		'make lint                    Run Ruff' \
+		'make typecheck               Run mypy' \
+		'make jscheck                 Syntax-check dashboard JavaScript' \
+		'make verify                  Run normal release verification' \
+		'make browser-check           Run local dashboard DOM test' \
+		'make genuine-prepare         Prepare Test Mode environment; requires CREDENTIALS=...' \
+		'make genuine-session         Start a complete local Test Mode proof session; requires CREDENTIALS=...' \
+		'make genuine-probe           Run genuine provider order probe; requires CREDENTIALS=...' \
+		'make genuine-preflight       Check Test Mode/public URL readiness; requires PUBLIC_URL=...' \
+		'make genuine-evidence        Print sanitized local provider evidence' \
+		'make genuine-webhook-start   Start zrok and verify the public webhook fails closed' \
+		'make genuine-webhook-status  Show tunnel configuration and signed provider evidence' \
+		'make genuine-webhook-stop    Stop only the ReRoute zrok share process' \
+		'make openrouter-smoke        Verify one bounded OpenRouter FindingAnalysis' \
+		'make demo-start              Start the local ReRoute demo' \
+		'make demo-status             Show local ReRoute runtime status' \
+		'make demo-open               Open dashboard and storefront' \
+		'make demo-logs               Show recent local server logs' \
+		'make demo-stop               Stop the local ReRoute demo'
 
 sync:
 	uv sync --dev
@@ -73,6 +78,19 @@ genuine-preflight:
 
 genuine-evidence:
 	uv run python scripts/genuine_testmode_evidence.py \
+		--base-url "$${BASE_URL:-http://127.0.0.1:8000}"
+
+genuine-webhook-start:
+	uv run python scripts/genuine_testmode_webhook.py start
+
+genuine-webhook-status:
+	uv run python scripts/genuine_testmode_webhook.py status
+
+genuine-webhook-stop:
+	uv run python scripts/genuine_testmode_webhook.py stop
+
+openrouter-smoke:
+	uv run python scripts/openrouter_smoke.py \
 		--base-url "$${BASE_URL:-http://127.0.0.1:8000}"
 
 demo-start:
