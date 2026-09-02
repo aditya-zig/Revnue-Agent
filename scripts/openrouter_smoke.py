@@ -58,7 +58,9 @@ def verify(base_url: str) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify ReRoute's bounded OpenRouter analysis path.")
+    parser = argparse.ArgumentParser(
+        description="Verify ReRoute's bounded OpenRouter analysis path."
+    )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
     try:
