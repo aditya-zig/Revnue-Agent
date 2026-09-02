@@ -20,7 +20,7 @@ the only source for the persisted `razorpay_test` Outcome.
 This browser portion has an external boundary: it requires Test Mode API keys,
 a public HTTPS tunnel, and a Test Mode Razorpay webhook configured for
 `payment.failed` and `payment.captured`. Local tests use deterministic provider
-doubles and signed synthetic payloads; they never call Razorpay. An offline signed fixture is not live provider evidence.
+doubles and signed synthetic payloads; they never call Razorpay. An offline signed/replayed Test Mode-format fixture is not live provider evidence.
 
 ## 5:00 timed map — 9 beats (read during recording)
 

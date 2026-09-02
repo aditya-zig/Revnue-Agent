@@ -33,3 +33,7 @@ async def test_dashboard_frontend_preserves_claim_provenance_copy(app):
     # The two monetary provenance claims must never be presented as production revenue.
     assert "Recorded Outcome amount in Test Mode" in frontend.text
     assert "Single top persisted LeakFinding" in frontend.text
+
+    # Headline must remain evidence-disciplined and avoid unqualified revenue claims.
+    assert "Investigate recoverable failures with evidence" in page.text
+    assert "Recover revenue with evidence" not in page.text

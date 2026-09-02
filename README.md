@@ -19,9 +19,10 @@ impact or recoverable impact is ESTIMATED, not booked revenue or a forecast.
 Provider evidence is Razorpay TEST MODE only when local Test Mode keys are
 configured and verified via signed `payment.failed` and `payment.captured`
 webhooks in `app/api/webhooks.py`. Without Test Mode keys the app runs fully
-offline on deterministic provider-shaped fixtures and signed synthetic payloads
-as exercised by `tests/integration/test_webhooks.py` and
-`tests/integration/test_issue47_final_journey.py`. The browser checkout at
+offline on deterministic replayed Test Mode-format fixtures/signed synthetic
+payloads that are not live evidence, as exercised by
+`tests/integration/test_webhooks.py` and
+`tests/integration/test_issue47_final_journey.py`; `scripts/live_testmode_preflight.py` verifies Test Mode readiness without printing secrets. The browser checkout at
 `/storefront` requires Test Mode credentials plus a public HTTPS tunnel and a
 Razorpay Dashboard webhook for `payment.failed` and `payment.captured`; a
 missing key or tunnel prevents live provider calls and must not be masked.
