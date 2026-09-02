@@ -118,6 +118,39 @@ def order_receipt_for_idempotency_key(idempotency_key: str) -> str:
     return f"reroute_{sha256(idempotency_key.encode()).hexdigest()[:24]}"
 
 
+def fetch_order_by_id(
+    key_id: str, key_secret: str, order_id: str, timeout_seconds: int = 10
+) -> dict:
+    """Fetch one exact Razorpay Test Mode order."""
+    _require_test_mode_key(key_id, key_secret)
+    if not isinstance(order_id, str) or not order_id.startswith("order_"):
+        raise ValueError("valid Razorpay order id required")
+    encoded_order_id = urllib.parse.quote(order_id, safe="")
+    request = urllib.request.Request(
+        f"https://api.razorpay.com/v1/orders/{encoded_order_id}", method="GET"
+    )
+    request.add_header("Authorization", _basic_auth_header(key_id, key_secret))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            body = response.read()
+    except urllib.error.HTTPError as error:
+        raise _order_lookup_error(f"order_fetch_http_status={error.code}") from error
+    except Exception as error:
+        raise _order_lookup_error(
+            f"order_fetch_exception={type(error).__name__}"
+        ) from error
+    try:
+        provider_order = json.loads(body)
+    except json.JSONDecodeError as error:
+        raise _order_lookup_error("order_fetch_response_invalid") from error
+    if not _is_complete_order(provider_order):
+        raise _order_lookup_error("order_fetch_response_sparse")
+    assert isinstance(provider_order, dict)
+    if provider_order["id"] != order_id:
+        raise _order_lookup_error("order_fetch_response_id_mismatch")
+    return provider_order
+
+
 def _order_lookup_error(diagnostic: str) -> RazorpayProviderError:
     return RazorpayProviderError(
         ORDER_PROVIDER_ERROR,

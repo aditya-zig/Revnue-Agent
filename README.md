@@ -209,3 +209,9 @@ make genuine-preflight PUBLIC_URL=https://example-public-host
 ```
 
 No credential values are printed or committed.
+
+The provider probe proves order creation by fetching the exact returned
+Razorpay Test Mode order by ID. Receipt-based reconciliation is checked
+separately because it is the crash-recovery mechanism used by the storefront;
+the probe reports delayed or unavailable receipt visibility without discarding
+successful direct order verification.

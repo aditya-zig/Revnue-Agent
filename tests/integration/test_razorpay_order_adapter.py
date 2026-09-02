@@ -16,8 +16,47 @@ from app.integrations.razorpay import (
     build_payment_link_creator,
     create_order,
     create_payment_link,
+    fetch_order_by_id,
     find_order_by_receipt,
 )
+
+
+def test_order_adapter_fetches_exact_order_by_id(monkeypatch):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self):
+            return (
+                b'{"id":"order_direct_001","receipt":"reroute_direct_receipt",'
+                b'"amount":249900,"currency":"INR"}'
+            )
+
+    observed: dict[str, object] = {}
+    def urlopen(request, timeout):
+        observed.update(url=request.full_url, method=request.method, timeout=timeout)
+        return Response()
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    result = fetch_order_by_id("rzp_test_adapter", "local-test-secret", "order_direct_001")
+    assert result["id"] == "order_direct_001"
+    assert observed == {
+        "url": "https://api.razorpay.com/v1/orders/order_direct_001",
+        "method": "GET",
+        "timeout": 10,
+    }
+
+
+def test_order_adapter_rejects_wrong_direct_order_identity(monkeypatch):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self):
+            return (
+                b'{"id":"order_other","receipt":"reroute_direct_receipt",'
+                b'"amount":249900,"currency":"INR"}'
+            )
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: Response())
+    with pytest.raises(RazorpayProviderError, match="Razorpay Test Mode order creation failed"):
+        fetch_order_by_id("rzp_test_adapter", "local-test-secret", "order_expected")
 
 
 def test_order_adapter_sends_a_test_mode_order_without_exposing_the_secret(monkeypatch):

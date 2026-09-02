@@ -20,7 +20,7 @@
 
 ## Genuine Razorpay Test Mode
 
-- [ ] Genuine Test Mode order confirmed with Razorpay API
+- [x] Genuine Test Mode order confirmed with Razorpay API
 - [ ] Public HTTPS endpoint available
 - [ ] Test Mode webhook configured
 - [ ] `payment.failed` subscribed

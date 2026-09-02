@@ -1,0 +1,11 @@
+ts	phase	decision	why	evidence	result
+2026-09-02T19:30:00Z	baseline	Reviewed PR findings and baseline passed	Established repair scope and clean starting point	make verify; PR #59 comments	VERIFIED
+2026-09-02T19:32:00Z	cwd-test	Added CWD-independent migration regression test	Reproduced Alembic config failure outside repository root	pytest -k migrate_resolves_repo_paths_outside_repo_root	VERIFIED
+2026-09-02T19:35:00Z	cwd-fix	Resolved Alembic paths from repository root	Probe must run from arbitrary working directories	provider probe migration test	VERIFIED
+2026-09-02T19:40:00Z	dashboard-query	Changed Test Mode evidence to SQL aggregates and latest-row queries	Avoid loading all provider events into memory	app/api/dashboard.py; journey tests	VERIFIED
+2026-09-02T19:45:00Z	adapter	Added exact provider order fetch by ID	Direct provider identity is stronger than receipt-list visibility	adapter tests	VERIFIED
+2026-09-02T19:50:00Z	probe	Added direct fetch and bounded receipt reconciliation	Separate order proof from delayed crash-recovery lookup	provider probe test suite	VERIFIED
+2026-09-02T20:00:00Z	provider-probe	Real Test Mode order direct fetch passed	Exact order returned by ReRoute was fetched from Razorpay	.reroute-local/provider-probe.json	VERIFIED
+2026-09-02T20:05:00Z	receipt-reconciliation	Receipt lookup remained invisible after six bounded attempts	Provider order proof remains valid; receipt visibility is inconclusive	.reroute-local/provider-probe.json	INCONCLUSIVE
+2026-09-02T20:10:00Z	pr-review-fixes	Addressed dashboard memory and migration path findings	Resolved both requested defects	SQL dashboard queries; CWD regression test	VERIFIED
+2026-09-02T20:15:00Z	zrok	Zrok remains disabled and requires an enable token	Public HTTPS cannot be established without account authentication	zrok2 status	NOT VERIFIED

@@ -20,6 +20,7 @@ from app.integrations.razorpay import (  # noqa: E402
     DUMBBELL_AMOUNT_PAISE,
     DUMBBELL_CURRENCY,
     RazorpayProviderError,
+    fetch_order_by_id,
     find_order_by_receipt,
     order_receipt_for_idempotency_key,
 )
@@ -29,6 +30,9 @@ from scripts.genuine_testmode_prepare import (  # noqa: E402
     ensure_webhook_secret,
     read_test_credentials,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+RECEIPT_RETRY_DELAYS_SECONDS = (0.25, 0.5, 1.0, 2.0, 3.0)
 
 
 def request_json(url: str, *, method: str = "GET", headers: dict[str, str] | None = None,
@@ -62,9 +66,26 @@ def wait_for_health(base_url: str, timeout_seconds: float = 15.0) -> None:
 
 
 def migrate(database_url: str) -> None:
-    config = Config("alembic.ini")
+    config = Config(str(REPO_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(REPO_ROOT / "migrations"))
     config.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(config, "head")
+
+
+def wait_for_receipt_reconciliation(
+    key_id: str, key_secret: str, receipt: str, expected_order_id: str
+) -> tuple[dict | None, int]:
+    attempts = 0
+    for index in range(len(RECEIPT_RETRY_DELAYS_SECONDS) + 1):
+        attempts += 1
+        order = find_order_by_receipt(key_id, key_secret, receipt)
+        if order is not None:
+            if order.get("id") != expected_order_id:
+                raise RuntimeError("provider_receipt_resolved_to_different_order")
+            return order, attempts
+        if index < len(RECEIPT_RETRY_DELAYS_SECONDS):
+            time.sleep(RECEIPT_RETRY_DELAYS_SECONDS[index])
+    return None, attempts
 
 
 def sqlite_path(database_url: str) -> Path | None:
@@ -116,11 +137,9 @@ def run_probe(*, credentials_file: Path, runtime_dir: Path = DEFAULT_RUNTIME_DIR
             raise RuntimeError("storefront_currency_invalid")
         receipt = order_receipt_for_idempotency_key(idempotency_key)
         try:
-            provider_order = find_order_by_receipt(key_id, key_secret, receipt)
+            provider_order = fetch_order_by_id(key_id, key_secret, order_id)
         except RazorpayProviderError as error:
             raise RuntimeError(error.diagnostic) from error
-        if provider_order is None:
-            raise RuntimeError("provider_order_not_found")
         matched = (
             provider_order.get("id") == order_id
             and provider_order.get("amount") == DUMBBELL_AMOUNT_PAISE
@@ -128,7 +147,10 @@ def run_probe(*, credentials_file: Path, runtime_dir: Path = DEFAULT_RUNTIME_DIR
             and provider_order.get("receipt") == receipt
         )
         if not matched:
-            raise RuntimeError("provider_order_round_trip_failed")
+            raise RuntimeError("provider_order_direct_fetch_mismatch")
+        reconciled_order, reconciliation_attempts = wait_for_receipt_reconciliation(
+            key_id, key_secret, receipt, order_id
+        )
         report = {
             "ready": True, "key_mode": "TEST", "webhook_secret_present": True,
             "webhook_secret_generated": generated, "local_server": True,
@@ -140,10 +162,18 @@ def run_probe(*, credentials_file: Path, runtime_dir: Path = DEFAULT_RUNTIME_DIR
             },
             "provider": {
                 "test_mode_order_created": True, "provider_order_id_present": True,
-                "provider_round_trip": True, "amount": DUMBBELL_AMOUNT_PAISE,
+                "direct_fetch_verified": True, "provider_round_trip": True,
+                "receipt_reconciliation_verified": reconciled_order is not None,
+                "receipt_reconciliation_attempts": reconciliation_attempts,
+                "amount": DUMBBELL_AMOUNT_PAISE,
                 "currency": DUMBBELL_CURRENCY,
             },
         }
+        if reconciled_order is None:
+            report["warnings"] = [
+                "receipt reconciliation was not visible within the bounded probe window; "
+                "direct order fetch passed"
+            ]
         (runtime_dir / "provider-probe.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )

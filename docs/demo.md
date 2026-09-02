@@ -96,3 +96,7 @@ recovery capture it should additionally report signed capture, an Outcome,
 `RECOVERED`, and source `razorpay_test`.
 
 Provider delivery must also be confirmed independently in Razorpay Test Mode.
+
+The provider probe verifies order creation by fetching the exact returned
+Razorpay Test Mode order by ID. Receipt-based reconciliation is a separate
+crash-recovery check and is reported independently.
