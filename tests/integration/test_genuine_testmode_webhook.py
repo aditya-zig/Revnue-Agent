@@ -28,7 +28,11 @@ def test_webhook_configuration_is_test_mode_and_exact_events(tmp_path, monkeypat
 def test_status_does_not_claim_provider_delivery_without_evidence(tmp_path, monkeypatch):
     monkeypatch.setattr(webhook, "PUBLIC_URL_PATH", tmp_path / "public-url")
     monkeypatch.setattr(webhook, "ZROK_PID_PATH", tmp_path / "zrok.pid")
-    monkeypatch.setattr(webhook, "_provider_evidence", lambda: {"present": False, "signed_event_count": 0})
+    monkeypatch.setattr(
+        webhook,
+        "_provider_evidence",
+        lambda: {"present": False, "signed_event_count": 0},
+    )
 
     result = webhook.status()
 
