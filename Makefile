@@ -1,5 +1,6 @@
 .PHONY: help sync test lint typecheck jscheck verify browser-check \
-	genuine-prepare genuine-probe genuine-preflight genuine-evidence genuine-session
+	genuine-prepare genuine-probe genuine-preflight genuine-evidence genuine-session \
+	demo-start demo-start-with-credentials demo-status demo-stop demo-restart demo-open demo-logs demo-public-status
 
 help:
 	@printf '%s\n' \
@@ -14,7 +15,12 @@ help:
 		'make genuine-session   Start a complete local Test Mode proof session; requires CREDENTIALS=...' \
 		'make genuine-probe     Run genuine provider order probe; requires CREDENTIALS=...' \
 		'make genuine-preflight Check Test Mode/public URL readiness; requires PUBLIC_URL=...' \
-		'make genuine-evidence  Print sanitized local provider evidence'
+		'make genuine-evidence  Print sanitized local provider evidence' \
+		'make demo-start       Start the local ReRoute demo' \
+		'make demo-status      Show local ReRoute runtime status' \
+		'make demo-open        Open dashboard and storefront' \
+		'make demo-logs        Show recent local server logs' \
+		'make demo-stop        Stop the local ReRoute demo'
 
 sync:
 	uv sync --dev
@@ -68,3 +74,29 @@ genuine-preflight:
 genuine-evidence:
 	uv run python scripts/genuine_testmode_evidence.py \
 		--base-url "$${BASE_URL:-http://127.0.0.1:8000}"
+
+demo-start:
+	uv run python scripts/demo_runtime.py start
+
+demo-start-with-credentials:
+	@test -n "$(CREDENTIALS)" || (echo "CREDENTIALS path is required" && exit 2)
+	uv run python scripts/demo_runtime.py start \
+		--credentials-file "$(CREDENTIALS)"
+
+demo-status:
+	uv run python scripts/demo_runtime.py status
+
+demo-stop:
+	uv run python scripts/demo_runtime.py stop
+
+demo-restart:
+	uv run python scripts/demo_runtime.py restart
+
+demo-open:
+	uv run python scripts/demo_runtime.py open
+
+demo-logs:
+	uv run python scripts/demo_runtime.py logs
+
+demo-public-status:
+	uv run python scripts/demo_runtime.py public-status

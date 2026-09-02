@@ -18,3 +18,5 @@ ts	phase	decision	why	evidence	result
 2026-09-03T01:30:00+05:30	provider-probe	Rotated Test Mode order created and exact-fetched	249900 INR direct provider fetch passed; receipt list delayed	make genuine-probe	VERIFIED
 2026-09-03T01:33:00+05:30	session	Added one-command local proof session facade	Private runtime, fresh DB, 999 history, and provider order proof are reproducible	genuine_testmode_session.py; make genuine-session	VERIFIED
 2026-09-03T01:36:00+05:30	public-https	No public HTTPS established	zrok requires account enablement; final Cloudflare retry was not reachable	zrok2 status; cloudflared	NOT VERIFIED
+2026-09-03T01:55:00+05:30	runtime-control	Added safe local demo lifecycle facade	start/status/open/logs/restart/stop and persisted credential path; no product logic changed	make demo-start/status/logs/stop; runtime tests	VERIFIED
+2026-09-03T01:58:00+05:30	lifecycle	Normal local demo lifecycle exercised	stop -> start -> status -> logs -> stop; 999/749/250 and provider order proof retained	make demo-stop demo-start demo-status demo-logs	VERIFIED

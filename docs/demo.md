@@ -100,3 +100,22 @@ Provider delivery must also be confirmed independently in Razorpay Test Mode.
 The provider probe verifies order creation by fetching the exact returned
 Razorpay Test Mode order by ID. Receipt-based reconciliation is a separate
 crash-recovery check and is reported independently.
+## Operator startup
+
+Before presenting the controlled local demo:
+
+```sh
+make demo-start
+make demo-status
+make demo-open
+```
+
+After presenting:
+
+```sh
+make demo-stop
+```
+
+For genuine Razorpay webhook proof, establish public HTTPS separately and run
+`make genuine-preflight PUBLIC_URL=<https-url>`. Public HTTPS is not required
+for the normal controlled demo.

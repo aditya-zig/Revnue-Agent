@@ -31,6 +31,32 @@ masked.
 
 ## Run the public demo
 
+## Running ReRoute
+
+For the first local run, prepare the private Test Mode runtime and store only
+the credential-file path in ignored local configuration:
+
+```sh
+make demo-start-with-credentials \
+  CREDENTIALS=/path/to/test-credentials.csv
+```
+
+After that:
+
+```sh
+make demo-start
+make demo-status
+make demo-open
+make demo-logs
+make demo-stop
+```
+
+Use `make demo-restart` for a fresh local demo restart. The dashboard,
+storefront, APIs, webhook receiver, recovery workflow, and static assets are
+served by the same FastAPI/Uvicorn process. SQLite has no separate daemon.
+Public HTTPS is only needed for genuine Razorpay webhook delivery, not for the
+controlled local demo.
+
 Install [uv](https://docs.astral.sh/uv/) and Python 3.12 or later. The commands
 below start with a clean, local database named `demo.db`.
 
