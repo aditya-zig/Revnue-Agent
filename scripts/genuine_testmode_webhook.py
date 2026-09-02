@@ -263,7 +263,12 @@ def main() -> int:
     parser.add_argument("command", choices=("start", "status", "stop"))
     args = parser.parse_args()
     try:
-        result = start() if args.command == "start" else status() if args.command == "status" else stop()
+        if args.command == "start":
+            result = start()
+        elif args.command == "status":
+            result = status()
+        else:
+            result = stop()
     except (RuntimeError, ValueError, subprocess.SubprocessError) as error:
         print(json.dumps({"result": "error", "error": str(error)}, indent=2))
         return 2
