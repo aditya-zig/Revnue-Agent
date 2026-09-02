@@ -7,14 +7,17 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
 
-from scripts.demo_runtime import RUNTIME_DIR, demo_status, start_demo
-from scripts.genuine_testmode_provider_probe import request_json
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.demo_runtime import RUNTIME_DIR, demo_status, start_demo  # noqa: E402
+from scripts.genuine_testmode_provider_probe import request_json  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_URL_PATH = RUNTIME_DIR / "public-url"
