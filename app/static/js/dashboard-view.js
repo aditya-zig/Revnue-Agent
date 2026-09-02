@@ -32,6 +32,51 @@ export function eventSummary(event) {
   return data.type || "Audit record";
 }
 
+function renderProviderEvidence(evidence) {
+  if (!evidence?.present) {
+    return `<article class="panel provider-evidence">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Webhook evidence</p>
+          <h2 class="panel-title">Provider evidence</h2>
+        </div>
+      </div>
+      <div class="panel-body">
+        <p class="case-sub">
+          No signed Razorpay Test Mode webhook evidence is persisted yet.
+        </p>
+      </div>
+    </article>`;
+  }
+
+  return `<article class="panel provider-evidence">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Webhook evidence</p>
+        <h2 class="panel-title">Signed Test Mode evidence</h2>
+      </div>
+      ${evidence.claim_tag ? tag(evidence.claim_tag) : ""}
+    </div>
+    <div class="panel-body">
+      <div class="provider-evidence-grid">
+        <div><span>Event</span><strong>${esc(evidence.event_type || "—")}</strong></div>
+        <div><span>Status</span><strong>${esc(evidence.status || "—")}</strong></div>
+        <div><span>Raw body</span><strong>${evidence.raw_body_present ? "Persisted" : "Absent"}</strong></div>
+        <div><span>Checkout correlation</span><strong>${evidence.checkout_order_owned ? "Owned order" : "Not correlated"}</strong></div>
+        <div><span>Body hash</span><strong>${esc(evidence.raw_hash_prefix || "—")}</strong></div>
+      </div>
+      <div class="notice">
+        <strong>Evidence boundary</strong>
+        <p>
+          ReRoute proves signature acceptance and persisted evidence.
+          Genuine provider delivery must still be confirmed using Razorpay's
+          Test Mode webhook delivery record.
+        </p>
+      </div>
+    </div>
+  </article>`;
+}
+
 function caseRows(data) {
   const worklist = data.worklist || [];
   return worklist.length ? `<div class="case-list">${worklist.slice(0, 4).map((item) => `<div class="case-row"><div><div class="case-title">${esc(item.case_id)}</div><div class="case-sub">${esc(item.evidence?.error_reason || item.evidence?.status || "No payment evidence")}</div></div><div class="money-claim"><div><div class="case-sub">At risk</div><strong>${money(item.amount_at_risk)}</strong></div>${sourceTag(item)}</div><div>${tag(item.state)}</div><button class="btn" data-view="detail" data-case="${esc(item.case_id)}">Review</button></div>`).join("")}</div>` : `<div class="state"><div class="state-inner"><h3>No recovery cases</h3><p>Import a PaymentEvent to create a case with recorded evidence.</p></div></div>`;
@@ -248,5 +293,5 @@ export function renderOverview(data, selectedCase = null) {
     <div class="population-stat"><span>Failed</span><strong>${esc(population.failed ?? 0)}</strong><small>Failed attempts</small></div>
     <div class="population-stat"><span>Failure rate</span><strong>${failureRate.toFixed(2)}%</strong><small>Current persisted population</small></div>
   </div>
-  <div class="story"><article class="risk"><div><p class="eyebrow">Money at risk</p><h2>${esc(focus?.case_id || "No case")}</h2><div class="amount">${money(focus?.amount_at_risk)}</div><p>${esc(focus?.evidence?.error_reason || "No provider event recorded")}</p></div><div>${tag(focus?.state || "No cases")} ${sourceTag(focus || {})}</div></article><article class="panel trace-summary"><h2 class="panel-title">Recorded execution trace</h2>${trace.length ? trace.slice(-4).map((event, index) => `<div class="trace-step"><span class="step-dot">${index + 1}</span><div><strong>${eventTitle(event)}</strong><small>${esc(eventSummary(event))}</small></div></div>`).join("") : '<div class="empty">No trace events recorded.</div>'}</article></div><div class="grid"><article class="panel"><div class="panel-head"><h2 class="panel-title">Recovery queue</h2><button class="btn" data-view="queue">View all</button></div>${caseRows(data)}</article><article class="panel"><div class="panel-head"><h2 class="panel-title">Policy signal</h2></div><div class="panel-body">${data.investigation ? `<h3>${esc(data.investigation.finding_id)}</h3><div class="metric-claim"><span>${money(data.investigation.recoverable_impact)} estimated recoverable impact at ${Math.round(data.investigation.confidence * 100)}% confidence.</span>${tag("ESTIMATED")}</div>` : '<div class="empty">No persisted LeakFinding.</div>'}</div></article>${renderSafetyProof(worklist)}</div>`;
+  <div class="story"><article class="risk"><div><p class="eyebrow">Money at risk</p><h2>${esc(focus?.case_id || "No case")}</h2><div class="amount">${money(focus?.amount_at_risk)}</div><p>${esc(focus?.evidence?.error_reason || "No provider event recorded")}</p></div><div>${tag(focus?.state || "No cases")} ${sourceTag(focus || {})}</div></article><article class="panel trace-summary"><h2 class="panel-title">Recorded execution trace</h2>${trace.length ? trace.slice(-4).map((event, index) => `<div class="trace-step"><span class="step-dot">${index + 1}</span><div><strong>${eventTitle(event)}</strong><small>${esc(eventSummary(event))}</small></div></div>`).join("") : '<div class="empty">No trace events recorded.</div>'}</article></div><div class="grid"><article class="panel"><div class="panel-head"><h2 class="panel-title">Recovery queue</h2><button class="btn" data-view="queue">View all</button></div>${caseRows(data)}</article><article class="panel"><div class="panel-head"><h2 class="panel-title">Policy signal</h2></div><div class="panel-body">${data.investigation ? `<h3>${esc(data.investigation.finding_id)}</h3><div class="metric-claim"><span>${money(data.investigation.recoverable_impact)} estimated recoverable impact at ${Math.round(data.investigation.confidence * 100)}% confidence.</span>${tag("ESTIMATED")}</div>` : '<div class="empty">No persisted LeakFinding.</div>'}</div></article>${renderSafetyProof(worklist)}${renderProviderEvidence(data.provider_evidence)}</div>`;
 }

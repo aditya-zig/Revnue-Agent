@@ -10,6 +10,7 @@ from app.api.evaluations import get_published_evaluation
 from app.db.tables import (
     ActionEvent,
     AuditEvent,
+    CheckoutOrder,
     Decision,
     FindingAnalysis,
     LeakFinding,
@@ -47,6 +48,57 @@ def _payment_events_for_case(session, case: RecoveryCase) -> list[PaymentEvent]:
     return session.scalars(
         query.order_by(PaymentEvent.occurred_at.desc(), PaymentEvent.event_id.desc())
     ).all()
+
+
+def _signed_test_mode_evidence(
+    session,
+    event: PaymentEvent | None,
+) -> dict[str, object]:
+    if event is None:
+        return {
+            "present": False,
+            "claim_tag": "",
+            "event_type": None,
+            "status": None,
+            "raw_body_present": False,
+            "raw_hash_prefix": None,
+            "checkout_order_owned": False,
+            "signature_boundary": "no signed Test Mode event recorded",
+            "provider_delivery_claim": "not established",
+        }
+
+    raw_body_present = event.raw_body is not None
+    order_owned = False
+    if event.obligation_reference:
+        order_owned = (
+            session.scalar(
+                select(CheckoutOrder.checkout_id).where(
+                    CheckoutOrder.provider_order_id == event.obligation_reference
+                )
+            )
+            is not None
+        )
+
+    signed_evidence = (
+        event.provider == "razorpay_test"
+        and raw_body_present
+        and bool(event.raw_hash)
+    )
+    return {
+        "present": signed_evidence,
+        "claim_tag": ClaimTag.TEST_MODE.value if signed_evidence else "",
+        "event_type": event.event_type,
+        "status": event.status,
+        "raw_body_present": raw_body_present,
+        "raw_hash_prefix": event.raw_hash[:12] if event.raw_hash else None,
+        "checkout_order_owned": order_owned,
+        "signature_boundary": (
+            "accepted through signed Razorpay webhook ingestion"
+            if signed_evidence
+            else "no signed webhook evidence"
+        ),
+        "provider_delivery_claim": "external_verification_required",
+    }
 
 
 def _worklist_sort_key(item: dict) -> tuple[int, int, str]:
@@ -168,8 +220,13 @@ def get_dashboard(request: Request) -> dict:
             )
             .limit(1)
         )
+        provider_evidence = _signed_test_mode_evidence(
+            session,
+            latest_test_mode_payment,
+        )
 
         return {
+            "provider_evidence": provider_evidence,
             "population": {
                 "total": payment_total,
                 "captured": payment_captured,

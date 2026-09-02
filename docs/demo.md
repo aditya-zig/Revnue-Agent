@@ -55,3 +55,29 @@ curl http://127.0.0.1:8000/api/v1/audit/case_order_hard_decline
 curl http://127.0.0.1:8000/api/v1/audit/case_order_provider_failure
 curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
 ```
+
+### Genuine Test Mode provider proof
+
+For localhost webhook testing, prefer `zrok`.
+
+The Test Mode API Key ID and Key Secret authenticate ReRoute's server-side
+Razorpay API calls.
+
+The webhook secret is separate and is chosen locally. ReRoute's
+`scripts/genuine_testmode_prepare.py` generates and stores it under
+`.reroute-local/` without printing it.
+
+The same generated webhook secret must be configured in the Razorpay Test Mode
+webhook.
+
+Required events:
+
+- `payment.failed`
+- `payment.captured`
+
+The webhook URL is:
+`https://<public-host>/api/v1/webhooks/razorpay`
+
+A persisted signed Test Mode webhook proves that ReRoute accepted valid HMAC
+evidence. A genuine-provider claim additionally requires observing the delivery
+in Razorpay Test Mode provider tooling or the Razorpay Dashboard.

@@ -378,6 +378,15 @@ async def test_issue47_dashboard_marks_test_mode_payment_1000(app):
     assert latest["payment_id"] == "pay_dashboard_1000"
     assert latest["provider"] == "razorpay_test"
     assert latest["status"] == "failed"
+    provider_evidence = dashboard.json()["provider_evidence"]
+    assert provider_evidence["present"] is True
+    assert provider_evidence["claim_tag"] == "TEST MODE"
+    assert provider_evidence["event_type"] == "payment.failed"
+    assert provider_evidence["status"] == "failed"
+    assert provider_evidence["raw_body_present"] is True
+    assert provider_evidence["checkout_order_owned"] is True
+    assert provider_evidence["raw_hash_prefix"]
+    assert provider_evidence["provider_delivery_claim"] == "external_verification_required"
 
 
 @pytest.mark.asyncio
@@ -702,6 +711,12 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
     assert dashboard_after_capture.status_code == 200
 
     dashboard_body = dashboard_after_capture.json()
+    provider_evidence = dashboard_body["provider_evidence"]
+    assert provider_evidence["present"] is True
+    assert provider_evidence["claim_tag"] == "TEST MODE"
+    assert provider_evidence["event_type"] == "payment.captured"
+    assert provider_evidence["status"] == "captured"
+    assert provider_evidence["raw_body_present"] is True
 
     recovered_case = next(
         item

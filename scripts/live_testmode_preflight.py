@@ -47,6 +47,14 @@ def build_report(settings: Settings, public_url: str = "") -> dict[str, object]:
                 "Browser callbacks are presentation-only; "
                 "signed Razorpay webhooks remain authoritative."
             ),
+            (
+                "The webhook secret is merchant-chosen; it does not need "
+                "to equal the Razorpay API Key Secret."
+            ),
+            (
+                "ReRoute can prove signature acceptance locally; "
+                "provider-delivery provenance must be verified separately."
+            ),
         ],
     }
 
@@ -55,7 +63,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Check whether the local ReRoute app is configured "
-            "for the live Razorpay Test Mode demo."
+            "for the genuine Razorpay Test Mode demo."
         ),
     )
     parser.add_argument(
