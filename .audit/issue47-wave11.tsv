@@ -9,3 +9,7 @@ ts	phase	decision	why	evidence	result
 2026-09-02T20:05:00Z	receipt-reconciliation	Receipt lookup remained invisible after six bounded attempts	Provider order proof remains valid; receipt visibility is inconclusive	.reroute-local/provider-probe.json	INCONCLUSIVE
 2026-09-02T20:10:00Z	pr-review-fixes	Addressed dashboard memory and migration path findings	Resolved both requested defects	SQL dashboard queries; CWD regression test	VERIFIED
 2026-09-02T20:15:00Z	zrok	Zrok remains disabled and requires an enable token	Public HTTPS cannot be established without account authentication	zrok2 status	NOT VERIFIED
+2026-09-02T20:20:00Z	ci	Repair commit CI passed	All repository verification checks green	gh run 33674158458 and 33674163459	VERIFIED
+2026-09-02T20:25:00Z	pr	Both review threads replied to and resolved	PR is mergeable and independently reviewable	PR #59 GraphQL reviewThreads	VERIFIED
+2026-09-02T20:30:00Z	checkout	No public provider checkout attempted	zrok remains unauthenticated and no public URL exists	zrok2 status	NOT VERIFIED
+2026-09-02T20:35:00Z	rehearsal	Controlled browser DOM rehearsal passed	make browser-check	VERIFIED
