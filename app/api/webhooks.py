@@ -47,6 +47,7 @@ async def receive_razorpay_webhook(request: Request) -> dict[str, str] | JSONRes
         event = NormalizedPaymentEvent.from_razorpay(
             payload,
             hashlib.sha256(body).hexdigest(),
+            authenticity_verified=True,
         )
         event.raw_body = body
     except (KeyError, TypeError, ValueError) as error:
@@ -190,6 +191,7 @@ def _correlate_recovery_payment(session, payload: dict, event: NormalizedPayment
     case = session.get(RecoveryCase, action.case_id)
     if case is not None and case.obligation_reference:
         event.obligation_reference = case.obligation_reference
+        event.merchant_order_reference = case.obligation_reference
 
 
 def _case_for_identity(
