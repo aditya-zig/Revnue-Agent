@@ -8,7 +8,16 @@ def test_normalize_database_url_accepts_supabase_postgres_scheme() -> None:
         db_session.normalize_database_url(
             "postgres://postgres.example:secret@pooler.supabase.com:6543/postgres"
         )
-        == "postgresql://postgres.example:secret@pooler.supabase.com:6543/postgres"
+        == "postgresql+psycopg://postgres.example:secret@pooler.supabase.com:6543/postgres"
+    )
+
+
+def test_normalize_database_url_selects_psycopg_for_postgresql_scheme() -> None:
+    assert (
+        db_session.normalize_database_url(
+            "postgresql://postgres.example:secret@pooler.supabase.com:6543/postgres"
+        )
+        == "postgresql+psycopg://postgres.example:secret@pooler.supabase.com:6543/postgres"
     )
 
 
@@ -27,7 +36,7 @@ def test_postgres_session_factory_uses_null_pool(monkeypatch) -> None:
     )
 
     assert captured["url"] == (
-        "postgresql://postgres.example:secret@pooler.supabase.com:6543/postgres"
+        "postgresql+psycopg://postgres.example:secret@pooler.supabase.com:6543/postgres"
     )
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
