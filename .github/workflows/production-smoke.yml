@@ -15,28 +15,28 @@ concurrency:
 jobs:
   verify-production:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
-      - name: Wait for the matching Vercel deployment
+      - name: Wait for persistent production readiness
         shell: bash
         run: |
           set -euo pipefail
           base_url="https://revnue-agent.vercel.app"
           rm -f /tmp/reroute-health.json
 
-          for attempt in $(seq 1 36); do
+          for attempt in $(seq 1 48); do
             code="$(curl --silent --show-error --location \
               --connect-timeout 5 --max-time 12 \
               --output /tmp/reroute-health.json \
               --write-out '%{http_code}' \
               "$base_url/health" || true)"
             body="$(cat /tmp/reroute-health.json 2>/dev/null || true)"
-            if [[ "$code" == "200" && "$body" == *'"ready":true'* ]]; then
-              echo "Production became ready on attempt $attempt."
+            if [[ "$code" == "200" && "$body" == *'"ready":true'* && "$body" == *'"database_source":"reroute_database_url"'* ]]; then
+              echo "Persistent production became ready on attempt $attempt."
               break
             fi
-            if [[ "$attempt" == "36" ]]; then
-              echo "Production never became ready. HTTP=$code"
+            if [[ "$attempt" == "48" ]]; then
+              echo "Persistent production never became ready. HTTP=$code"
               printf '%s\n' "$body"
               exit 1
             fi
@@ -54,6 +54,10 @@ jobs:
           payload = json.loads(Path("/tmp/reroute-health.json").read_text())
           assert payload.get("status") == "ok", payload
           assert payload.get("ready") is True, payload
+          components = payload.get("components", {})
+          assert components.get("database") == "ready", payload
+          assert components.get("database_source") == "reroute_database_url", payload
+          assert components.get("database_configuration_reason") == "ok", payload
           PY
 
       - name: Verify public production routes
@@ -91,3 +95,63 @@ jobs:
           check_route "/storefront" html
           check_route "/static/css/dashboard.css" css
           check_route "/api/v1/dashboard" json
+          check_route "/api/v1/policy-settings" json
+
+      - name: Verify Supabase write and read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+
+          curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            "$base_url/api/v1/policy-settings" \
+            -o /tmp/policy-before.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          before = json.loads(Path("/tmp/policy-before.json").read_text())
+          payload = {
+              "quiet_hours_start": before["quiet_hours_start"],
+              "quiet_hours_end": before["quiet_hours_end"],
+              "contact_limit": before["contact_limit"],
+              "kill_switch": before["kill_switch"],
+              "mock_identity": before["mock_identity"],
+          }
+          Path("/tmp/policy-write.json").write_text(json.dumps(payload))
+          Path("/tmp/policy-version-before").write_text(str(before["version"]))
+          PY
+
+          code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            --request PUT \
+            --header 'Content-Type: application/json' \
+            --header 'X-Reroute-Role: business_owner' \
+            --data-binary @/tmp/policy-write.json \
+            --output /tmp/policy-write-response.json \
+            --write-out '%{http_code}' \
+            "$base_url/api/v1/policy-settings")"
+          echo "POLICY_WRITE_HTTP=$code"
+          test "$code" = "200"
+
+          curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            "$base_url/api/v1/policy-settings" \
+            -o /tmp/policy-after.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          before_version = int(Path("/tmp/policy-version-before").read_text())
+          written = json.loads(Path("/tmp/policy-write-response.json").read_text())
+          after = json.loads(Path("/tmp/policy-after.json").read_text())
+          expected = json.loads(Path("/tmp/policy-write.json").read_text())
+          assert written["version"] > before_version, (before_version, written)
+          assert after["version"] == written["version"], (written, after)
+          for key, value in expected.items():
+              assert after[key] == value, (key, value, after[key])
+          print(f"SUPABASE_WRITE_READBACK=PASS version={after['version']}")
+          PY
