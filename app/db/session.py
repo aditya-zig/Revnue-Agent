@@ -3,11 +3,23 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
 
+def _strip_wrapping_quotes(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1].strip()
+    return value
+
+
 def normalize_database_url(database_url: str) -> str:
-    """Normalize provider URLs to SQLAlchemy's accepted PostgreSQL scheme."""
-    if database_url.startswith("postgres://"):
-        return "postgresql://" + database_url.removeprefix("postgres://")
-    return database_url
+    """Normalize common copied environment-variable forms for SQLAlchemy."""
+    value = _strip_wrapping_quotes(database_url)
+    for prefix in ("REROUTE_DATABASE_URL=", "DATABASE_URL=", "POSTGRES_URL="):
+        if value.startswith(prefix):
+            value = _strip_wrapping_quotes(value.removeprefix(prefix))
+            break
+    if value.startswith("postgres://"):
+        return "postgresql://" + value.removeprefix("postgres://")
+    return value
 
 
 def create_session_factory(database_url: str) -> sessionmaker[Session]:
