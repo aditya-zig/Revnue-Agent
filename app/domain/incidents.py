@@ -1,9 +1,11 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.tables import (
     ActionEvent,
@@ -124,7 +126,7 @@ def build_incident_evidence_bundle(
             IncidentPaymentEvent.incident_id == incident.incident_id
         )
     ).all()
-    events = []
+    events: Sequence[PaymentEvent] = ()
     if event_ids:
         events = session.scalars(
             select(PaymentEvent)
@@ -211,7 +213,7 @@ def correlate_payment(
     provider_order_id: str | None = None,
     merchant_order_reference: str | None = None,
 ) -> dict[str, list[str]]:
-    conditions = []
+    conditions: list[ColumnElement[bool]] = []
     if provider_payment_id:
         conditions.append(PaymentEvent.payment_id == provider_payment_id)
     if provider_order_id:
@@ -231,7 +233,7 @@ def correlate_payment(
     if not conditions:
         raise ValueError("at least one payment correlation identifier is required")
 
-    events = session.scalars(
+    events: Sequence[PaymentEvent] = session.scalars(
         select(PaymentEvent).where(or_(*conditions)).order_by(PaymentEvent.occurred_at)
     ).all()
     event_ids = list(dict.fromkeys(event.event_id for event in events))
@@ -242,7 +244,7 @@ def correlate_payment(
         )
     )
 
-    case_conditions = []
+    case_conditions: list[ColumnElement[bool]] = []
     if payment_ids:
         case_conditions.append(RecoveryCase.payment_id.in_(payment_ids))
     if obligation_references:
@@ -251,7 +253,7 @@ def correlate_payment(
         case_conditions.append(RecoveryCase.obligation_reference == merchant_order_reference)
     if provider_order_id:
         case_conditions.append(RecoveryCase.obligation_reference == provider_order_id)
-    cases = []
+    cases: Sequence[RecoveryCase] = ()
     if case_conditions:
         cases = session.scalars(select(RecoveryCase).where(or_(*case_conditions))).all()
     case_ids = list(dict.fromkeys(case.case_id for case in cases))
