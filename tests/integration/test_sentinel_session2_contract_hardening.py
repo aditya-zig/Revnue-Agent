@@ -40,13 +40,18 @@ async def test_incident_contract_preserves_peak_detection_facts_through_resoluti
 
     payload = resolved.json()
     assert payload["state"] == "resolved"
-    assert payload["estimated_amount_at_risk"] >= detected_risk > 0
-    assert payload["confidence"] >= detected_confidence
+    assert payload["peak_estimated_amount_at_risk_paise"] >= detected_risk > 0
+    assert payload["peak_confidence"] >= detected_confidence
     assert payload["provider"] == "simulated_psp_a"
     assert payload["method"] == "upi"
     assert payload["failed_attempt_count"] >= 1
-    assert payload["amount_affected_paise"] >= payload["estimated_amount_at_risk"]
-    assert 0 <= payload["estimated_recoverable_paise"] <= payload["estimated_amount_at_risk"]
+    assert payload["linked_attempt_count"] >= payload["failed_attempt_count"]
+    assert payload["amount_affected_paise"] >= payload["peak_estimated_amount_at_risk_paise"]
+    assert (
+        0
+        <= payload["estimated_recoverable_paise"]
+        <= payload["peak_estimated_amount_at_risk_paise"]
+    )
     assert payload["resolution_reason"] == "signal_recovered_before_investigation"
 
     evidence = payload["detection_evidence"]
@@ -55,7 +60,10 @@ async def test_incident_contract_preserves_peak_detection_facts_through_resoluti
     assert trigger["success_rate_drop"] >= 0.25
     assert trigger["z_score"] >= 1.96
     assert trigger["estimated_amount_at_risk_paise"] == detected_risk
-    assert evidence["peak_estimated_amount_at_risk_paise"] == payload["estimated_amount_at_risk"]
+    assert (
+        evidence["peak_estimated_amount_at_risk_paise"]
+        == payload["peak_estimated_amount_at_risk_paise"]
+    )
     assert evidence["resolution_reason"] == payload["resolution_reason"]
 
 
