@@ -1,9 +1,8 @@
 """Persistence invariants for deterministic Sentinel incidents.
 
-PaymentIncident keeps the latest observation window in its existing Session 1
-columns, while detector evidence retains the immutable trigger snapshot and
-peak incident impact. This prevents a healthy recovery window from erasing the
-facts that caused the incident to open.
+Session 1 columns keep their existing latest-window semantics. This module adds
+an immutable trigger snapshot and peak deterministic facts inside the incident
+evidence JSON so later healthy windows cannot erase why the incident opened.
 """
 
 from typing import Any
@@ -42,6 +41,7 @@ def _trigger_snapshot(
     observed: dict[str, Any] | None = None,
     evidence: dict[str, Any] | None = None,
     risk: int | None = None,
+    confidence: float | None = None,
 ) -> dict[str, object]:
     baseline = baseline or dict(incident.baseline_metrics or {})
     observed = observed or dict(incident.observed_metrics or {})
@@ -54,7 +54,9 @@ def _trigger_snapshot(
         "failed_attempts": _failed_attempts(observed),
         "success_rate_drop": _float(evidence.get("success_rate_drop")),
         "z_score": _float(evidence.get("z_score")),
-        "confidence": _float(incident.confidence),
+        "confidence": (
+            _float(incident.confidence) if confidence is None else confidence
+        ),
         "attempted_value_paise": _int(observed.get("attempted_value_paise")),
         "failed_value_paise": _int(observed.get("failed_value_paise")),
         "recoverable_failed_value_paise": _int(
@@ -77,7 +79,8 @@ def _augment_insert(incident: PaymentIncident) -> None:
     observed = dict(incident.observed_metrics or {})
     evidence = dict(incident.detection_evidence_json or {})
     evidence.setdefault(
-        "trigger_snapshot", _trigger_snapshot(incident, observed=observed, evidence=evidence)
+        "trigger_snapshot",
+        _trigger_snapshot(incident, observed=observed, evidence=evidence),
     )
     evidence["peak_estimated_amount_at_risk_paise"] = _int(
         incident.estimated_amount_at_risk
@@ -88,6 +91,7 @@ def _augment_insert(incident: PaymentIncident) -> None:
     evidence["peak_failed_value_paise"] = _int(observed.get("failed_value_paise"))
     evidence["peak_failed_attempt_count"] = _failed_attempts(observed)
     evidence["peak_affected_attempt_count"] = _int(incident.affected_attempt_count)
+    evidence["peak_confidence"] = _float(incident.confidence)
     incident.detection_evidence_json = evidence
 
 
@@ -125,18 +129,14 @@ def preserve_peak_on_update(
         _previous_value(risk_history, incident.estimated_amount_at_risk)
     )
     current_risk = _int(incident.estimated_amount_at_risk)
-    peak_risk = max(previous_risk, current_risk)
-    incident.estimated_amount_at_risk = peak_risk
-
-    previous_confidence = _float(_previous_value(confidence_history, incident.confidence))
-    incident.confidence = max(previous_confidence, _float(incident.confidence))
-
+    previous_confidence = _float(
+        _previous_value(confidence_history, incident.confidence)
+    )
+    current_confidence = _float(incident.confidence)
     previous_affected = _int(
         _previous_value(affected_history, incident.affected_attempt_count)
     )
-    incident.affected_attempt_count = max(
-        previous_affected, _int(incident.affected_attempt_count)
-    )
+    current_affected = _int(incident.affected_attempt_count)
 
     previous_evidence_value = _previous_value(evidence_history, {})
     previous_evidence = (
@@ -172,9 +172,14 @@ def preserve_peak_on_update(
             observed=previous_observed,
             evidence=previous_evidence,
             risk=previous_risk,
+            confidence=previous_confidence,
         )
     current_evidence["trigger_snapshot"] = trigger
-    current_evidence["peak_estimated_amount_at_risk_paise"] = peak_risk
+    current_evidence["peak_estimated_amount_at_risk_paise"] = max(
+        _int(previous_evidence.get("peak_estimated_amount_at_risk_paise")),
+        previous_risk,
+        current_risk,
+    )
     current_evidence["peak_estimated_recoverable_paise"] = max(
         _int(previous_evidence.get("peak_estimated_recoverable_paise")),
         _int(previous_evidence.get("estimated_recoverable_paise")),
@@ -192,7 +197,13 @@ def preserve_peak_on_update(
     )
     current_evidence["peak_affected_attempt_count"] = max(
         _int(previous_evidence.get("peak_affected_attempt_count")),
-        incident.affected_attempt_count,
+        previous_affected,
+        current_affected,
+    )
+    current_evidence["peak_confidence"] = max(
+        _float(previous_evidence.get("peak_confidence")),
+        previous_confidence,
+        current_confidence,
     )
     if incident.state == "resolved":
         current_evidence["resolution_reason"] = RESOLUTION_REASON
