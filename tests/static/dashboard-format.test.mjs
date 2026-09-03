@@ -5,8 +5,8 @@ import { claimTagForSource, claimTagForSources, findOutcomeForCase, formatMoney 
 import { renderOverview } from "../../app/static/js/dashboard-view.js";
 
 test("formats paise as one INR display convention", () => {
-  assert.equal(formatMoney(249900), "₹INR 2,499.00");
-  assert.equal(formatMoney(1), "₹INR 0.01");
+  assert.equal(formatMoney(249900), "₹2,499.00");
+  assert.equal(formatMoney(1), "₹0.01");
 });
 
 test("keeps outcome source claims distinct", () => {
