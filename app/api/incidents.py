@@ -1,6 +1,6 @@
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -12,6 +12,14 @@ from app.domain.incidents import (
     link_case_to_incident,
     link_event_to_incident,
 )
+from app.incidents.replay import (
+    advance_replay,
+    replay_status,
+    reset_replay,
+    run_replay,
+    start_replay,
+)
+from simulator.merchant_day import DEFAULT_REPLAY_ID, DEFAULT_SEED
 
 router = APIRouter(prefix="/api/v1", tags=["incidents"])
 
@@ -135,3 +143,93 @@ def get_incident(incident_id: str, request: Request) -> dict[str, Any]:
             }
         )
         return detail
+
+
+@router.get("/replay/status")
+def get_replay_status(
+    request: Request,
+    replay_id: str = Query(default=DEFAULT_REPLAY_ID, min_length=1, max_length=64),
+    seed: int = Query(default=DEFAULT_SEED, ge=0),
+) -> dict[str, object]:
+    with request.app.state.session_factory() as session:
+        try:
+            return replay_status(session, replay_id=replay_id, seed=seed)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/replay/reset")
+def reset_merchant_replay(
+    request: Request,
+    replay_id: str = Query(default=DEFAULT_REPLAY_ID, min_length=1, max_length=64),
+) -> dict[str, object]:
+    with request.app.state.session_factory() as session:
+        try:
+            result = reset_replay(session, replay_id=replay_id)
+        except ValueError as error:
+            session.rollback()
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        session.commit()
+        return result
+
+
+@router.post("/replay/advance", status_code=status.HTTP_201_CREATED)
+def advance_merchant_replay(
+    request: Request,
+    replay_id: str = Query(default=DEFAULT_REPLAY_ID, min_length=1, max_length=64),
+    seed: int = Query(default=DEFAULT_SEED, ge=0),
+    count: int = Query(default=6, ge=1, le=300),
+    scenario: Literal["primary", "healthy"] = Query(default="primary"),
+) -> dict[str, object]:
+    with request.app.state.session_factory() as session:
+        try:
+            result = advance_replay(
+                session,
+                replay_id=replay_id,
+                seed=seed,
+                count=count,
+                scenario=scenario,
+            )
+        except ValueError as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        session.commit()
+        return result
+
+
+@router.post("/replay/start", status_code=status.HTTP_201_CREATED)
+def start_merchant_replay(
+    request: Request,
+    replay_id: str = Query(default=DEFAULT_REPLAY_ID, min_length=1, max_length=64),
+    seed: int = Query(default=DEFAULT_SEED, ge=0),
+) -> dict[str, object]:
+    with request.app.state.session_factory() as session:
+        try:
+            result = start_replay(session, replay_id=replay_id, seed=seed)
+        except (RuntimeError, ValueError) as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        session.commit()
+        return result
+
+
+@router.post("/replay/run", status_code=status.HTTP_201_CREATED)
+def run_merchant_replay(
+    request: Request,
+    replay_id: str = Query(default=DEFAULT_REPLAY_ID, min_length=1, max_length=64),
+    seed: int = Query(default=DEFAULT_SEED, ge=0),
+    scenario: Literal["primary", "healthy"] = Query(default="primary"),
+) -> dict[str, object]:
+    with request.app.state.session_factory() as session:
+        try:
+            result = run_replay(
+                session,
+                replay_id=replay_id,
+                seed=seed,
+                scenario=scenario,
+            )
+        except ValueError as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        session.commit()
+        return result
