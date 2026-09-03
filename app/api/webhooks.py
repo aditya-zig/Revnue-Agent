@@ -191,7 +191,6 @@ def _correlate_recovery_payment(session, payload: dict, event: NormalizedPayment
     case = session.get(RecoveryCase, action.case_id)
     if case is not None and case.obligation_reference:
         event.obligation_reference = case.obligation_reference
-        event.merchant_order_reference = case.obligation_reference
 
 
 def _case_for_identity(
