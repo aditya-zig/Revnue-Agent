@@ -118,8 +118,8 @@ jobs:
             await page.waitForSelector('.incident-hero', { state: 'visible', timeout: 20000 });
             await page.screenshot({ path: path.join(output, '04-incident-detected-1920.png'), fullPage: true });
             const detailText = (await page.locator('body').innerText()).toLowerCase();
-            for (const required of ['what reroute observed','ai assessment','policy','human approval']) {
-              if (!detailText.includes(required)) throw new Error(`Incident section missing: ${required}`);
+            for (const required of ['what reroute observed','ai assessment','policy']) {
+              if (!detailText.includes(required)) throw new Error(`Incident section missing before investigation: ${required}`);
             }
 
             const investigate = page.locator('[data-investigate-case]').first();
@@ -127,6 +127,8 @@ jobs:
               await investigate.click();
               await page.waitForFunction(() => document.body.innerText.includes('Recommended recovery') || document.body.innerText.includes('Ranked after Policy'), null, { timeout: 30000 });
             }
+            const investigatedText = (await page.locator('body').innerText()).toLowerCase();
+            if (!investigatedText.includes('human approval')) throw new Error('Human approval gate missing after investigation');
             await page.screenshot({ path: path.join(output, '05-incident-investigated-1920.png'), fullPage: true });
 
             await page.click('[data-view="policy"]');
