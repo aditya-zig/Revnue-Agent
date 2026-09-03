@@ -11,11 +11,13 @@ from sqlalchemy.engine import URL
 
 from app.core.config import Settings
 from app.db.session import create_session_factory, normalize_database_url
+from app.db.tables import Base
 from app.finding_analysis import FindingAnalysisProvider, OpenRouterProvider
 from app.recovery import RecoveryModel
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
+VERCEL_FALLBACK_DATABASE_URL = "sqlite:////tmp/reroute-demo.db"
 REQUIRED_TABLES = {
     "checkout_orders",
     "leak_findings",
@@ -153,7 +155,16 @@ def _select_database_url(settings: Settings, explicit: str | None) -> tuple[str 
     component_url = _database_url_from_components()
     if component_url is not None:
         return component_url
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+        return VERCEL_FALLBACK_DATABASE_URL, "vercel_sqlite_fallback"
     return settings.database_url, "settings"
+
+
+def _initialize_fallback_schema(app: FastAPI) -> None:
+    if app.state.database_source != "vercel_sqlite_fallback":
+        return
+    with app.state.session_factory() as session:
+        Base.metadata.create_all(session.get_bind())
 
 
 def _build_razorpay_creator_from_settings(
@@ -249,6 +260,7 @@ def create_app(
     app.state.database_env_capabilities = _database_env_capabilities()
     try:
         app.state.session_factory = create_session_factory(effective_database_url)
+        _initialize_fallback_schema(app)
     except Exception:
         app.state.session_factory = _database_not_configured
         app.state.database_configuration = "configuration_error"
@@ -259,7 +271,11 @@ def create_app(
         )
     else:
         app.state.database_configuration = "ok"
-        app.state.database_configuration_reason = "ok"
+        app.state.database_configuration_reason = (
+            "ephemeral_fallback"
+            if database_source == "vercel_sqlite_fallback"
+            else "ok"
+        )
 
     app.state.webhook_secret = (
         webhook_secret if webhook_secret is not None else settings.razorpay_webhook_secret
