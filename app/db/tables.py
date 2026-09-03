@@ -1,6 +1,16 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -45,6 +55,10 @@ class PaymentEvent(Base):
     event_type: Mapped[str] = mapped_column(String(64))
     payment_id: Mapped[str] = mapped_column(String(128), index=True)
     obligation_reference: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    merchant_order_reference: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    provider_order_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     customer_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     amount: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3))
@@ -56,6 +70,10 @@ class PaymentEvent(Base):
     error_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     provider: Mapped[str] = mapped_column(String(64))
+    source_kind: Mapped[str] = mapped_column(
+        String(32), default="simulated_merchant", index=True
+    )
+    authenticity_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     raw_hash: Mapped[str] = mapped_column(String(64))
     raw_body: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
@@ -74,6 +92,70 @@ class RecoveryCase(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     stop_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class PaymentIncident(Base):
+    __tablename__ = "payment_incidents"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('detected', 'investigating', 'actionable', "
+            "'recovery_in_progress', 'monitoring', 'resolved')",
+            name="ck_payment_incidents_state",
+        ),
+    )
+
+    incident_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    state: Mapped[str] = mapped_column(String(32), index=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    detection_version: Mapped[str] = mapped_column(String(64))
+    cohort_filter: Mapped[dict] = mapped_column(JSON)
+    baseline_metrics: Mapped[dict] = mapped_column(JSON)
+    observed_metrics: Mapped[dict] = mapped_column(JSON)
+    affected_attempt_count: Mapped[int] = mapped_column(Integer)
+    estimated_amount_at_risk: Mapped[int] = mapped_column(Integer)
+    confidence: Mapped[float] = mapped_column()
+    detection_evidence_json: Mapped[dict] = mapped_column(JSON)
+    provenance_summary_json: Mapped[dict] = mapped_column(JSON)
+    analysis_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    recommendation_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+class IncidentPaymentEvent(Base):
+    __tablename__ = "incident_payment_events"
+
+    incident_id: Mapped[str] = mapped_column(
+        ForeignKey("payment_incidents.incident_id", ondelete="CASCADE"), primary_key=True
+    )
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("payment_events.event_id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class IncidentRecoveryCase(Base):
+    __tablename__ = "incident_recovery_cases"
+
+    incident_id: Mapped[str] = mapped_column(
+        ForeignKey("payment_incidents.incident_id", ondelete="CASCADE"), primary_key=True
+    )
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("recovery_cases.case_id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class IncidentAuditEvent(Base):
+    __tablename__ = "incident_audit_events"
+
+    audit_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    incident_id: Mapped[str] = mapped_column(
+        ForeignKey("payment_incidents.incident_id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class PaymentException(Base):
