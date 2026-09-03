@@ -21,6 +21,9 @@ dev = [
     "ruff>=0.9,<1",
 ]
 
+[tool.vercel]
+entrypoint = "app.main:app"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
