@@ -39,6 +39,7 @@ class PlantedIncident:
 @dataclass(frozen=True)
 class MerchantDay:
     replay_id: str
+    run_id: str
     seed: int
     scenario: ScenarioName
     events: tuple[NormalizedPaymentEvent, ...]
@@ -50,18 +51,17 @@ def generate_merchant_day(
     seed: int = DEFAULT_SEED,
     replay_id: str = DEFAULT_REPLAY_ID,
     scenario: ScenarioName = "primary",
+    run_id: str | None = None,
 ) -> MerchantDay:
     """Generate one reproducible merchant day ordered by replay event time."""
 
     if seed < 0:
         raise ValueError("seed must be non-negative")
-    if not replay_id or not replay_id.replace("_", "").replace("-", "").isalnum():
-        raise ValueError(
-            "replay_id must contain only letters, numbers, hyphens, or underscores"
-        )
+    _validate_identifier(replay_id, field="replay_id")
+    namespace = run_id or f"replay_{replay_id}_s{seed}"
+    _validate_identifier(namespace, field="run_id")
 
     random_source = random.Random(seed)
-    namespace = f"replay_{replay_id}_s{seed}"
     start = datetime(2026, 9, 4, 3, 30, tzinfo=UTC)
     method_ordinals = {method: 0 for method in METHODS}
     events: list[NormalizedPaymentEvent] = []
@@ -148,11 +148,19 @@ def generate_merchant_day(
         )
     return MerchantDay(
         replay_id=replay_id,
+        run_id=namespace,
         seed=seed,
         scenario=scenario,
         events=tuple(events),
         planted_incidents=planted,
     )
+
+
+def _validate_identifier(value: str, *, field: str) -> None:
+    if not value or not value.replace("_", "").replace("-", "").isalnum():
+        raise ValueError(
+            f"{field} must contain only letters, numbers, hyphens, or underscores"
+        )
 
 
 def _phase(index: int) -> str:
