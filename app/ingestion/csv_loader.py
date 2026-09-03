@@ -30,6 +30,8 @@ def import_csv(session: Session, content: str) -> tuple[int, int]:
                     "event_type": row["event_type"],
                     "payment_id": row["payment_id"],
                     "obligation_reference": obligation_reference,
+                    "merchant_order_reference": obligation_reference,
+                    "provider_order_id": row.get("provider_order_id") or None,
                     "customer_id": row["customer_id"] or None,
                     "amount": row["amount"],
                     "currency": row["currency"],
@@ -41,6 +43,8 @@ def import_csv(session: Session, content: str) -> tuple[int, int]:
                     "error_reason": row["error_reason"] or None,
                     "occurred_at": row["occurred_at"],
                     "provider": row.get("provider") or "csv_import",
+                    "source_kind": row.get("source_kind") or "simulated_merchant",
+                    "authenticity_verified": False,
                     "raw_hash": hashlib.sha256(str(sorted(row.items())).encode()).hexdigest(),
                     "raw_body": None,
                 }
