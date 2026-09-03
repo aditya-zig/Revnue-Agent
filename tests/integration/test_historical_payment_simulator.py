@@ -188,6 +188,7 @@ async def test_issue_47_simulate_999_endpoint_runs_real_pipeline(app):
         assert payload["findings"] == 37
         assert payload["seed"] == ISSUE_47_SEED
         assert payload["top_finding_id"]
+        assert payload["already_present"] is False
 
         dashboard = await client.get("/api/v1/dashboard")
         assert dashboard.status_code == 200
@@ -201,10 +202,15 @@ async def test_issue_47_simulate_999_endpoint_runs_real_pipeline(app):
         }
 
         duplicate = await client.post("/api/v1/data/simulate-999")
-        assert duplicate.status_code == 409
-        assert duplicate.json() == {
-            "detail": "demo payment history requires an empty payment database"
-        }
+        assert duplicate.status_code == 201
+        duplicate_payload = duplicate.json()
+        assert duplicate_payload["payments_created"] == 0
+        assert duplicate_payload["payments_total"] == 999
+        assert duplicate_payload["successes"] == 749
+        assert duplicate_payload["failures"] == 250
+        assert duplicate_payload["duplicates"] == 999
+        assert duplicate_payload["findings"] == 37
+        assert duplicate_payload["already_present"] is True
 
     with app.state.session_factory() as session:
         assert len(session.scalars(select(PaymentEvent)).all()) == 999
