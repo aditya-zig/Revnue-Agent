@@ -43,17 +43,15 @@ class NormalizedPaymentEvent(BaseModel):
         payment = payload["payload"]["payment"]["entity"]
         payment_id = payment["id"]
         created_at = datetime.fromtimestamp(payment["created_at"], tz=UTC)
-        provider_order_id = payment.get("order_id")
+        provider_order_id = payment.get("order_id") or None
         notes = payment.get("notes", {})
         if isinstance(notes, dict):
-            merchant_order_reference = notes.get("obligation_reference") or notes.get("order_id")
+            merchant_order_reference = (
+                notes.get("obligation_reference") or notes.get("order_id") or None
+            )
         else:
             merchant_order_reference = None
         obligation_reference = provider_order_id or merchant_order_reference
-        if obligation_reference == "":
-            obligation_reference = None
-        if merchant_order_reference == "":
-            merchant_order_reference = None
         customer_id = notes.get("customer_id") if isinstance(notes, dict) else None
         # ``webhook_event_id`` is retained as a compatibility argument only. It
         # is an unsigned header value and must never influence deduplication.
