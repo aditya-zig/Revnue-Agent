@@ -47,8 +47,17 @@ async def test_dashboard_exposes_recovery_work_at_http_seam(app):
 
     assert page.status_code == 200
     assert response.status_code == 200
-    open_cases_card = page.text.split('data-kpi-slot="open-cases"', 1)[1].split("</article>", 1)[0]
-    assert "claim-tag" not in open_cases_card
+    assert "ReRoute Sentinel" in page.text
+    assert 'data-view="home"' in page.text
+    assert 'data-view="payments"' in page.text
+    assert 'data-view="incidents"' in page.text
+    assert 'data-view="recoveries"' in page.text
+    assert 'data-view="policy"' in page.text
+    assert 'data-view="outcomes"' in page.text
+    assert "Simulate 999 Payments" not in page.text
+    assert "Refresh data" not in page.text
+    assert "/static/js/sentinel-console.js" in page.text
+
     payload = response.json()
     case = payload["worklist"][0]
     assert {
