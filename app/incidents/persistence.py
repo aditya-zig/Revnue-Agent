@@ -26,6 +26,15 @@ def _float(value: object | None) -> float:
     return float(value) if isinstance(value, (int, float)) else 0.0
 
 
+def _failed_attempts(metrics: dict[str, Any]) -> int:
+    explicit = metrics.get("failed_attempts")
+    if isinstance(explicit, (int, float)):
+        return int(explicit)
+    attempts = _int(metrics.get("attempts"))
+    success_rate = _float(metrics.get("success_rate"))
+    return max(0, attempts - round(attempts * success_rate))
+
+
 def _trigger_snapshot(
     incident: PaymentIncident,
     *,
@@ -42,7 +51,7 @@ def _trigger_snapshot(
         "current_success_rate": _float(observed.get("success_rate")),
         "baseline_attempts": _int(baseline.get("attempts")),
         "current_attempts": _int(observed.get("attempts")),
-        "failed_attempts": _int(observed.get("failed_attempts")),
+        "failed_attempts": _failed_attempts(observed),
         "success_rate_drop": _float(evidence.get("success_rate_drop")),
         "z_score": _float(evidence.get("z_score")),
         "confidence": _float(incident.confidence),
@@ -65,20 +74,19 @@ def _trigger_snapshot(
 def _augment_insert(incident: PaymentIncident) -> None:
     if incident.detection_version != DETECTOR_VERSION:
         return
+    observed = dict(incident.observed_metrics or {})
     evidence = dict(incident.detection_evidence_json or {})
-    evidence.setdefault("trigger_snapshot", _trigger_snapshot(incident, evidence=evidence))
+    evidence.setdefault(
+        "trigger_snapshot", _trigger_snapshot(incident, observed=observed, evidence=evidence)
+    )
     evidence["peak_estimated_amount_at_risk_paise"] = _int(
         incident.estimated_amount_at_risk
     )
     evidence["peak_estimated_recoverable_paise"] = _int(
         evidence.get("estimated_recoverable_paise")
     )
-    evidence["peak_failed_value_paise"] = _int(
-        (incident.observed_metrics or {}).get("failed_value_paise")
-    )
-    evidence["peak_failed_attempt_count"] = _int(
-        (incident.observed_metrics or {}).get("failed_attempts")
-    )
+    evidence["peak_failed_value_paise"] = _int(observed.get("failed_value_paise"))
+    evidence["peak_failed_attempt_count"] = _failed_attempts(observed)
     evidence["peak_affected_attempt_count"] = _int(incident.affected_attempt_count)
     incident.detection_evidence_json = evidence
 
@@ -154,6 +162,7 @@ def preserve_peak_on_update(
         if isinstance(previous_observed_value, dict)
         else {}
     )
+    current_observed = dict(incident.observed_metrics or {})
 
     trigger = previous_evidence.get("trigger_snapshot")
     if not isinstance(trigger, dict):
@@ -174,12 +183,12 @@ def preserve_peak_on_update(
     current_evidence["peak_failed_value_paise"] = max(
         _int(previous_evidence.get("peak_failed_value_paise")),
         _int(previous_observed.get("failed_value_paise")),
-        _int((incident.observed_metrics or {}).get("failed_value_paise")),
+        _int(current_observed.get("failed_value_paise")),
     )
     current_evidence["peak_failed_attempt_count"] = max(
         _int(previous_evidence.get("peak_failed_attempt_count")),
-        _int(previous_observed.get("failed_attempts")),
-        _int((incident.observed_metrics or {}).get("failed_attempts")),
+        _failed_attempts(previous_observed),
+        _failed_attempts(current_observed),
     )
     current_evidence["peak_affected_attempt_count"] = max(
         _int(previous_evidence.get("peak_affected_attempt_count")),
