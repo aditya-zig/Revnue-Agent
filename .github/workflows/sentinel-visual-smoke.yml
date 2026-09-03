@@ -1,0 +1,172 @@
+name: Sentinel Visual Smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentinel-visual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-sentinel-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync
+        run: uv sync --dev
+
+      - name: Prepare clean database
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_PATH="$RUNNER_TEMP/sentinel-visual.db"
+          echo "REROUTE_DATABASE_URL=sqlite:///$DB_PATH" >> "$GITHUB_ENV"
+          uv run alembic upgrade head
+
+      - name: Start app
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level warning >"$RUNNER_TEMP/sentinel-server.log" 2>&1 &
+          echo $! >"$RUNNER_TEMP/sentinel-server.pid"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat "$RUNNER_TEMP/sentinel-server.log"
+          exit 1
+
+      - name: Install browser driver
+        run: npm install --no-save playwright-core@1.55.0
+
+      - name: Exercise and capture operator journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sentinel-visuals"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const { chromium } = require('playwright-core');
+
+          (async () => {
+            const candidates = [
+              '/usr/bin/google-chrome',
+              '/usr/bin/google-chrome-stable',
+              '/usr/bin/chromium',
+              '/usr/bin/chromium-browser',
+            ];
+            const executablePath = candidates.find((candidate) => fs.existsSync(candidate));
+            if (!executablePath) throw new Error('No Chromium-compatible browser found');
+            const output = path.join(process.env.RUNNER_TEMP, 'sentinel-visuals');
+            const base = 'http://127.0.0.1:8000';
+            const browser = await chromium.launch({ headless: true, executablePath });
+            const errors = [];
+
+            const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+            page.on('console', (message) => {
+              if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+            });
+            page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+
+            await page.goto(`${base}/judge`, { waitUntil: 'networkidle', timeout: 60000 });
+            await page.screenshot({ path: path.join(output, '01-judge-1920.png'), fullPage: true });
+            const judgeText = await page.locator('body').innerText();
+            if (!judgeText.includes('Find the leak. Recover safely. Prove the outcome.')) throw new Error('Judge entry copy missing');
+            if (!judgeText.includes('SIMULATED DEMO DATA')) throw new Error('Judge truth label missing');
+            if (!judgeText.includes('ESTIMATED') || !judgeText.includes('TEST MODE')) throw new Error('Judge claim boundaries missing');
+
+            await page.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 60000 });
+            await page.waitForFunction(() => window.ReRouteSentinel?.getState?.().dashboard, null, { timeout: 30000 });
+            await page.waitForFunction(() => document.body.innerText.includes('No baseline yet'), null, { timeout: 10000 });
+            await page.screenshot({ path: path.join(output, '02-home-healthy-1920.png'), fullPage: true });
+            const shellText = await page.locator('body').innerText();
+            if (shellText.includes('Simulate 999 Payments')) throw new Error('Legacy simulator framing is visible');
+            if (shellText.includes('Refresh data')) throw new Error('Manual refresh is visible in intended journey');
+            if (shellText.includes('0.0%')) throw new Error('Unknown merchant baseline is presented as a measured 0%');
+            for (const label of ['Home','Payments','Incidents','Recoveries','Exceptions','Policy & Safety','Outcomes','Evaluation']) {
+              if (!shellText.includes(label)) throw new Error(`Navigation label missing: ${label}`);
+            }
+
+            await page.click('[data-start-demo]');
+            await page.waitForFunction(() => {
+              const app = window.ReRouteSentinel?.getState?.();
+              return app && !app.replayRunning && app.incidentCount > 0 && app.dashboard?.population?.total >= 999;
+            }, null, { timeout: 120000 });
+            await page.screenshot({ path: path.join(output, '03-home-incident-1920.png'), fullPage: true });
+            const visibleToasts = await page.locator('.toast:visible').count();
+            if (visibleToasts > 1) throw new Error(`Incident alert duplicated visually: ${visibleToasts} visible toasts`);
+
+            await page.click('[data-open-incident]');
+            await page.waitForSelector('.incident-hero', { state: 'visible', timeout: 20000 });
+            await page.screenshot({ path: path.join(output, '04-incident-detected-1920.png'), fullPage: true });
+            const detailText = (await page.locator('body').innerText()).toLowerCase();
+            for (const required of ['what reroute observed','ai assessment','policy']) {
+              if (!detailText.includes(required)) throw new Error(`Incident section missing before investigation: ${required}`);
+            }
+
+            const investigate = page.locator('[data-investigate-case]').first();
+            if (await investigate.count()) {
+              await investigate.click();
+              await page.waitForFunction(() => document.body.innerText.includes('Recommended recovery') || document.body.innerText.includes('Ranked after Policy'), null, { timeout: 30000 });
+            }
+            const investigatedText = (await page.locator('body').innerText()).toLowerCase();
+            if (!investigatedText.includes('human approval')) throw new Error('Human approval gate missing after investigation');
+            await page.screenshot({ path: path.join(output, '05-incident-investigated-1920.png'), fullPage: true });
+
+            await page.click('[data-view="policy"]');
+            await page.waitForFunction(() => window.location.hash === '#policy');
+            await page.screenshot({ path: path.join(output, '06-policy-safety-1920.png'), fullPage: true });
+
+            await page.goto(`${base}/storefront`, { waitUntil: 'networkidle', timeout: 60000 });
+            await page.waitForSelector('#buy-now', { state: 'visible' });
+            const storefrontText = await page.locator('body').innerText();
+            if (!storefrontText.includes('Back to ReRoute')) throw new Error('Storefront back navigation missing');
+            if (!storefrontText.includes('₹2,499')) throw new Error('Storefront price missing');
+            if (!storefrontText.includes('Buy Now')) throw new Error('Storefront purchase CTA missing');
+            if (!storefrontText.includes('Closing the modal does not create a payment failure')) throw new Error('Storefront dismissal truth copy missing');
+            await page.screenshot({ path: path.join(output, '07-storefront-1920.png'), fullPage: true });
+
+            await page.setViewportSize({ width: 1280, height: 900 });
+            await page.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 60000 });
+            await page.waitForFunction(() => window.ReRouteSentinel?.getState?.().dashboard, null, { timeout: 30000 });
+            await page.screenshot({ path: path.join(output, '08-home-1280.png'), fullPage: true });
+
+            if (errors.length) throw new Error(`Browser runtime errors:\n${errors.join('\n')}`);
+            await browser.close();
+            console.log('SENTINEL_VISUAL_SMOKE=PASS');
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Print server log on failure
+        if: failure()
+        run: cat "$RUNNER_TEMP/sentinel-server.log" || true
+
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-visuals-${{ github.run_id }}
+          path: ${{ runner.temp }}/sentinel-visuals
+          if-no-files-found: warn
+          retention-days: 7

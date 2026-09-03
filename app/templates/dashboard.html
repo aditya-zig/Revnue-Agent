@@ -1,136 +1,90 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="ReRoute payment recovery operations dashboard">
-    <title>ReRoute | Payment recovery operations</title>
-    <link rel="stylesheet" href="/static/css/dashboard.css">
-    <link rel="stylesheet" href="/static/css/dashboard-approved.css">
-    <link rel="stylesheet" href="/static/css/dashboard-sidebar.css">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ReRoute Sentinel merchant payment incident operations" />
+    <title>ReRoute Sentinel | Payment incident operations</title>
+    <link rel="stylesheet" href="/static/css/sentinel-console.css" />
+    <link rel="stylesheet" href="/static/css/sentinel-polish.css" />
   </head>
   <body>
-    <div class="app-shell app-shell-sidebar" data-dashboard-shell data-shell-state="loading">
-      <aside class="dashboard-sidebar" aria-label="ReRoute navigation">
-        <div class="sidebar-brand">
-          <div class="brand" data-brand>
-            <div class="brand-mark" aria-hidden="true">R</div>
-            <div class="brand-copy">
-              <div class="brand-name">ReRoute</div>
-              <div class="workspace-name">Recovery operations</div>
-            </div>
-          </div>
-        </div>
+    <div class="sentinel-shell" data-sentinel-shell data-state="loading">
+      <aside class="side-rail" aria-label="ReRoute Sentinel navigation">
+        <a class="brand" href="#home" aria-label="ReRoute Sentinel home">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <span class="brand-copy">
+            <strong>ReRoute Sentinel</strong>
+            <small>Payment incident autopilot</small>
+          </span>
+        </a>
 
-        <nav class="sidebar-navigation" aria-label="ReRoute dashboard views" data-dashboard-navigation>
-          <div class="sidebar-group">
-            <p class="sidebar-group-label">Operate</p>
-            <div class="side-nav" role="tablist" aria-label="Operate">
-              <button class="side-tab active" id="tab-overview" role="tab" aria-selected="true" aria-controls="overview" tabindex="0" data-view="overview">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
-                <span>Overview</span>
-              </button>
-              <button class="side-tab" id="tab-queue" role="tab" aria-selected="false" aria-controls="queue" tabindex="-1" data-view="queue">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M6 12h12M6 17h8"/></svg>
-                <span>Recovery queue</span>
-              </button>
-              <button class="side-tab" id="tab-investigation" role="tab" aria-selected="false" aria-controls="investigation" tabindex="-1" data-view="investigation">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 8v4l3 2"/></svg>
-                <span>Findings</span>
-              </button>
-              <button class="side-tab" id="tab-exceptions" role="tab" aria-selected="false" aria-controls="exceptions" tabindex="-1" data-view="exceptions">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 21 20H3L12 4Z"/><path d="M12 9v5M12 17h.01"/></svg>
-                <span>Exceptions</span>
-              </button>
-              <button class="side-tab" id="tab-evaluation" role="tab" aria-selected="false" aria-controls="evaluation" tabindex="-1" data-view="evaluation">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 5-5 4 3 7-8"/></svg>
-                <span>Evaluation</span>
-              </button>
-            </div>
+        <nav class="rail-nav" aria-label="Operator console">
+          <div class="nav-group">
+            <p class="nav-label">Operate</p>
+            <button class="nav-item active" type="button" data-view="home" aria-current="page">
+              <span class="nav-icon" aria-hidden="true">⌂</span><span>Home</span>
+            </button>
+            <button class="nav-item" type="button" data-view="payments">
+              <span class="nav-icon" aria-hidden="true">↔</span><span>Payments</span>
+            </button>
+            <button class="nav-item" type="button" data-view="incidents">
+              <span class="nav-icon" aria-hidden="true">!</span><span>Incidents</span>
+              <span class="nav-count" data-incident-count hidden>0</span>
+            </button>
+            <button class="nav-item" type="button" data-view="recoveries">
+              <span class="nav-icon" aria-hidden="true">↗</span><span>Recoveries</span>
+            </button>
           </div>
 
-          <div class="sidebar-group sidebar-group-secondary">
-            <p class="sidebar-group-label">Assure</p>
-            <div class="side-nav" role="tablist" aria-label="Assure">
-              <button class="side-tab" id="tab-governance" role="tab" aria-selected="false" aria-controls="governance" tabindex="-1" data-view="governance">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-                <span>Governance</span>
-              </button>
-              <button class="side-tab" id="tab-inbox" role="tab" aria-selected="false" aria-controls="inbox" tabindex="-1" data-view="inbox">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m5 8 7 5 7-5"/></svg>
-                <span>Demo Inbox</span>
-              </button>
-              <a class="side-tab side-link" href="/docs" target="_blank" rel="noreferrer">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h7l3 3v13H7z"/><path d="M14 4v4h4M10 12h4M10 16h4"/></svg>
-                <span>Documentation</span>
-              </a>
-            </div>
+          <div class="nav-group">
+            <p class="nav-label">Control</p>
+            <button class="nav-item" type="button" data-view="exceptions">
+              <span class="nav-icon" aria-hidden="true">△</span><span>Exceptions</span>
+            </button>
+            <button class="nav-item" type="button" data-view="policy">
+              <span class="nav-icon" aria-hidden="true">◇</span><span>Policy &amp; Safety</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <p class="nav-label">Prove</p>
+            <button class="nav-item" type="button" data-view="outcomes">
+              <span class="nav-icon" aria-hidden="true">✓</span><span>Outcomes</span>
+            </button>
+            <button class="nav-item" type="button" data-view="evaluation">
+              <span class="nav-icon" aria-hidden="true">⌁</span><span>Evaluation</span>
+            </button>
           </div>
         </nav>
 
-        <div class="sidebar-foot">
-          <span class="sidebar-status-dot" aria-hidden="true"></span>
-          <span>Test Mode</span>
+        <div class="rail-footer">
+          <a href="/docs" target="_blank" rel="noreferrer">Documentation</a>
+          <span class="mode-pill"><span class="status-dot"></span>Test Mode</span>
         </div>
       </aside>
 
-      <div class="dashboard-workspace">
-        <header class="topbar" data-dashboard-header>
-          <div class="topbar-product">
-            <strong>ReRoute Intelligence</strong>
-            <span>Payment recovery operations</span>
+      <div class="workspace">
+        <header class="workspace-bar">
+          <div class="workspace-title">
+            <span class="live-status"><span class="status-dot"></span><span data-live-label>Watching payments</span></span>
+            <span class="latest-event" data-latest-event>Waiting for payment activity</span>
           </div>
-          <div class="top-actions">
-            <button class="btn icon-btn" id="themeBtn" type="button" aria-label="Light mode only" aria-pressed="false" data-action="toggle-theme" hidden>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /></svg>
-            </button>
-            <span class="claim-tag">TEST MODE</span>
-            <button class="btn btn-primary" id="exportBtn" type="button" aria-label="Export worklist" data-action="export-worklist">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M5 19h14" /></svg>
-              <span class="btn-label">Export worklist</span>
-            </button>
+          <div class="workspace-actions">
+            <span class="truth-chip simulated">SIMULATED DEMO DATA</span>
+            <a class="button button-secondary" href="/storefront">Open storefront</a>
           </div>
         </header>
 
-        <main class="main" data-dashboard-main>
-          <section class="page-head" data-dashboard-heading>
-            <div>
-              <p class="eyebrow">Recovery operations</p>
-              <h1>Investigate recoverable failures with evidence</h1>
-              <p class="lede">Investigate payment failures, review policy-gated Actions, and keep every RecoveryCase accountable.</p>
-            </div>
-            <div class="page-head-actions">
-              <button class="btn btn-primary" type="button" data-action="simulate-999">Simulate 999 Payments</button>
-              <button class="btn" type="button" id="refreshBtn" data-action="refresh-dashboard">Refresh data</button>
-            </div>
-          </section>
-
-          <section class="stats" id="dashboardKpis" aria-label="Recovery metrics" aria-busy="true" data-dashboard-kpis>
-            <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Revenue at Risk" data-kpi-slot="revenue-at-risk"><div class="stat-top"><span class="stat-label">Revenue at Risk</span><span class="claim-tag" data-kpi-claim hidden></span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Waiting for dashboard data</div></article>
-            <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Estimated Recoverable" data-kpi-slot="estimated-recoverable"><div class="stat-top"><span class="stat-label">Estimated Recoverable</span><span class="claim-tag">ESTIMATED</span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Top persisted LeakFinding</div></article>
-            <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Actual Recovered" data-kpi-slot="actual-recovered"><div class="stat-top"><span class="stat-label">Actual Recovered</span><span class="claim-tag">TEST MODE</span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Recorded Test Mode Outcomes</div></article>
-            <article class="card zoomable" tabindex="0" role="button" aria-label="Expand open cases" data-kpi-slot="open-cases"><div class="stat-top"><span class="stat-label">Open cases</span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Needs review or action</div></article>
-          </section>
-
-          <div id="dashboardLoading" class="state dashboard-state" role="status" aria-live="polite"><div class="state-inner"><div class="skeleton" aria-hidden="true"><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span></div><p class="sr-only">Loading recovery operations.</p></div></div>
-          <div id="dashboardError" class="state dashboard-state" role="alert" hidden><div class="state-inner"><h3>Recovery data could not be refreshed</h3><p>Your current dashboard view is preserved. Check your connection and try again.</p><button class="btn" type="button" data-action="retry-dashboard">Retry refresh</button></div></div>
-
-          <div id="app" data-dashboard-content hidden>
-            <section id="overview" class="view active" role="tabpanel" aria-labelledby="tab-overview" data-dashboard-view="overview"><div class="view-slot" data-component-slot="overview"><div class="state state-placeholder"><div class="state-inner"><h3>Overview</h3><p>Recovery operations will appear here when dashboard data is ready.</p></div></div></div></section>
-            <section id="queue" class="view" role="tabpanel" aria-labelledby="tab-queue" data-dashboard-view="queue" hidden><div class="view-slot" data-component-slot="queue"><div class="state state-placeholder"><div class="state-inner"><h3>Recovery queue</h3><p>Policy-backed work will appear here when dashboard data is ready.</p></div></div></div></section>
-            <section id="detail" class="view" role="tabpanel" aria-label="RecoveryCase detail" data-dashboard-view="detail" hidden><div class="view-slot" data-component-slot="detail"><div class="state state-placeholder"><div class="state-inner"><h3>RecoveryCase detail</h3><p>Normalized evidence and AuditEvents will appear here when a case is selected.</p></div></div></div></section>
-            <section id="exceptions" class="view" role="tabpanel" aria-labelledby="tab-exceptions" data-dashboard-view="exceptions" hidden><div class="view-slot" data-component-slot="exceptions"><div class="state state-placeholder"><div class="state-inner"><h3>PaymentExceptions</h3><p>Provider and customer debit evidence will appear here when recorded.</p></div></div></div></section>
-            <section id="governance" class="view" role="tabpanel" aria-labelledby="tab-governance" data-dashboard-view="governance" hidden><div class="view-slot" data-component-slot="governance"><div class="state state-placeholder"><div class="state-inner"><h3>Governance</h3><p>Versioned owner controls and policy accountability will appear here when dashboard data is ready.</p></div></div></div></section>
-            <section id="investigation" class="view" role="tabpanel" aria-labelledby="tab-investigation" data-dashboard-view="investigation" hidden><div class="view-slot" data-component-slot="investigation"><div class="state state-placeholder"><div class="state-inner"><h3>Findings</h3><p>Sanitized finding data and saved analyses will appear here.</p></div></div></div></section>
-            <section id="evaluation" class="view" role="tabpanel" aria-labelledby="tab-evaluation" data-dashboard-view="evaluation" hidden><div class="view-slot" data-component-slot="evaluation"><div class="state state-placeholder"><div class="state-inner"><h3>Evaluation</h3><p>EvaluationComparison output will appear here with a SIMULATED label.</p></div></div></div></section>
-            <section id="inbox" class="view" role="tabpanel" aria-labelledby="tab-inbox" data-dashboard-view="inbox" hidden><div class="view-slot" data-component-slot="inbox"><div class="state state-placeholder"><div class="state-inner"><h3>Demo Inbox</h3><p>Recorded mock replies will appear here when actions exist.</p></div></div></div></section>
-          </div>
+        <main class="console-main" id="consoleMain" tabindex="-1">
+          <div id="screen" aria-live="polite"></div>
         </main>
       </div>
     </div>
-    <div id="tooltip" class="tooltip" role="status" aria-live="polite"></div>
-    <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
-    <script type="module" src="/static/js/app.js"></script>
-    <script type="module" src="/static/js/dashboard-approved.js"></script>
+
+    <div class="toast-stack" aria-live="assertive" aria-atomic="true" data-toast-stack></div>
+    <div class="sr-only" aria-live="polite" data-announcer></div>
+    <script type="module" src="/static/js/sentinel-console.js"></script>
+    <script type="module" src="/static/js/sentinel-polish.js"></script>
   </body>
 </html>

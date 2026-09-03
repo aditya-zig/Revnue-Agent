@@ -3,22 +3,62 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ReRoute Dumbbell Store</title>
+    <meta name="description" content="ReRoute Test Mode merchant storefront" />
+    <title>Ironform | 5 kg Dumbbell</title>
     <link rel="stylesheet" href="/static/css/storefront.css" />
+    <link rel="stylesheet" href="/static/css/storefront-polish.css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script src="/static/js/storefront.js" defer></script>
   </head>
   <body>
+    <a class="back-link" href="/" aria-label="Back to ReRoute Sentinel">
+      <span aria-hidden="true">←</span> Back to ReRoute
+    </a>
+
+    <header class="shop-header">
+      <a class="shop-brand" href="/storefront" aria-label="Ironform home">IRONFORM</a>
+      <span class="mode-badge">Razorpay Test Mode</span>
+    </header>
+
     <main class="storefront" aria-labelledby="store-title">
-      <section class="product-card">
-        <p class="eyebrow">ReRoute Test Mode shop</p>
-        <div class="product-art" aria-hidden="true">🏋️</div>
+      <section class="product-visual" aria-label="5 kg cast iron dumbbell product image">
+        <div class="visual-stage" aria-hidden="true">
+          <div class="dumbbell">
+            <span class="plate plate-left-outer"></span>
+            <span class="plate plate-left-inner"></span>
+            <span class="handle"></span>
+            <span class="plate plate-right-inner"></span>
+            <span class="plate plate-right-outer"></span>
+          </div>
+          <span class="weight-mark">5 KG</span>
+        </div>
+        <div class="visual-caption">
+          <span>Cast iron</span><span>Knurled grip</span><span>Home training</span>
+        </div>
+      </section>
+
+      <section class="product-info">
+        <p class="eyebrow">Strength equipment · cast iron</p>
         <h1 id="store-title">5 kg Dumbbell</h1>
-        <p class="description">A compact cast-iron dumbbell for strength training at home.</p>
-        <p class="price">₹2,499</p>
-        <p class="test-note">Test Mode only · no real money moves</p>
-        <button id="buy-now" type="button">Buy Now</button>
+        <div class="rating-line" aria-label="Product rating 4.8 out of 5">
+          <strong>4.8</strong><span class="stars" aria-hidden="true">★★★★★</span><span>218 reviews</span>
+        </div>
+        <p class="description">A compact 5 kg dumbbell with a solid cast-iron head and textured steel grip. Built for curls, presses and everyday strength work at home.</p>
+
+        <div class="price-row">
+          <p class="price">₹2,499</p>
+          <span class="tax-note">Inclusive of taxes</span>
+        </div>
+
+        <ul class="product-points">
+          <li><span class="point-check">✓</span><span><strong>5 kg fixed weight</strong><small>No plates or setup required</small></span></li>
+          <li><span class="point-check">✓</span><span><strong>Secure steel grip</strong><small>Textured centre handle for control</small></span></li>
+          <li><span class="point-check">✓</span><span><strong>Test checkout</strong><small>Razorpay Test Mode only; no real money moves</small></span></li>
+        </ul>
+
+        <button id="buy-now" type="button">Buy Now · Pay ₹2,499</button>
         <p id="checkout-status" class="status" role="status" aria-live="polite"></p>
+        <p class="checkout-note"><span class="lock" aria-hidden="true"></span> Secure Razorpay Test Mode checkout. Closing the modal does not create a payment failure.</p>
       </section>
     </main>
   </body>

@@ -11,29 +11,31 @@ def app(database_url):
 
 @pytest.mark.asyncio
 async def test_dashboard_frontend_preserves_claim_provenance_copy(app):
-    """Keep demo-facing claim boundaries visible as the dashboard evolves."""
+    """Keep demo-facing claim boundaries visible as the operator console evolves."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         page = await client.get("/")
-        frontend = await client.get("/static/js/app.js")
+        frontend = await client.get("/static/js/sentinel-console.js")
 
     assert page.status_code == 200
     assert frontend.status_code == 200
 
-    # KPI claim tags visible in the server-rendered shell.
-    assert "Estimated Recoverable" in page.text
-    assert ">ESTIMATED<" in page.text
-    assert "Actual Recovered" in page.text
-    assert ">TEST MODE<" in page.text
+    assert "SIMULATED DEMO DATA" in page.text
+    assert "Test Mode" in page.text
+    assert "Manual Refresh" not in page.text
 
-    # Evaluation values must remain explicitly synthetic in the rendered UI code.
-    assert 'tag("SIMULATED")' in frontend.text
-    assert "Simulation only" in frontend.text
-    assert "These values do not measure merchant recovery or provider outcomes." in frontend.text
+    # Monetary and evaluation claims remain visibly qualified in the operator code.
+    assert 'claimTag("ESTIMATED")' in frontend.text
+    assert 'claimTag("SIMULATED")' in frontend.text
+    assert "Razorpay Test Mode recovered" in frontend.text
+    assert "No provider evidence → no recovered claim" in frontend.text
+    evaluation_copy = (
+        "These figures are simulated evaluation evidence, "
+        "not production merchant performance."
+    )
+    assert evaluation_copy in frontend.text
+    assert "Evaluation is a deterministic sandbox comparison." in frontend.text
 
-    # The two monetary provenance claims must never be presented as production revenue.
-    assert "Recorded Outcome amount in Test Mode" in frontend.text
-    assert "Single top persisted LeakFinding" in frontend.text
-
-    # Headline must remain evidence-disciplined and avoid unqualified revenue claims.
-    assert "Investigate recoverable failures with evidence" in page.text
-    assert "Recover revenue with evidence" not in page.text
+    # The model and UI cannot turn estimates into provider facts.
+    assert "AI assessment · advisory only" in frontend.text
+    assert "does not treat a model hypothesis as provider fact" in frontend.text
+    assert "No production money moves." in frontend.text
