@@ -1,0 +1,101 @@
+name: Sidebar Smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sidebar-smoke
+  cancel-in-progress: true
+
+jobs:
+  verify-sidebar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wait for production deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+          for attempt in $(seq 1 36); do
+            code="$(curl --silent --show-error --location \
+              --connect-timeout 5 --max-time 15 \
+              --output /tmp/dashboard.html \
+              --write-out '%{http_code}' \
+              "$base_url/" || true)"
+            if [[ "$code" == "200" ]] \
+              && grep -q 'dashboard-sidebar.css' /tmp/dashboard.html \
+              && grep -q 'class="dashboard-sidebar"' /tmp/dashboard.html; then
+              echo "Sidebar deployment ready on attempt $attempt."
+              break
+            fi
+            if [[ "$attempt" == "36" ]]; then
+              echo "Sidebar deployment did not become ready. HTTP=$code"
+              head -c 1000 /tmp/dashboard.html || true
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Verify sidebar markup and asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+
+          grep -q 'data-dashboard-navigation' /tmp/dashboard.html
+          grep -q 'data-view="overview"' /tmp/dashboard.html
+          grep -q 'data-view="queue"' /tmp/dashboard.html
+          grep -q 'data-view="investigation"' /tmp/dashboard.html
+          grep -q 'data-view="exceptions"' /tmp/dashboard.html
+          grep -q 'data-view="evaluation"' /tmp/dashboard.html
+          grep -q 'data-view="governance"' /tmp/dashboard.html
+          grep -q 'data-view="inbox"' /tmp/dashboard.html
+          grep -q 'Recovery queue' /tmp/dashboard.html
+          grep -q 'Demo Inbox' /tmp/dashboard.html
+
+          code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            --output /tmp/sidebar.css \
+            --write-out '%{http_code}' \
+            "$base_url/static/css/dashboard-sidebar.css")"
+          test "$code" = "200"
+          grep -q '.dashboard-sidebar' /tmp/sidebar.css
+          grep -q '@media (max-width: 820px)' /tmp/sidebar.css
+          echo "SIDEBAR_MARKUP_AND_ASSET=PASS"
+
+      - name: Verify navigation wiring and live dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+
+          curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            "$base_url/static/js/app.js" \
+            -o /tmp/app.js
+          grep -q 'data-dashboard-navigation' /tmp/app.js
+          grep -q 'setView(tab.dataset.view)' /tmp/app.js
+
+          curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 30 \
+            "$base_url/api/v1/dashboard" \
+            -o /tmp/dashboard.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/dashboard.json').read_text())
+          population = payload['population']
+          assert population['total'] >= 999, population
+          assert population['captured'] >= 749, population
+          assert population['failed'] >= 250, population
+          assert len(payload['worklist']) >= 250, len(payload['worklist'])
+          print('SIDEBAR_NAV_AND_DASHBOARD=PASS')
+          PY
