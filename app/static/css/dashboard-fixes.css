@@ -1,9 +1,9 @@
-/* Small UX fixes layered over the approved Razorpay-light dashboard. */
+/* Judge-facing UX fixes layered over the approved Razorpay-light dashboard. */
 
-/* Keep raw JSON/code out of the normal operator view while the readable renderer replaces it. */
+/* Raw JSON is never part of the normal operator experience. */
 .event pre,
 pre.json {
-  display: none;
+  display: none !important;
 }
 
 .readable-details,
@@ -16,24 +16,24 @@ pre.json {
 .readable-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
+  gap: 10px;
   margin: 0;
 }
 
 .readable-detail-item {
   min-width: 0;
-  padding: 10px 12px;
+  padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
 }
 
 .readable-detail-item dt {
-  margin: 0 0 4px;
+  margin: 0 0 5px;
   color: var(--muted);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: .055em;
+  letter-spacing: .05em;
   text-transform: uppercase;
 }
 
@@ -41,7 +41,7 @@ pre.json {
   margin: 0;
   color: var(--fg);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
@@ -101,6 +101,74 @@ pre.json {
   font-size: 12px;
 }
 
+.technical-ref {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font: 400 10.5px/1.35 var(--mono);
+}
+
+/* Case trace: readable timeline instead of a debug console. */
+.detail-grid {
+  align-items: start;
+}
+
+.detail-grid > .panel:last-child {
+  position: sticky;
+  top: 84px;
+}
+
+.event {
+  grid-template-columns: 158px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 0;
+}
+
+.event-time {
+  color: var(--muted);
+  font-family: var(--body);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: normal;
+}
+
+.event h4 {
+  margin-bottom: 5px;
+}
+
+.event .case-sub {
+  margin: 0 0 8px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.event .badge {
+  min-height: 24px;
+}
+
+/* Ranked options stay scan-friendly in the narrow strategy rail. */
+.ranked-action {
+  padding: 12px;
+}
+
+.ranked-action-metrics {
+  gap: 10px 14px;
+  margin-top: 8px;
+}
+
+.ranked-action-metrics span {
+  line-height: 1.45;
+}
+
+.case-actions {
+  gap: 8px;
+}
+
+.case-actions .btn {
+  min-height: 40px;
+}
+
 /* Overview recovery queue: one compact row instead of a loose vertical stack. */
 .case-list {
   display: grid;
@@ -157,6 +225,12 @@ pre.json {
   justify-self: end;
 }
 
+@media (max-width: 1100px) {
+  .detail-grid > .panel:last-child {
+    position: static;
+  }
+}
+
 @media (max-width: 920px) {
   .case-row {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -166,11 +240,20 @@ pre.json {
   .case-row > div:nth-child(3) {
     justify-self: start;
   }
+
+  .event {
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 640px) {
   .readable-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .event {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .case-row {
