@@ -3,8 +3,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.tables import AuditEvent, CheckoutOrder, Customer, PaymentEvent
+from app.domain.enums import EvidenceSource
 from app.domain.models import NormalizedPaymentEvent
 from app.domain.state_machine import apply_event
+from app.incidents.detector import detect_incidents
 
 
 def record_event_and_update_case(session: Session, event: NormalizedPaymentEvent) -> bool:
@@ -37,4 +39,7 @@ def record_event_and_update_case(session: Session, event: NormalizedPaymentEvent
                 payload={"event_id": event.event_id, "event_type": event.event_type},
             )
         )
+    if event.source_kind == EvidenceSource.RAZORPAY_TEST and event.authenticity_verified:
+        session.flush()
+        detect_incidents(session, as_of=event.occurred_at)
     return True

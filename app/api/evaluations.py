@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query, Request
 
 from app.evaluation import run_baseline, run_comparison
+from app.incidents.evaluation import run_detector_evaluation
 
 router = APIRouter(prefix="/api/v1/evaluations", tags=["evaluations"])
 
@@ -25,6 +26,11 @@ def get_published_evaluation() -> dict:
 @router.get("/reproducible")
 def get_reproducible_evaluation() -> dict:
     return run_comparison()
+
+
+@router.get("/incident-detector")
+def get_incident_detector_evaluation() -> dict[str, object]:
+    return run_detector_evaluation()
 
 
 @router.get("/recovery-model")
