@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import URL
 
 from app.core.config import Settings
 from app.db.session import create_session_factory, normalize_database_url
@@ -39,6 +40,9 @@ DATABASE_ENV_CANDIDATES = (
     "POSTGRES_URL",
     "POSTGRES_PRISMA_URL",
     "POSTGRES_URL_NON_POOLING",
+    "SUPABASE_DB_URL",
+    "SUPABASE_DATABASE_URL",
+    "DIRECT_URL",
 )
 
 
@@ -54,20 +58,101 @@ def _database_not_configured():
     raise RuntimeError("database is not configured")
 
 
-def _supported_database_url(value: str | None) -> bool:
+def _supported_database_url(value: str | URL | None) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, URL):
+        return value.get_backend_name() in {"postgresql", "sqlite"}
     if not value:
         return False
     normalized = normalize_database_url(value)
     return normalized.startswith(("postgresql://", "sqlite"))
 
 
-def _select_database_url(settings: Settings, explicit: str | None) -> tuple[str, str]:
+def _first_env(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
+
+def _database_url_from_components() -> tuple[URL, str] | None:
+    groups = (
+        (
+            "postgres_components",
+            _first_env("POSTGRES_HOST"),
+            _first_env("POSTGRES_USER"),
+            _first_env("POSTGRES_PASSWORD"),
+            _first_env("POSTGRES_DATABASE", "POSTGRES_DB"),
+            _first_env("POSTGRES_PORT"),
+        ),
+        (
+            "pg_components",
+            _first_env("PGHOST"),
+            _first_env("PGUSER"),
+            _first_env("PGPASSWORD"),
+            _first_env("PGDATABASE"),
+            _first_env("PGPORT"),
+        ),
+        (
+            "supabase_components",
+            _first_env("SUPABASE_DB_HOST"),
+            _first_env("SUPABASE_DB_USER"),
+            _first_env("SUPABASE_DB_PASSWORD"),
+            _first_env("SUPABASE_DB_NAME", "SUPABASE_DB_DATABASE"),
+            _first_env("SUPABASE_DB_PORT"),
+        ),
+    )
+    for source, host, user, password, database, port_value in groups:
+        if not all((host, user, password, database)):
+            continue
+        try:
+            port = int(port_value) if port_value else 5432
+        except ValueError:
+            continue
+        return (
+            URL.create(
+                "postgresql+psycopg2",
+                username=user,
+                password=password,
+                host=host,
+                port=port,
+                database=database,
+            ),
+            source,
+        )
+    return None
+
+
+def _database_env_capabilities() -> dict[str, bool]:
+    return {
+        "supported_full_url": any(
+            _supported_database_url(os.getenv(env_name))
+            for env_name in DATABASE_ENV_CANDIDATES
+        ),
+        "structured_postgres": _database_url_from_components() is not None,
+        "supabase_http_url": bool(_first_env("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")),
+        "supabase_key": bool(
+            _first_env(
+                "SUPABASE_SERVICE_ROLE_KEY",
+                "SUPABASE_ANON_KEY",
+                "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+            )
+        ),
+    }
+
+
+def _select_database_url(settings: Settings, explicit: str | None) -> tuple[str | URL, str]:
     if explicit is not None:
         return explicit, "explicit"
     for env_name in DATABASE_ENV_CANDIDATES:
         value = os.getenv(env_name)
         if _supported_database_url(value):
             return value or "", env_name.lower()
+    component_url = _database_url_from_components()
+    if component_url is not None:
+        return component_url
     return settings.database_url, "settings"
 
 
@@ -161,6 +246,7 @@ def create_app(
 
     effective_database_url, database_source = _select_database_url(settings, database_url)
     app.state.database_source = database_source
+    app.state.database_env_capabilities = _database_env_capabilities()
     try:
         app.state.session_factory = create_session_factory(effective_database_url)
     except Exception:
@@ -246,6 +332,7 @@ def create_app(
                 "database": database,
                 "database_source": app.state.database_source,
                 "database_configuration_reason": app.state.database_configuration_reason,
+                "database_env_capabilities": app.state.database_env_capabilities,
                 "routers": app.state.router_statuses,
             },
         }
