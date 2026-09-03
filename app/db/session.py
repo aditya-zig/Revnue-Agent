@@ -12,7 +12,7 @@ def _strip_wrapping_quotes(value: str) -> str:
 
 
 def normalize_database_url(database_url: str) -> str:
-    """Normalize copied deployment URLs and select the explicit psycopg3 driver."""
+    """Normalize common copied environment-variable forms for SQLAlchemy."""
     value = _strip_wrapping_quotes(database_url)
     for prefix in (
         "REROUTE_DATABASE_URL=",
@@ -25,9 +25,7 @@ def normalize_database_url(database_url: str) -> str:
             value = _strip_wrapping_quotes(value.removeprefix(prefix))
             break
     if value.startswith("postgres://"):
-        return "postgresql+psycopg://" + value.removeprefix("postgres://")
-    if value.startswith("postgresql://"):
-        return "postgresql+psycopg://" + value.removeprefix("postgresql://")
+        return "postgresql://" + value.removeprefix("postgres://")
     return value
 
 
@@ -35,19 +33,23 @@ def create_session_factory(database_url: str | URL) -> sessionmaker[Session]:
     if isinstance(database_url, str):
         database_url = normalize_database_url(database_url)
         is_sqlite = database_url.startswith("sqlite")
+        engine_url: str | URL = database_url
+        if database_url.startswith("postgresql://"):
+            engine_url = "postgresql+psycopg://" + database_url.removeprefix("postgresql://")
     else:
         is_sqlite = database_url.get_backend_name() == "sqlite"
+        engine_url = database_url
 
     if is_sqlite:
         engine = create_engine(
-            database_url,
+            engine_url,
             connect_args={"check_same_thread": False},
         )
     else:
         # Vercel/serverless instances should not hold an application-side
         # PostgreSQL pool. Supabase's transaction pooler owns pooling instead.
         engine = create_engine(
-            database_url,
+            engine_url,
             poolclass=NullPool,
             pool_pre_ping=True,
         )
