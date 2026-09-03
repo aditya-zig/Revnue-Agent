@@ -159,8 +159,10 @@ def _simulation_payload(
     duplicates: int,
 ) -> dict[str, object]:
     total, successes, failures = _demo_counts(session)
-    findings = session.scalars(select(LeakFinding)).all()
-    findings.sort(key=finding_sort_key)
+    findings = sorted(
+        session.scalars(select(LeakFinding)).all(),
+        key=finding_sort_key,
+    )
     return {
         "payments_created": payments_created,
         "payments_total": total,
