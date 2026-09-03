@@ -27,6 +27,7 @@ Every normalized payment event carries one explicit `source_kind`:
 - `provider_order_id` — PSP order ID when supplied;
 - `merchant_order_reference` — merchant-owned obligation/order reference when supplied;
 - `obligation_reference` — compatibility correlation key used by the existing RecoveryCase flow;
+- `customer_id` — the existing pseudonymous customer correlation key; it is deliberately omitted from the AI-facing incident evidence reference;
 - `event_id` — normalized ReRoute event ID;
 - `raw_hash` + `authenticity_verified` — provider evidence provenance without exposing secrets.
 
@@ -68,7 +69,7 @@ Links are idempotent. The incident detail contract can reconstruct linked case I
 1. `observed_facts` and normalized evidence references — deterministic/system-owned facts;
 2. `model_hypotheses` — reserved for later bounded AI analysis.
 
-The evidence reference does not expose raw webhook bodies or customer PII. Session 3 must keep AI-authored hypotheses out of `observed_facts`.
+The normalized evidence reference contains only the payment facts later investigation needs: provider/source label, provider IDs, timestamps, amount/currency, method/status, sanitized provider error metadata, authenticity flag, and evidence hash. It does not expose raw webhook bodies, signatures, secrets, or customer PII. Session 3 must keep AI-authored hypotheses out of `observed_facts`.
 
 ## Stable foundation APIs
 
