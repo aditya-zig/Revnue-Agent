@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -13,7 +14,13 @@ def _strip_wrapping_quotes(value: str) -> str:
 def normalize_database_url(database_url: str) -> str:
     """Normalize common copied environment-variable forms for SQLAlchemy."""
     value = _strip_wrapping_quotes(database_url)
-    for prefix in ("REROUTE_DATABASE_URL=", "DATABASE_URL=", "POSTGRES_URL="):
+    for prefix in (
+        "REROUTE_DATABASE_URL=",
+        "DATABASE_URL=",
+        "POSTGRES_URL=",
+        "SUPABASE_DB_URL=",
+        "SUPABASE_DATABASE_URL=",
+    ):
         if value.startswith(prefix):
             value = _strip_wrapping_quotes(value.removeprefix(prefix))
             break
@@ -22,9 +29,14 @@ def normalize_database_url(database_url: str) -> str:
     return value
 
 
-def create_session_factory(database_url: str) -> sessionmaker[Session]:
-    database_url = normalize_database_url(database_url)
-    if database_url.startswith("sqlite"):
+def create_session_factory(database_url: str | URL) -> sessionmaker[Session]:
+    if isinstance(database_url, str):
+        database_url = normalize_database_url(database_url)
+        is_sqlite = database_url.startswith("sqlite")
+    else:
+        is_sqlite = database_url.get_backend_name() == "sqlite"
+
+    if is_sqlite:
         engine = create_engine(
             database_url,
             connect_args={"check_same_thread": False},
