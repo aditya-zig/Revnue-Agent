@@ -223,7 +223,10 @@ def simulate_999_payments(request: Request) -> dict[str, object]:
         if existing_payments:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="demo payment history requires either an empty database or the existing 999-row demo corpus",
+                detail=(
+                    "demo payment history requires either an empty database "
+                    "or the existing 999-row demo corpus"
+                ),
             )
 
         try:
