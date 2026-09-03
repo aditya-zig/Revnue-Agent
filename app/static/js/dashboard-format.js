@@ -6,7 +6,7 @@ const INR_FORMAT = new Intl.NumberFormat("en-IN", {
 export function formatMoney(value) {
   const paise = Number(value ?? 0);
   const rupees = Number.isFinite(paise) ? paise / 100 : 0;
-  return `₹INR ${INR_FORMAT.format(rupees)}`;
+  return `₹${INR_FORMAT.format(rupees)}`;
 }
 
 export function claimTagForSource(source) {
