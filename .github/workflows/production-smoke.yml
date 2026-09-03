@@ -31,12 +31,12 @@ jobs:
               --write-out '%{http_code}' \
               "$base_url/health" || true)"
             body="$(cat /tmp/reroute-health.json 2>/dev/null || true)"
-            if [[ "$code" == "200" && "$body" == *'"components"'* ]]; then
-              echo "Production health endpoint reached on attempt $attempt."
+            if [[ "$code" == "200" && "$body" == *'"ready":true'* ]]; then
+              echo "Production became ready on attempt $attempt."
               break
             fi
             if [[ "$attempt" == "36" ]]; then
-              echo "Production health endpoint never became reachable. HTTP=$code"
+              echo "Production never became ready. HTTP=$code"
               printf '%s\n' "$body"
               exit 1
             fi
