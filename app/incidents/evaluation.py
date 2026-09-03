@@ -5,6 +5,7 @@ from statistics import mean
 from app.incidents.detector import (
     DETECTOR_VERSION,
     NONRECOVERABLE_ERROR_CODES,
+    CohortMeasurement,
     measure_cohorts,
 )
 from simulator.merchant_day import generate_merchant_day
@@ -24,6 +25,9 @@ def run_detector_evaluation() -> dict[str, object]:
     affected_failed_value_paise = 0
     hard_decline_failed_value_paise = 0
     hard_decline_value_in_estimated_recoverable_paise = 0
+    nonrecoverable_exclusion_violations = 0
+    stable_traffic_false_positive_runs = 0
+    false_positive_cost_proxy_paise = 0
     seed_results: list[dict[str, object]] = []
 
     for seed in EVALUATION_SEEDS:
@@ -31,33 +35,29 @@ def run_detector_evaluation() -> dict[str, object]:
         planted = primary.planted_incidents[0]
         planted_incidents += 1
         expected_key = (planted.provider, planted.method)
-        primary_detections: dict[tuple[str, str], object] = {}
-        first_expected = None
+        primary_detections: dict[tuple[str, str], CohortMeasurement] = {}
+        first_expected: CohortMeasurement | None = None
 
         for checkpoint in range(
             CHECKPOINT_INTERVAL, len(primary.events) + 1, CHECKPOINT_INTERVAL
         ):
             for measurement in measure_cohorts(primary.events[:checkpoint]):
-                hard_current = sum(
+                expected_recoverable = sum(
                     event.amount
                     for event in measurement.current
-                    if (event.error_code or "").upper()
-                    in NONRECOVERABLE_ERROR_CODES
+                    if _failed(event)
+                    and (event.error_code or "").upper()
+                    not in NONRECOVERABLE_ERROR_CODES
                 )
-                if hard_current:
-                    nonrecoverable_excess = max(
-                        0,
-                        measurement.recoverable_failed_value_paise
-                        - sum(
-                            event.amount
-                            for event in measurement.current
-                            if _failed(event)
-                            and (event.error_code or "").upper()
-                            not in NONRECOVERABLE_ERROR_CODES
-                        ),
-                    )
+                leaked_nonrecoverable = max(
+                    0,
+                    measurement.recoverable_failed_value_paise
+                    - expected_recoverable,
+                )
+                if leaked_nonrecoverable:
+                    nonrecoverable_exclusion_violations += 1
                     hard_decline_value_in_estimated_recoverable_paise += (
-                        nonrecoverable_excess
+                        leaked_nonrecoverable
                     )
                 if not measurement.triggered:
                     continue
@@ -67,7 +67,7 @@ def run_detector_evaluation() -> dict[str, object]:
                     first_expected = measurement
 
         healthy = generate_merchant_day(seed=seed, scenario="healthy")
-        healthy_detections: dict[tuple[str, str], object] = {}
+        healthy_detections: dict[tuple[str, str], CohortMeasurement] = {}
         for checkpoint in range(
             CHECKPOINT_INTERVAL, len(healthy.events) + 1, CHECKPOINT_INTERVAL
         ):
@@ -77,10 +77,20 @@ def run_detector_evaluation() -> dict[str, object]:
                         (measurement.provider, measurement.method), measurement
                     )
 
+        if healthy_detections:
+            stable_traffic_false_positive_runs += 1
         detected_incidents += len(primary_detections) + len(healthy_detections)
         false_positives += len(healthy_detections)
+        false_positive_cost_proxy_paise += sum(
+            measurement.estimated_revenue_at_risk_paise
+            for measurement in healthy_detections.values()
+        )
         unexpected_primary = set(primary_detections) - {expected_key}
         false_positives += len(unexpected_primary)
+        false_positive_cost_proxy_paise += sum(
+            primary_detections[key].estimated_revenue_at_risk_paise
+            for key in unexpected_primary
+        )
         if expected_key in primary_detections:
             true_positives += 1
             correct_attributions += 1
@@ -129,6 +139,7 @@ def run_detector_evaluation() -> dict[str, object]:
             }
         )
 
+    false_negatives = max(0, planted_incidents - true_positives)
     precision = (
         true_positives / (true_positives + false_positives)
         if true_positives + false_positives
@@ -140,10 +151,12 @@ def run_detector_evaluation() -> dict[str, object]:
         "claim": "SIMULATED",
         "detector_version": DETECTOR_VERSION,
         "seeds": list(EVALUATION_SEEDS),
+        "stable_traffic_runs": len(EVALUATION_SEEDS),
         "planted_incidents": planted_incidents,
         "detected_incidents": detected_incidents,
         "true_positives": true_positives,
         "false_positives": false_positives,
+        "false_negatives": false_negatives,
         "precision": precision,
         "recall": recall,
         "cohort_attribution_accuracy": attribution,
@@ -156,7 +169,9 @@ def run_detector_evaluation() -> dict[str, object]:
         "hard_decline_value_in_estimated_recoverable_paise": (
             hard_decline_value_in_estimated_recoverable_paise
         ),
-        "false_positive_cost_proxy_paise": 0,
+        "nonrecoverable_exclusion_violations": nonrecoverable_exclusion_violations,
+        "stable_traffic_false_positive_runs": stable_traffic_false_positive_runs,
+        "false_positive_cost_proxy_paise": false_positive_cost_proxy_paise,
         "seed_results": seed_results,
     }
 
