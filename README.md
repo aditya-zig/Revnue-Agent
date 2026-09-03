@@ -13,7 +13,7 @@ ReRoute turns a failed payment into an evidence-backed RecoveryCase, constrains 
 ![Razorpay](https://img.shields.io/badge/Razorpay-Test%20Mode-0C2451)
 ![OpenRouter](https://img.shields.io/badge/OpenRouter-Advisory%20AI-6C47FF)
 
-**[Quickstart](#quickstart) · [How it works](#how-it-works) · [Demo](#demo) · [Safety](#safety-boundaries) · [Docs](#documentation)**
+**[Live app](https://revnue-agent.vercel.app/) · [Judge playground](https://revnue-agent.vercel.app/judge) · [Quickstart](#quickstart) · [How it works](#how-it-works) · [Demo](#demo) · [Safety](#safety-boundaries) · [Docs](#documentation)**
 
 </div>
 
