@@ -12,7 +12,7 @@ def _strip_wrapping_quotes(value: str) -> str:
 
 
 def normalize_database_url(database_url: str) -> str:
-    """Normalize common copied environment-variable forms for SQLAlchemy."""
+    """Normalize copied deployment URLs and select the explicit psycopg3 driver."""
     value = _strip_wrapping_quotes(database_url)
     for prefix in (
         "REROUTE_DATABASE_URL=",
@@ -25,7 +25,9 @@ def normalize_database_url(database_url: str) -> str:
             value = _strip_wrapping_quotes(value.removeprefix(prefix))
             break
     if value.startswith("postgres://"):
-        return "postgresql://" + value.removeprefix("postgres://")
+        return "postgresql+psycopg://" + value.removeprefix("postgres://")
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value.removeprefix("postgresql://")
     return value
 
 
