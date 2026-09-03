@@ -1,0 +1,20 @@
+.demo-banner,
+.outcome-hero {
+  background: #ffffff;
+}
+
+.toast-stack {
+  top: auto;
+  bottom: 22px;
+}
+
+.toast-stack .toast:not(:last-child) {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .toast-stack {
+    top: auto;
+    bottom: 16px;
+  }
+}
