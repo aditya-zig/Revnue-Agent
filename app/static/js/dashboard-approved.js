@@ -1,3 +1,5 @@
+import "./dashboard-readable-details.js";
+
 const shell=document.querySelector('[data-dashboard-shell]');
 const money=(paise)=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(Number(paise||0)/100);
 const pct=(n)=>`${(Number(n||0)*100).toFixed(2)}%`;
