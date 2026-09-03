@@ -91,13 +91,16 @@ jobs:
             const judgeText = await page.locator('body').innerText();
             if (!judgeText.includes('Find the leak. Recover safely. Prove the outcome.')) throw new Error('Judge entry copy missing');
             if (!judgeText.includes('SIMULATED DEMO DATA')) throw new Error('Judge truth label missing');
+            if (!judgeText.includes('ESTIMATED') || !judgeText.includes('TEST MODE')) throw new Error('Judge claim boundaries missing');
 
             await page.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 60000 });
             await page.waitForFunction(() => window.ReRouteSentinel?.getState?.().dashboard, null, { timeout: 30000 });
+            await page.waitForFunction(() => document.body.innerText.includes('No baseline yet'), null, { timeout: 10000 });
             await page.screenshot({ path: path.join(output, '02-home-healthy-1920.png'), fullPage: true });
             const shellText = await page.locator('body').innerText();
             if (shellText.includes('Simulate 999 Payments')) throw new Error('Legacy simulator framing is visible');
             if (shellText.includes('Refresh data')) throw new Error('Manual refresh is visible in intended journey');
+            if (shellText.includes('0.0%')) throw new Error('Unknown merchant baseline is presented as a measured 0%');
             for (const label of ['Home','Payments','Incidents','Recoveries','Exceptions','Policy & Safety','Outcomes','Evaluation']) {
               if (!shellText.includes(label)) throw new Error(`Navigation label missing: ${label}`);
             }
@@ -108,12 +111,14 @@ jobs:
               return app && !app.replayRunning && app.incidentCount > 0 && app.dashboard?.population?.total >= 999;
             }, null, { timeout: 120000 });
             await page.screenshot({ path: path.join(output, '03-home-incident-1920.png'), fullPage: true });
+            const visibleToasts = await page.locator('.toast:visible').count();
+            if (visibleToasts > 1) throw new Error(`Incident alert duplicated visually: ${visibleToasts} visible toasts`);
 
             await page.click('[data-open-incident]');
             await page.waitForSelector('.incident-hero', { state: 'visible', timeout: 20000 });
             await page.screenshot({ path: path.join(output, '04-incident-detected-1920.png'), fullPage: true });
-            const detailText = await page.locator('body').innerText();
-            for (const required of ['What ReRoute observed','AI assessment','Policy','Human approval']) {
+            const detailText = (await page.locator('body').innerText()).toLowerCase();
+            for (const required of ['what reroute observed','ai assessment','policy','human approval']) {
               if (!detailText.includes(required)) throw new Error(`Incident section missing: ${required}`);
             }
 
@@ -133,6 +138,7 @@ jobs:
             const storefrontText = await page.locator('body').innerText();
             if (!storefrontText.includes('Back to ReRoute')) throw new Error('Storefront back navigation missing');
             if (!storefrontText.includes('₹2,499')) throw new Error('Storefront price missing');
+            if (!storefrontText.includes('Buy Now')) throw new Error('Storefront purchase CTA missing');
             if (!storefrontText.includes('Closing the modal does not create a payment failure')) throw new Error('Storefront dismissal truth copy missing');
             await page.screenshot({ path: path.join(output, '07-storefront-1920.png'), fullPage: true });
 
