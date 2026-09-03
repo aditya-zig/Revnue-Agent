@@ -6,6 +6,7 @@
     <meta name="description" content="ReRoute payment recovery operations dashboard">
     <title>ReRoute | Payment recovery operations</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/dashboard-approved.css">
   </head>
   <body>
     <div class="app-shell" data-dashboard-shell data-shell-state="loading">
@@ -18,23 +19,12 @@
           </div>
         </div>
         <div class="top-actions">
-          <button
-            class="btn icon-btn"
-            id="themeBtn"
-            type="button"
-            aria-label="Switch to dark theme"
-            aria-pressed="false"
-            data-action="toggle-theme"
-          >
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" />
-              <circle cx="12" cy="12" r="4" />
-            </svg>
+          <button class="btn icon-btn" id="themeBtn" type="button" aria-label="Light mode only" aria-pressed="false" data-action="toggle-theme" hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /></svg>
           </button>
+          <span class="claim-tag">TEST MODE</span>
           <button class="btn btn-primary" id="exportBtn" type="button" aria-label="Export worklist" data-action="export-worklist">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v12M8 11l4 4 4-4M5 19h14" />
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M5 19h14" /></svg>
             <span class="btn-label">Export worklist</span>
           </button>
         </div>
@@ -48,7 +38,7 @@
             <p class="lede">Investigate payment failures, review policy-gated Actions, and keep every RecoveryCase accountable.</p>
           </div>
           <div class="page-head-actions">
-            <button class="btn" type="button" data-action="simulate-999">Simulate 999 Payments</button>
+            <button class="btn btn-primary" type="button" data-action="simulate-999">Simulate 999 Payments</button>
             <button class="btn" type="button" id="refreshBtn" data-action="refresh-dashboard">Refresh data</button>
           </div>
         </section>
@@ -57,100 +47,38 @@
           <button class="tab active" id="tab-overview" role="tab" aria-selected="true" aria-controls="overview" tabindex="0" data-view="overview">Overview</button>
           <button class="tab" id="tab-queue" role="tab" aria-selected="false" aria-controls="queue" tabindex="-1" data-view="queue">Recovery queue</button>
           <button class="tab" id="tab-detail" role="tab" aria-selected="false" aria-controls="detail" tabindex="-1" data-view="detail">RecoveryCase detail</button>
-          <button class="tab" id="tab-exceptions" role="tab" aria-selected="false" aria-controls="exceptions" tabindex="-1" data-view="exceptions">PaymentExceptions</button>
-          <button class="tab" id="tab-governance" role="tab" aria-selected="false" aria-controls="governance" tabindex="-1" data-view="governance">Governance</button>
-          <button class="tab" id="tab-investigation" role="tab" aria-selected="false" aria-controls="investigation" tabindex="-1" data-view="investigation">Investigation</button>
+          <button class="tab" id="tab-investigation" role="tab" aria-selected="false" aria-controls="investigation" tabindex="-1" data-view="investigation">Findings</button>
+          <button class="tab" id="tab-exceptions" role="tab" aria-selected="false" aria-controls="exceptions" tabindex="-1" data-view="exceptions">Exceptions</button>
           <button class="tab" id="tab-evaluation" role="tab" aria-selected="false" aria-controls="evaluation" tabindex="-1" data-view="evaluation">Evaluation</button>
-          <button class="tab" id="tab-inbox" role="tab" aria-selected="false" aria-controls="inbox" tabindex="-1" data-view="inbox">Mock Inbox</button>
+          <button class="tab" id="tab-governance" role="tab" aria-selected="false" aria-controls="governance" tabindex="-1" data-view="governance">Governance</button>
+          <button class="tab" id="tab-inbox" role="tab" aria-selected="false" aria-controls="inbox" tabindex="-1" data-view="inbox">Demo Inbox</button>
         </nav>
 
         <section class="stats" id="dashboardKpis" aria-label="Recovery metrics" aria-busy="true" data-dashboard-kpis>
-          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Revenue at Risk" data-kpi-slot="revenue-at-risk">
-            <div class="stat-top"><span class="stat-label">Revenue at Risk</span><span class="claim-tag" data-kpi-claim hidden></span></div>
-            <div class="stat-value" data-kpi-value>—</div>
-            <div class="stat-note" data-kpi-note>Waiting for dashboard data</div>
-          </article>
-          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Estimated Recoverable" data-kpi-slot="estimated-recoverable">
-            <div class="stat-top"><span class="stat-label">Estimated Recoverable</span><span class="claim-tag">ESTIMATED</span></div>
-            <div class="stat-value" data-kpi-value>—</div>
-            <div class="stat-note" data-kpi-note>Top persisted LeakFinding</div>
-          </article>
-          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Actual Recovered" data-kpi-slot="actual-recovered">
-            <div class="stat-top"><span class="stat-label">Actual Recovered</span><span class="claim-tag">TEST MODE</span></div>
-            <div class="stat-value" data-kpi-value>—</div>
-            <div class="stat-note" data-kpi-note>Recorded Test Mode Outcomes</div>
-          </article>
-          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand open cases" data-kpi-slot="open-cases">
-            <div class="stat-top"><span class="stat-label">Open cases</span></div>
-            <div class="stat-value" data-kpi-value>—</div>
-            <div class="stat-note" data-kpi-note>Needs review or action</div>
-          </article>
+          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Revenue at Risk" data-kpi-slot="revenue-at-risk"><div class="stat-top"><span class="stat-label">Revenue at Risk</span><span class="claim-tag" data-kpi-claim hidden></span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Waiting for dashboard data</div></article>
+          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Estimated Recoverable" data-kpi-slot="estimated-recoverable"><div class="stat-top"><span class="stat-label">Estimated Recoverable</span><span class="claim-tag">ESTIMATED</span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Top persisted LeakFinding</div></article>
+          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand Actual Recovered" data-kpi-slot="actual-recovered"><div class="stat-top"><span class="stat-label">Actual Recovered</span><span class="claim-tag">TEST MODE</span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Recorded Test Mode Outcomes</div></article>
+          <article class="card zoomable" tabindex="0" role="button" aria-label="Expand open cases" data-kpi-slot="open-cases"><div class="stat-top"><span class="stat-label">Open cases</span></div><div class="stat-value" data-kpi-value>—</div><div class="stat-note" data-kpi-note>Needs review or action</div></article>
         </section>
 
-        <div id="dashboardLoading" class="state dashboard-state" role="status" aria-live="polite">
-          <div class="state-inner">
-            <div class="skeleton" aria-hidden="true">
-              <span class="skeleton-line"></span>
-              <span class="skeleton-line"></span>
-              <span class="skeleton-line"></span>
-            </div>
-            <p class="sr-only">Loading recovery operations.</p>
-          </div>
-        </div>
-        <div id="dashboardError" class="state dashboard-state" role="alert" hidden>
-          <div class="state-inner">
-            <h3>Recovery data could not be refreshed</h3>
-            <p>Your current dashboard view is preserved. Check your connection and try again.</p>
-            <button class="btn" type="button" data-action="retry-dashboard">Retry refresh</button>
-          </div>
-        </div>
+        <div id="dashboardLoading" class="state dashboard-state" role="status" aria-live="polite"><div class="state-inner"><div class="skeleton" aria-hidden="true"><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span></div><p class="sr-only">Loading recovery operations.</p></div></div>
+        <div id="dashboardError" class="state dashboard-state" role="alert" hidden><div class="state-inner"><h3>Recovery data could not be refreshed</h3><p>Your current dashboard view is preserved. Check your connection and try again.</p><button class="btn" type="button" data-action="retry-dashboard">Retry refresh</button></div></div>
 
         <div id="app" data-dashboard-content hidden>
-          <section id="overview" class="view active" role="tabpanel" aria-labelledby="tab-overview" data-dashboard-view="overview">
-            <div class="view-slot" data-component-slot="overview">
-              <div class="state state-placeholder"><div class="state-inner"><h3>Overview</h3><p>Recovery operations will appear here when dashboard data is ready.</p></div></div>
-            </div>
-          </section>
-          <section id="queue" class="view" role="tabpanel" aria-labelledby="tab-queue" data-dashboard-view="queue" hidden>
-            <div class="view-slot" data-component-slot="queue">
-              <div class="state state-placeholder"><div class="state-inner"><h3>Recovery queue</h3><p>Policy-backed work will appear here when dashboard data is ready.</p></div></div>
-            </div>
-          </section>
-          <section id="detail" class="view" role="tabpanel" aria-labelledby="tab-detail" data-dashboard-view="detail" hidden>
-            <div class="view-slot" data-component-slot="detail">
-              <div class="state state-placeholder"><div class="state-inner"><h3>RecoveryCase detail</h3><p>Normalized evidence and AuditEvents will appear here when a case is selected.</p></div></div>
-            </div>
-          </section>
-          <section id="exceptions" class="view" role="tabpanel" aria-labelledby="tab-exceptions" data-dashboard-view="exceptions" hidden>
-            <div class="view-slot" data-component-slot="exceptions">
-              <div class="state state-placeholder"><div class="state-inner"><h3>PaymentExceptions</h3><p>Provider and customer debit evidence will appear here when recorded.</p></div></div>
-            </div>
-          </section>
-          <section id="governance" class="view" role="tabpanel" aria-labelledby="tab-governance" data-dashboard-view="governance" hidden>
-            <div class="view-slot" data-component-slot="governance">
-              <div class="state state-placeholder"><div class="state-inner"><h3>Governance</h3><p>Versioned owner controls and policy accountability will appear here when dashboard data is ready.</p></div></div>
-            </div>
-          </section>
-          <section id="investigation" class="view" role="tabpanel" aria-labelledby="tab-investigation" data-dashboard-view="investigation" hidden>
-            <div class="view-slot" data-component-slot="investigation">
-              <div class="state state-placeholder"><div class="state-inner"><h3>Investigation</h3><p>Sanitized finding data and saved analyses will appear here. Use Explain finding to request an OpenRouter advisory result.</p></div></div>
-            </div>
-          </section>
-          <section id="evaluation" class="view" role="tabpanel" aria-labelledby="tab-evaluation" data-dashboard-view="evaluation" hidden>
-            <div class="view-slot" data-component-slot="evaluation">
-              <div class="state state-placeholder"><div class="state-inner"><h3>Evaluation</h3><p>EvaluationComparison output will appear here with a SIMULATED label.</p></div></div>
-            </div>
-          </section>
-          <section id="inbox" class="view" role="tabpanel" aria-labelledby="tab-inbox" data-dashboard-view="inbox" hidden>
-            <div class="view-slot" data-component-slot="inbox">
-              <div class="state state-placeholder"><div class="state-inner"><h3>Mock Inbox</h3><p>Recorded mock replies will appear here when actions exist.</p></div></div>
-            </div>
-          </section>
+          <section id="overview" class="view active" role="tabpanel" aria-labelledby="tab-overview" data-dashboard-view="overview"><div class="view-slot" data-component-slot="overview"><div class="state state-placeholder"><div class="state-inner"><h3>Overview</h3><p>Recovery operations will appear here when dashboard data is ready.</p></div></div></div></section>
+          <section id="queue" class="view" role="tabpanel" aria-labelledby="tab-queue" data-dashboard-view="queue" hidden><div class="view-slot" data-component-slot="queue"><div class="state state-placeholder"><div class="state-inner"><h3>Recovery queue</h3><p>Policy-backed work will appear here when dashboard data is ready.</p></div></div></div></section>
+          <section id="detail" class="view" role="tabpanel" aria-labelledby="tab-detail" data-dashboard-view="detail" hidden><div class="view-slot" data-component-slot="detail"><div class="state state-placeholder"><div class="state-inner"><h3>RecoveryCase detail</h3><p>Normalized evidence and AuditEvents will appear here when a case is selected.</p></div></div></div></section>
+          <section id="exceptions" class="view" role="tabpanel" aria-labelledby="tab-exceptions" data-dashboard-view="exceptions" hidden><div class="view-slot" data-component-slot="exceptions"><div class="state state-placeholder"><div class="state-inner"><h3>PaymentExceptions</h3><p>Provider and customer debit evidence will appear here when recorded.</p></div></div></div></section>
+          <section id="governance" class="view" role="tabpanel" aria-labelledby="tab-governance" data-dashboard-view="governance" hidden><div class="view-slot" data-component-slot="governance"><div class="state state-placeholder"><div class="state-inner"><h3>Governance</h3><p>Versioned owner controls and policy accountability will appear here when dashboard data is ready.</p></div></div></div></section>
+          <section id="investigation" class="view" role="tabpanel" aria-labelledby="tab-investigation" data-dashboard-view="investigation" hidden><div class="view-slot" data-component-slot="investigation"><div class="state state-placeholder"><div class="state-inner"><h3>Findings</h3><p>Sanitized finding data and saved analyses will appear here.</p></div></div></div></section>
+          <section id="evaluation" class="view" role="tabpanel" aria-labelledby="tab-evaluation" data-dashboard-view="evaluation" hidden><div class="view-slot" data-component-slot="evaluation"><div class="state state-placeholder"><div class="state-inner"><h3>Evaluation</h3><p>EvaluationComparison output will appear here with a SIMULATED label.</p></div></div></div></section>
+          <section id="inbox" class="view" role="tabpanel" aria-labelledby="tab-inbox" data-dashboard-view="inbox" hidden><div class="view-slot" data-component-slot="inbox"><div class="state state-placeholder"><div class="state-inner"><h3>Demo Inbox</h3><p>Recorded mock replies will appear here when actions exist.</p></div></div></div></section>
         </div>
       </main>
     </div>
     <div id="tooltip" class="tooltip" role="status" aria-live="polite"></div>
     <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
     <script type="module" src="/static/js/app.js"></script>
+    <script type="module" src="/static/js/dashboard-approved.js"></script>
   </body>
 </html>
