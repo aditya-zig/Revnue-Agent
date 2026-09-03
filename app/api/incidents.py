@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.api.incident_control import router as incident_control_router
 from app.db.tables import IncidentAuditEvent, IncidentPaymentEvent, PaymentIncident
 from app.domain.incidents import (
     build_incident_evidence_bundle,
@@ -14,6 +15,7 @@ from app.domain.incidents import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["incidents"])
+router.include_router(incident_control_router)
 
 
 class IncidentLinkRequest(BaseModel):
