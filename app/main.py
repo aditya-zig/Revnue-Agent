@@ -1,20 +1,12 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 
-from app.api.cases import router as cases_router
-from app.api.dashboard import router as dashboard_router
-from app.api.data import router as data_router
-from app.api.evaluations import router as evaluations_router
-from app.api.judge import router as judge_router
-from app.api.leak_findings import router as leak_findings_router
-from app.api.operator_controls import router as operator_controls_router
-from app.api.payment_exceptions import router as payment_exceptions_router
-from app.api.storefront import router as storefront_router
-from app.api.webhooks import router as webhooks_router
 from app.core.config import Settings
 from app.db.session import create_session_factory
 from app.finding_analysis import FindingAnalysisProvider, OpenRouterProvider
@@ -22,6 +14,24 @@ from app.recovery import RecoveryModel
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
+REQUIRED_TABLES = {
+    "checkout_orders",
+    "leak_findings",
+    "payment_events",
+    "recovery_cases",
+}
+ROUTER_MODULES = (
+    ("webhooks", "app.api.webhooks"),
+    ("cases", "app.api.cases"),
+    ("data", "app.api.data"),
+    ("evaluations", "app.api.evaluations"),
+    ("leak_findings", "app.api.leak_findings"),
+    ("payment_exceptions", "app.api.payment_exceptions"),
+    ("operator_controls", "app.api.operator_controls"),
+    ("storefront", "app.api.storefront"),
+    ("judge", "app.api.judge"),
+    ("dashboard", "app.api.dashboard"),
+)
 
 
 def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
@@ -30,6 +40,10 @@ def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
 
 def _order_not_configured(amount: int, idempotency_key: str) -> str:
     raise RuntimeError("Razorpay Test Mode order provider is not configured")
+
+
+def _database_not_configured():
+    raise RuntimeError("database is not configured")
 
 
 def _build_razorpay_creator_from_settings(
@@ -56,6 +70,34 @@ def _build_razorpay_order_creator_from_settings(
     return None
 
 
+def _include_routers(app: FastAPI) -> dict[str, str]:
+    statuses: dict[str, str] = {}
+    for name, module_name in ROUTER_MODULES:
+        try:
+            module = import_module(module_name)
+            app.include_router(module.router)
+        except Exception:
+            statuses[name] = "load_error"
+        else:
+            statuses[name] = "ok"
+    return statuses
+
+
+def _database_readiness(app: FastAPI) -> str:
+    if app.state.database_configuration != "ok":
+        return app.state.database_configuration
+    try:
+        with app.state.session_factory() as session:
+            session.execute(text("SELECT 1"))
+            bind = session.get_bind()
+            table_names = set(inspect(bind).get_table_names())
+    except Exception:
+        return "unreachable"
+    if not REQUIRED_TABLES.issubset(table_names):
+        return "schema_missing"
+    return "ready"
+
+
 def create_app(
     database_url: str | None = None,
     webhook_secret: str | None = None,
@@ -71,10 +113,36 @@ def create_app(
     finding_analysis_provider: FindingAnalysisProvider | None = None,
     openrouter_api_key: str | None = None,
 ) -> FastAPI:
-    settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-    app.state.session_factory = create_session_factory(database_url or settings.database_url)
+
+    try:
+        settings = Settings()
+    except Exception:
+        settings = Settings.model_construct()
+        app.state.settings_configuration = "configuration_error"
+    else:
+        app.state.settings_configuration = "ok"
+
+    try:
+        app.mount(
+            "/static",
+            StaticFiles(directory=STATIC_DIR, check_dir=False),
+            name="static",
+        )
+    except Exception:
+        app.state.static_configuration = "load_error"
+    else:
+        app.state.static_configuration = "ok"
+
+    effective_database_url = database_url or settings.database_url
+    try:
+        app.state.session_factory = create_session_factory(effective_database_url)
+    except Exception:
+        app.state.session_factory = _database_not_configured
+        app.state.database_configuration = "configuration_error"
+    else:
+        app.state.database_configuration = "ok"
+
     app.state.webhook_secret = (
         webhook_secret if webhook_secret is not None else settings.razorpay_webhook_secret
     )
@@ -96,7 +164,7 @@ def create_app(
     app.state.contact_limit = 3
     app.state.mock_identity = "ReRoute demo"
     app.state.kill_switch = kill_switch if kill_switch is not None else settings.kill_switch
-    # Prefer injected creator, then a Test Mode Razorpay creator, else a deliberate failure.
+
     razorpay_creator = _build_razorpay_creator_from_settings(
         settings, razorpay_key_id, razorpay_key_secret
     )
@@ -125,20 +193,28 @@ def create_app(
         http_referer=settings.openrouter_http_referer or None,
     )
     app.state.recovery_model = RecoveryModel()
-    app.include_router(webhooks_router)
-    app.include_router(cases_router)
-    app.include_router(data_router)
-    app.include_router(evaluations_router)
-    app.include_router(leak_findings_router)
-    app.include_router(payment_exceptions_router)
-    app.include_router(operator_controls_router)
-    app.include_router(storefront_router)
-    app.include_router(judge_router)
-    app.include_router(dashboard_router)
+    app.state.router_statuses = _include_routers(app)
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict[str, object]:
+        database = _database_readiness(app)
+        routers_ready = all(status == "ok" for status in app.state.router_statuses.values())
+        ready = (
+            app.state.settings_configuration == "ok"
+            and app.state.static_configuration == "ok"
+            and routers_ready
+            and database == "ready"
+        )
+        return {
+            "status": "ok",
+            "ready": ready,
+            "components": {
+                "settings": app.state.settings_configuration,
+                "static": app.state.static_configuration,
+                "database": database,
+                "routers": app.state.router_statuses,
+            },
+        }
 
     return app
 
