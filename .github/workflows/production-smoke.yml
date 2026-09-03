@@ -94,8 +94,88 @@ jobs:
           check_route "/judge" html
           check_route "/storefront" html
           check_route "/static/css/dashboard.css" css
+          check_route "/static/css/dashboard-approved.css" css
           check_route "/api/v1/dashboard" json
           check_route "/api/v1/policy-settings" json
+
+          curl --silent --show-error --location "$base_url/" -o /tmp/dashboard.html
+          grep -q 'dashboard-approved.css' /tmp/dashboard.html
+          grep -q 'Simulate 999 Payments' /tmp/dashboard.html
+
+      - name: Verify hosted 999-payment simulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+
+          code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 45 \
+            --request POST \
+            --output /tmp/simulate.json \
+            --write-out '%{http_code}' \
+            "$base_url/api/v1/data/simulate-999")"
+          echo "SIMULATE_HTTP=$code"
+          cat /tmp/simulate.json
+          echo
+          test "$code" = "201"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/simulate.json").read_text())
+          assert payload["payments_total"] == 999, payload
+          assert payload["successes"] == 749, payload
+          assert payload["failures"] == 250, payload
+          assert payload["findings"] == 37, payload
+          assert payload["top_finding_id"], payload
+          print(
+              "SIMULATE_999=PASS",
+              f"created={payload['payments_created']}",
+              f"already_present={payload['already_present']}",
+          )
+          PY
+
+          curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 30 \
+            "$base_url/api/v1/dashboard" \
+            -o /tmp/dashboard-after-sim.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          dashboard = json.loads(Path("/tmp/dashboard-after-sim.json").read_text())
+          population = dashboard["population"]
+          assert population["total"] >= 999, population
+          assert population["captured"] >= 749, population
+          assert population["failed"] >= 250, population
+          assert dashboard["executive"]["open_cases"] >= 250, dashboard["executive"]
+          print(
+              "DASHBOARD_AFTER_SIM=PASS",
+              f"total={population['total']}",
+              f"open_cases={dashboard['executive']['open_cases']}",
+          )
+          PY
+
+          code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            --request POST \
+            --output /tmp/simulate-repeat.json \
+            --write-out '%{http_code}' \
+            "$base_url/api/v1/data/simulate-999")"
+          echo "SIMULATE_REPEAT_HTTP=$code"
+          test "$code" = "201"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/simulate-repeat.json").read_text())
+          assert payload["payments_total"] == 999, payload
+          assert payload["already_present"] is True, payload
+          assert payload["duplicates"] == 999, payload
+          print("SIMULATE_REPEAT=PASS")
+          PY
 
       - name: Verify Supabase write and read-back
         shell: bash
