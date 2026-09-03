@@ -1,4 +1,4 @@
-.PHONY: help sync test lint typecheck jscheck verify browser-check \
+.PHONY: help sync test lint typecheck jscheck verify browser-check db-migrate \
 	genuine-prepare genuine-probe genuine-preflight genuine-evidence genuine-session \
 	genuine-webhook-start genuine-webhook-status genuine-webhook-stop openrouter-smoke \
 	demo-start demo-start-with-credentials demo-status demo-stop demo-restart demo-open demo-logs demo-public-status
@@ -12,6 +12,7 @@ help:
 		'make jscheck                 Syntax-check dashboard JavaScript' \
 		'make verify                  Run normal release verification' \
 		'make browser-check           Run local dashboard DOM test' \
+		'make db-migrate              Apply Alembic migrations to REROUTE_DATABASE_URL' \
 		'make genuine-prepare         Prepare Test Mode environment; requires CREDENTIALS=...' \
 		'make genuine-session         Start a complete local Test Mode proof session; requires CREDENTIALS=...' \
 		'make genuine-probe           Run genuine provider order probe; requires CREDENTIALS=...' \
@@ -51,6 +52,10 @@ verify: test lint typecheck jscheck
 
 browser-check:
 	bash tests/browser/dashboard-dom.test.sh
+
+db-migrate:
+	@test -n "$$REROUTE_DATABASE_URL" || (echo "REROUTE_DATABASE_URL is required" && exit 2)
+	uv run alembic upgrade head
 
 genuine-prepare:
 	@test -n "$(CREDENTIALS)" || (echo "CREDENTIALS path is required" && exit 2)
