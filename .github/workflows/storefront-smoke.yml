@@ -1,0 +1,126 @@
+name: Storefront Smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storefront-smoke
+  cancel-in-progress: true
+
+jobs:
+  verify-storefront:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wait for production storefront
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+          for attempt in $(seq 1 36); do
+            code="$(curl --silent --show-error --location \
+              --connect-timeout 5 --max-time 15 \
+              --output /tmp/storefront.html \
+              --write-out '%{http_code}' \
+              "$base_url/storefront" || true)"
+            if [[ "$code" == "200" ]] && grep -q '5 kg Dumbbell' /tmp/storefront.html; then
+              echo "Storefront ready on attempt $attempt."
+              break
+            fi
+            if [[ "$attempt" == "36" ]]; then
+              echo "Storefront did not become ready. HTTP=$code"
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Verify Razorpay Test Mode order creation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+          idempotency_key="production-smoke-dumbbell-v1"
+
+          code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 30 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --header "Idempotency-Key: $idempotency_key" \
+            --data "{\"idempotency_key\":\"$idempotency_key\"}" \
+            --output /tmp/order.json \
+            --write-out '%{http_code}' \
+            "$base_url/api/v1/orders")"
+          echo "ORDER_HTTP=$code"
+          [[ "$code" == "200" || "$code" == "201" ]]
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/order.json').read_text())
+          assert isinstance(payload.get('order_id'), str) and payload['order_id'].startswith('order_'), payload
+          assert isinstance(payload.get('key_id'), str) and payload['key_id'].startswith('rzp_test_'), payload
+          assert payload.get('amount') == 249900, payload
+          assert payload.get('currency') == 'INR', payload
+          assert payload.get('description'), payload
+          assert payload.get('status') == 'created', payload
+          Path('/tmp/order-id').write_text(payload['order_id'])
+          print('RAZORPAY_TEST_ORDER=PASS')
+          PY
+
+      - name: Verify storefront idempotency and signature boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="https://revnue-agent.vercel.app"
+          idempotency_key="production-smoke-dumbbell-v1"
+
+          code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --header "Idempotency-Key: $idempotency_key" \
+            --data "{\"idempotency_key\":\"$idempotency_key\"}" \
+            --output /tmp/order-repeat.json \
+            --write-out '%{http_code}' \
+            "$base_url/api/v1/orders")"
+          test "$code" = "200"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          first = json.loads(Path('/tmp/order.json').read_text())
+          repeat = json.loads(Path('/tmp/order-repeat.json').read_text())
+          assert repeat['order_id'] == first['order_id'], (first, repeat)
+          assert repeat['checkout_id'] == first['checkout_id'], (first, repeat)
+          print('ORDER_IDEMPOTENCY=PASS')
+          PY
+
+          order_id="$(cat /tmp/order-id)"
+          callback_code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data "{\"razorpay_order_id\":\"$order_id\",\"razorpay_payment_id\":\"pay_invalid_smoke\",\"razorpay_signature\":\"invalid_signature\"}" \
+            --output /tmp/callback-invalid.json \
+            --write-out '%{http_code}' \
+            "$base_url/api/v1/checkout/callback")"
+          test "$callback_code" = "401"
+
+          webhook_code="$(curl --silent --show-error --location \
+            --connect-timeout 5 --max-time 20 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'X-Razorpay-Signature: invalid_signature' \
+            --data '{"event":"payment.failed","payload":{}}' \
+            --output /tmp/webhook-invalid.json \
+            --write-out '%{http_code}' \
+            "$base_url/api/v1/webhooks/razorpay")"
+          test "$webhook_code" = "401"
+          echo "SIGNATURE_BOUNDARIES=PASS"
