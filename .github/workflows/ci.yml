@@ -46,3 +46,5 @@ jobs:
           node --check app/static/js/dashboard-view.js
           node --check app/static/js/dashboard-format.js
           node --check app/static/js/recovery-workflow.js
+          node --check app/static/js/sentinel-console.js
+          node --check app/static/js/storefront.js
