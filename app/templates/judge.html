@@ -3,56 +3,47 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ReRoute Intelligence | Judge Playground</title>
+  <meta name="description" content="ReRoute Sentinel interactive judge sandbox" />
+  <title>ReRoute Sentinel | Interactive Demo</title>
   <style>
-    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-    body { margin: 0; background: #f6f7fb; color: #15171a; }
-    main { max-width: 980px; margin: 0 auto; padding: 56px 24px 72px; }
-    .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #5d6470; }
-    h1 { font-size: clamp(38px, 7vw, 68px); line-height: .98; margin: 14px 0 18px; letter-spacing: -.04em; }
-    .lede { max-width: 760px; font-size: 19px; line-height: 1.6; color: #4a5059; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin-top: 34px; }
-    .card { background: white; border: 1px solid #e4e7ec; border-radius: 18px; padding: 24px; box-shadow: 0 10px 30px rgba(18,24,40,.05); }
-    .step { font-size: 13px; font-weight: 700; color: #69707b; }
-    .card h2 { margin: 8px 0 10px; font-size: 23px; }
-    .card p { margin: 0 0 20px; line-height: 1.55; color: #555c66; }
-    a.button { display: inline-block; padding: 11px 15px; border-radius: 10px; background: #17191c; color: white; text-decoration: none; font-weight: 700; }
-    .note { margin-top: 28px; padding: 18px 20px; border: 1px solid #dedfe4; border-radius: 14px; background: #fff; color: #4d535c; line-height: 1.55; }
-    code { background: #f0f1f4; padding: 2px 6px; border-radius: 5px; }
+    :root{color-scheme:light;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--ink:#171a21;--muted:#626b78;--border:#e1e4e8;--accent:#243b7c;--surface:#fff;--canvas:#f6f7f9}*{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink)}main{min-height:100vh;max-width:1320px;margin:0 auto;padding:56px 44px;display:grid;grid-template-rows:auto 1fr auto}.top{display:flex;justify-content:space-between;align-items:center;gap:24px}.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:13px}.mark{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:#fff;background:var(--accent)}.mode{padding:6px 9px;border:1px solid #cfe4d6;border-radius:999px;background:#edf7f0;color:#245437;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.hero{align-self:center;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);gap:64px;align-items:center;padding:58px 0}.eyebrow{margin:0 0 13px;color:#68717e;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}h1{max-width:760px;margin:0;font-size:clamp(44px,5.4vw,76px);line-height:.98;letter-spacing:-.052em}h1 span{color:var(--accent)}.lede{max-width:720px;margin:22px 0 28px;color:#565f6c;font-size:16px;line-height:1.65}.actions{display:flex;gap:10px;flex-wrap:wrap}.button{min-height:46px;padding:0 18px;border-radius:9px;border:1px solid var(--border);display:inline-flex;align-items:center;text-decoration:none;font-size:12px;font-weight:760}.primary{color:#fff;background:var(--accent);border-color:var(--accent)}.secondary{background:#fff}.truth{margin-top:17px;display:flex;gap:8px;align-items:center;color:#6d7480;font-size:10px}.truth strong{padding:5px 8px;border-radius:999px;border:1px solid #e6ddb5;background:#faf5df;color:#685a1f;font-size:8px;letter-spacing:.07em}.loop{background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:0 12px 34px rgba(24,30,42,.05)}.loop h2{margin:0 0 4px;font-size:16px;letter-spacing:-.02em}.loop>p{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.45}.step{display:grid;grid-template-columns:30px 1fr;gap:10px;padding:11px 0;border-top:1px solid #edf0f2}.step:first-of-type{border-top:0}.num{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#f0f3f8;color:var(--accent);font-size:9px;font-weight:850}.step strong{display:block;font-size:11px}.step span:last-child{display:block;margin-top:2px;color:var(--muted);font-size:9px;line-height:1.4}.authority{border-top:1px solid var(--border);padding-top:20px;display:grid;grid-template-columns:1fr auto;gap:30px;align-items:center}.chain{color:#4e5763;font-size:10px;line-height:1.6}.chain strong{color:var(--ink)}.claim{max-width:540px;text-align:right;color:#707883;font-size:9px;line-height:1.55}@media(max-width:820px){main{padding:30px 20px}.hero{grid-template-columns:1fr;gap:30px;padding:44px 0}.authority{grid-template-columns:1fr}.claim{text-align:left}.top .mode{display:none}}
   </style>
 </head>
 <body>
   <main>
-    <div class="eyebrow">Razorpay Buildathon demo</div>
-    <h1>Try ReRoute Intelligence.</h1>
-    <p class="lede">ReRoute finds recoverable payment failures, applies deterministic policy, ranks only permitted recovery actions, requires human approval, and records the outcome and audit trail.</p>
+    <header class="top">
+      <div class="brand"><span class="mark">R</span><span>ReRoute Sentinel</span></div>
+      <span class="mode">Razorpay Buildathon · Test Mode</span>
+    </header>
 
-    <section class="grid" aria-label="Judge demo steps">
-      <article class="card">
-        <div class="step">STEP 1</div>
-        <h2>Open the dashboard</h2>
-        <p>Start from a clean merchant view. Use <strong>Simulate 999 Payments</strong> to create the deterministic historical population and leak findings.</p>
-        <a class="button" href="/">Open dashboard</a>
-      </article>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">AI Payment Incident Autopilot</p>
+        <h1>Find the leak. Recover safely. <span>Prove the outcome.</span></h1>
+        <p class="lede">ReRoute watches merchant payment traffic, detects abnormal revenue-impacting incidents, explains what may be happening, removes unsafe actions with deterministic Policy, asks the merchant to approve a permitted recovery, and records provider evidence when money actually comes back.</p>
+        <div class="actions">
+          <a class="button primary" href="/?autostart=1">Start interactive demo</a>
+          <a class="button secondary" href="/">Open operator console</a>
+          <a class="button secondary" href="/storefront">Open Test Mode storefront</a>
+        </div>
+        <div class="truth"><strong>SIMULATED DEMO DATA</strong><span>The merchant-day replay and benchmark are deterministic simulations. Razorpay evidence is labelled TEST MODE only when genuine Test Mode provider evidence exists.</span></div>
+      </div>
 
-      <article class="card">
-        <div class="step">STEP 2</div>
-        <h2>Try payment #1000</h2>
-        <p>Open the 5 kg dumbbell storefront. With Razorpay Test Mode credentials configured, this launches the official Razorpay Checkout.</p>
-        <a class="button" href="/storefront">Open storefront</a>
-      </article>
-
-      <article class="card">
-        <div class="step">STEP 3</div>
-        <h2>Inspect recovery</h2>
-        <p>Return to the dashboard to inspect evidence, policy-gated actions, ranking, approval, timeline, provider evidence, and recorded outcomes.</p>
-        <a class="button" href="/">Review recovery</a>
-      </article>
+      <aside class="loop" aria-label="How the demo works">
+        <h2>What to watch</h2>
+        <p>The product should guide you through this loop without a manual refresh.</p>
+        <div class="step"><span class="num">1</span><div><strong>Normal payments establish a baseline</strong><span>Sentinel watches quietly in the background.</span></div></div>
+        <div class="step"><span class="num">2</span><div><strong>A cohort-level incident appears</strong><span>The detector is deterministic; AI does not open incidents.</span></div></div>
+        <div class="step"><span class="num">3</span><div><strong>Facts, AI and Policy stay separate</strong><span>Hard declines can remove Retry before the model ever ranks actions.</span></div></div>
+        <div class="step"><span class="num">4</span><div><strong>The merchant approves</strong><span>AI cannot approve itself or bypass the business owner.</span></div></div>
+        <div class="step"><span class="num">5</span><div><strong>Outcome evidence closes the loop</strong><span>No provider evidence means no claim that revenue was recovered.</span></div></div>
+      </aside>
     </section>
 
-    <div class="note">
-      <strong>Evidence labels matter.</strong> Historical benchmark data is <code>SIMULATED</code>. Persisted leak impact is <code>ESTIMATED</code>. Razorpay provider evidence is shown as <code>TEST MODE</code> only when that evidence exists. No production payment or production revenue claim is made.
-    </div>
+    <footer class="authority">
+      <div class="chain"><strong>Authority chain:</strong> facts → deterministic detector → deterministic Policy → bounded AI ranking/explanation → human approval → bounded execution → provider evidence → Outcome.</div>
+      <div class="claim">No production payment or production revenue claim is made by this sandbox. No PAN, CVV, OTP, payment secret or unnecessary customer PII is sent to the model.</div>
+    </footer>
   </main>
 </body>
 </html>
