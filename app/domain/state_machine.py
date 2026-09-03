@@ -177,17 +177,17 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
         if has_matching_failure and event.provider == "razorpay_test":
             outcome = session.scalar(select(Outcome).where(Outcome.case_id == case.case_id))
             if outcome is None:
-                session.add(
-                    Outcome(
-                        case_id=case.case_id,
-                        recovered=True,
-                        recovered_amount=event.amount,
-                        contact_cost=0,
-                        discount_cost=0,
-                        resolved_at=event.occurred_at,
-                        source="razorpay_test",
-                    )
+                outcome = Outcome(
+                    case_id=case.case_id,
+                    recovered=True,
+                    recovered_amount=event.amount,
+                    contact_cost=0,
+                    discount_cost=0,
+                    resolved_at=event.occurred_at,
+                    source="razorpay_test",
                 )
+                session.add(outcome)
+                session.flush()
                 session.add(
                     AuditEvent(
                         case_id=case.case_id,
@@ -203,5 +203,18 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
                         },
                     )
                 )
+            # Imported here to avoid a module cycle through recovery.actions -> state_machine.
+            from app.incident_recovery import link_provider_outcome_to_incidents
+
+            link_provider_outcome_to_incidents(
+                session,
+                case,
+                outcome,
+                event_id=event.event_id,
+                provider_event_id=event.provider_event_id,
+                payment_id=event.payment_id,
+                amount=event.amount,
+                source="razorpay_test",
+            )
         return case.case_id
     return case.case_id if case else None
