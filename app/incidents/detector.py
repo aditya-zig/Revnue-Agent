@@ -135,6 +135,7 @@ def detect_incidents(
     as_of: datetime | None = None,
     replay_id: str | None = None,
     seed: int | None = None,
+    run_id: str | None = None,
     events: Sequence[Event] | None = None,
 ) -> list[PaymentIncident]:
     """Persist deterministic incident openings/updates for eligible evidence only."""
@@ -147,6 +148,7 @@ def detect_incidents(
             as_of=as_of,
             replay_id=replay_id,
             seed=seed,
+            run_id=run_id,
         )
     )
     if as_of is not None:
@@ -167,7 +169,12 @@ def detect_incidents(
             and measurement.source_kind != EvidenceSource.SIMULATED_PROVIDER.value
         ):
             continue
-        cohort_filter = _cohort_filter(measurement, replay_id=replay_id, seed=seed)
+        cohort_filter = _cohort_filter(
+            measurement,
+            replay_id=replay_id,
+            seed=seed,
+            run_id=run_id,
+        )
         incident = _find_active_incident(session, cohort_filter)
         if incident is None:
             if not measurement.triggered:
@@ -192,6 +199,7 @@ def _load_events(
     as_of: datetime | None,
     replay_id: str | None,
     seed: int | None,
+    run_id: str | None,
 ) -> list[PaymentEvent]:
     statement = select(PaymentEvent)
     if replay_id is None:
@@ -200,9 +208,9 @@ def _load_events(
             PaymentEvent.authenticity_verified.is_(True),
         )
     else:
-        if seed is None:
-            raise ValueError("seed is required for replay detection")
-        prefix = f"evt_replay_{replay_id}_s{seed}_provider_event_%"
+        if seed is None or run_id is None:
+            raise ValueError("seed and run_id are required for replay detection")
+        prefix = f"evt_{run_id}_provider_event_%"
         statement = statement.where(
             PaymentEvent.source_kind == EvidenceSource.SIMULATED_PROVIDER.value,
             PaymentEvent.authenticity_verified.is_(False),
@@ -222,6 +230,7 @@ def _cohort_filter(
     *,
     replay_id: str | None,
     seed: int | None,
+    run_id: str | None,
 ) -> dict[str, object]:
     result: dict[str, object] = {
         "provider": measurement.provider,
@@ -231,6 +240,7 @@ def _cohort_filter(
     if replay_id is not None:
         result["replay_id"] = replay_id
         result["seed"] = seed
+        result["run_id"] = run_id
     return result
 
 
