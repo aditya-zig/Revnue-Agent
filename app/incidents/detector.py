@@ -31,6 +31,7 @@ MIN_SUCCESS_RATE_DROP = 0.25
 MIN_Z_SCORE = 1.96
 RESTORED_SUCCESS_RATE = 0.75
 HEALTHY_WINDOWS_TO_RESOLVE = 2
+RESOLUTION_REASON = "signal_recovered_before_investigation"
 NONRECOVERABLE_ERROR_CODES = {
     "HARD_DECLINE",
     "CARD_EXPIRED",
@@ -53,6 +54,7 @@ class CohortMeasurement:
     z_score: float
     confidence: float
     attempted_value_paise: int
+    failed_attempt_count: int
     failed_value_paise: int
     recoverable_failed_value_paise: int
     estimated_revenue_at_risk_paise: int
@@ -118,6 +120,7 @@ def measure_cohorts(events: Sequence[Event]) -> list[CohortMeasurement]:
                 z_score=z_score,
                 confidence=NormalDist().cdf(z_score),
                 attempted_value_paise=attempted_value,
+                failed_attempt_count=len(failures),
                 failed_value_paise=failed_value,
                 recoverable_failed_value_paise=recoverable_failed_value,
                 estimated_revenue_at_risk_paise=risk,
@@ -259,6 +262,32 @@ def _find_active_incident(
     )
 
 
+def _trigger_snapshot(measurement: CohortMeasurement) -> dict[str, object]:
+    return {
+        "baseline_success_rate": measurement.baseline_success_rate,
+        "current_success_rate": measurement.current_success_rate,
+        "baseline_attempts": len(measurement.baseline),
+        "current_attempts": len(measurement.current),
+        "failed_attempts": measurement.failed_attempt_count,
+        "success_rate_drop": measurement.success_rate_drop,
+        "z_score": measurement.z_score,
+        "confidence": measurement.confidence,
+        "attempted_value_paise": measurement.attempted_value_paise,
+        "failed_value_paise": measurement.failed_value_paise,
+        "recoverable_failed_value_paise": measurement.recoverable_failed_value_paise,
+        "estimated_amount_at_risk_paise": measurement.estimated_revenue_at_risk_paise,
+        "estimated_recoverable_paise": measurement.estimated_recoverable_paise,
+        "baseline_window": {
+            "start": _utc(measurement.baseline[0].occurred_at).isoformat(),
+            "end": _utc(measurement.baseline[-1].occurred_at).isoformat(),
+        },
+        "current_window": {
+            "start": _utc(measurement.current[0].occurred_at).isoformat(),
+            "end": measurement.window_end.isoformat(),
+        },
+    }
+
+
 def _open_incident(
     session: Session,
     measurement: CohortMeasurement,
@@ -267,6 +296,20 @@ def _open_incident(
     fingerprint = sha256(json_key(cohort_filter).encode()).hexdigest()[:12]
     incident_id = (
         f"incident_{fingerprint}_{measurement.window_end.strftime('%Y%m%d%H%M%S')}"
+    )
+    evidence = _detection_evidence(measurement, healthy_streak=0)
+    evidence.update(
+        {
+            "trigger_snapshot": _trigger_snapshot(measurement),
+            "peak_estimated_amount_at_risk_paise": (
+                measurement.estimated_revenue_at_risk_paise
+            ),
+            "peak_estimated_recoverable_paise": measurement.estimated_recoverable_paise,
+            "peak_failed_value_paise": measurement.failed_value_paise,
+            "peak_failed_attempt_count": measurement.failed_attempt_count,
+            "peak_affected_attempt_count": measurement.affected_attempt_count,
+            "peak_confidence": measurement.confidence,
+        }
     )
     incident = PaymentIncident(
         incident_id=incident_id,
@@ -281,7 +324,7 @@ def _open_incident(
         affected_attempt_count=measurement.affected_attempt_count,
         estimated_amount_at_risk=measurement.estimated_revenue_at_risk_paise,
         confidence=measurement.confidence,
-        detection_evidence_json=_detection_evidence(measurement, healthy_streak=0),
+        detection_evidence_json=evidence,
         provenance_summary_json={measurement.source_kind: len(measurement.current)},
         analysis_reference=None,
         recommendation_reference=None,
@@ -313,12 +356,59 @@ def _update_incident(
     incident: PaymentIncident,
     measurement: CohortMeasurement,
 ) -> None:
-    previous_evidence = incident.detection_evidence_json or {}
+    previous_evidence = dict(incident.detection_evidence_json or {})
+    previous_risk = incident.estimated_amount_at_risk
+    previous_confidence = incident.confidence
+    previous_affected = incident.affected_attempt_count
+    previous_observed = dict(incident.observed_metrics or {})
     healthy_streak = int(previous_evidence.get("healthy_window_streak", 0))
     if measurement.current_success_rate >= RESTORED_SUCCESS_RATE:
         healthy_streak += 1
     else:
         healthy_streak = 0
+
+    evidence = _detection_evidence(measurement, healthy_streak=healthy_streak)
+    trigger = previous_evidence.get("trigger_snapshot")
+    evidence["trigger_snapshot"] = (
+        trigger if isinstance(trigger, dict) else _trigger_snapshot(measurement)
+    )
+    evidence["peak_estimated_amount_at_risk_paise"] = max(
+        _int_value(previous_evidence.get("peak_estimated_amount_at_risk_paise")),
+        previous_risk,
+        measurement.estimated_revenue_at_risk_paise,
+    )
+    evidence["peak_estimated_recoverable_paise"] = max(
+        _int_value(previous_evidence.get("peak_estimated_recoverable_paise")),
+        _int_value(previous_evidence.get("estimated_recoverable_paise")),
+        measurement.estimated_recoverable_paise,
+    )
+    evidence["peak_failed_value_paise"] = max(
+        _int_value(previous_evidence.get("peak_failed_value_paise")),
+        _int_value(previous_observed.get("failed_value_paise")),
+        measurement.failed_value_paise,
+    )
+    evidence["peak_failed_attempt_count"] = max(
+        _int_value(previous_evidence.get("peak_failed_attempt_count")),
+        _failed_count_from_metrics(previous_observed),
+        measurement.failed_attempt_count,
+    )
+    evidence["peak_affected_attempt_count"] = max(
+        _int_value(previous_evidence.get("peak_affected_attempt_count")),
+        previous_affected,
+        measurement.affected_attempt_count,
+    )
+    evidence["peak_confidence"] = max(
+        _float_value(previous_evidence.get("peak_confidence")),
+        previous_confidence,
+        measurement.confidence,
+    )
+
+    will_resolve = (
+        healthy_streak >= HEALTHY_WINDOWS_TO_RESOLVE
+        and incident.state == IncidentState.DETECTED.value
+    )
+    if will_resolve:
+        evidence["resolution_reason"] = RESOLUTION_REASON
 
     incident.updated_at = measurement.window_end
     incident.baseline_metrics = _baseline_metrics(measurement)
@@ -326,10 +416,7 @@ def _update_incident(
     incident.affected_attempt_count = measurement.affected_attempt_count
     incident.estimated_amount_at_risk = measurement.estimated_revenue_at_risk_paise
     incident.confidence = measurement.confidence
-    incident.detection_evidence_json = _detection_evidence(
-        measurement,
-        healthy_streak=healthy_streak,
-    )
+    incident.detection_evidence_json = evidence
     incident.provenance_summary_json = {
         measurement.source_kind: len(measurement.current)
     }
@@ -342,16 +429,14 @@ def _update_incident(
                 "success_rate_drop": measurement.success_rate_drop,
                 "healthy_window_streak": healthy_streak,
                 "window_end": measurement.window_end.isoformat(),
+                "estimated_amount_at_risk": measurement.estimated_revenue_at_risk_paise,
             },
             created_at=measurement.window_end,
         )
     )
     _link_measurement(session, incident, measurement)
 
-    if (
-        healthy_streak >= HEALTHY_WINDOWS_TO_RESOLVE
-        and incident.state == IncidentState.DETECTED.value
-    ):
+    if will_resolve:
         incident.state = IncidentState.RESOLVED.value
         incident.resolved_at = measurement.window_end
         session.add(
@@ -361,7 +446,7 @@ def _update_incident(
                 payload={
                     "from": IncidentState.DETECTED.value,
                     "to": IncidentState.RESOLVED.value,
-                    "reason": "signal_recovered_before_investigation",
+                    "reason": RESOLUTION_REASON,
                     "healthy_window_streak": healthy_streak,
                     "restored_success_rate": measurement.current_success_rate,
                 },
@@ -410,6 +495,7 @@ def _observed_metrics(measurement: CohortMeasurement) -> dict[str, object]:
     return {
         "success_rate": measurement.current_success_rate,
         "attempts": len(measurement.current),
+        "failed_attempts": measurement.failed_attempt_count,
         "attempted_value_paise": measurement.attempted_value_paise,
         "failed_value_paise": measurement.failed_value_paise,
         "recoverable_failed_value_paise": measurement.recoverable_failed_value_paise,
@@ -448,6 +534,24 @@ def _detection_evidence(
             "end": _utc(measurement.baseline[-1].occurred_at).isoformat(),
         },
     }
+
+
+def _failed_count_from_metrics(metrics: dict[str, object]) -> int:
+    value = metrics.get("failed_attempts")
+    if isinstance(value, (int, float)):
+        return int(value)
+    attempts = _int_value(metrics.get("attempts"))
+    rate = metrics.get("success_rate")
+    success_rate = float(rate) if isinstance(rate, (int, float)) else 0.0
+    return max(0, attempts - round(attempts * success_rate))
+
+
+def _int_value(value: object | None) -> int:
+    return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _float_value(value: object | None) -> float:
+    return float(value) if isinstance(value, (int, float)) else 0.0
 
 
 def _success_rate(events: Sequence[Event]) -> float:
