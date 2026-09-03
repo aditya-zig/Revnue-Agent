@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.db.replay import MerchantReplayControl
 from app.db.tables import IncidentAuditEvent, IncidentPaymentEvent, PaymentIncident
 from app.domain.incidents import (
     build_incident_evidence_bundle,
@@ -50,12 +51,37 @@ def _incident_summary(incident: PaymentIncident) -> dict[str, Any]:
 
 
 @router.get("/incidents")
-def list_incidents(request: Request) -> list[dict[str, Any]]:
+def list_incidents(
+    request: Request,
+    include_replay_history: bool = Query(default=False),
+) -> list[dict[str, Any]]:
     with request.app.state.session_factory() as session:
-        incidents = session.scalars(
-            select(PaymentIncident).order_by(PaymentIncident.opened_at.desc())
-        ).all()
+        incidents = list(
+            session.scalars(
+                select(PaymentIncident).order_by(PaymentIncident.opened_at.desc())
+            ).all()
+        )
+        if not include_replay_history:
+            active_runs = {
+                control.replay_id: control.active_run_id
+                for control in session.scalars(select(MerchantReplayControl)).all()
+            }
+            incidents = [
+                incident
+                for incident in incidents
+                if _is_visible_incident(incident, active_runs)
+            ]
         return [_incident_summary(incident) for incident in incidents]
+
+
+def _is_visible_incident(
+    incident: PaymentIncident,
+    active_runs: dict[str, str],
+) -> bool:
+    replay_id = incident.cohort_filter.get("replay_id")
+    if not isinstance(replay_id, str):
+        return True
+    return incident.cohort_filter.get("run_id") == active_runs.get(replay_id)
 
 
 @router.get("/correlation/payment")
