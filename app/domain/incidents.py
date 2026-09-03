@@ -27,6 +27,15 @@ class IncidentEvidenceReference(BaseModel):
     provider_payment_id: str
     provider_order_id: str | None = None
     merchant_order_reference: str | None = None
+    occurred_at: datetime
+    amount: int
+    currency: str
+    method: str | None = None
+    status: str
+    error_source: str | None = None
+    error_step: str | None = None
+    error_code: str | None = None
+    error_reason: str | None = None
     evidence_hash: str
     authenticity_verified: bool
 
@@ -131,6 +140,15 @@ def build_incident_evidence_bundle(
             provider_payment_id=event.payment_id,
             provider_order_id=event.provider_order_id,
             merchant_order_reference=event.merchant_order_reference,
+            occurred_at=event.occurred_at,
+            amount=event.amount,
+            currency=event.currency,
+            method=event.method,
+            status=event.status,
+            error_source=event.error_source,
+            error_step=event.error_step,
+            error_code=event.error_code,
+            error_reason=event.error_reason,
             evidence_hash=event.raw_hash,
             authenticity_verified=event.authenticity_verified,
         )
