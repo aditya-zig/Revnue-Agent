@@ -176,19 +176,27 @@ def _classify_database_configuration_error(error: Exception, database_url: str |
         if any(placeholder in normalized.upper() for placeholder in PASSWORD_PLACEHOLDERS):
             return "password_placeholder_present"
     message = str(error).lower()
+    if "tenant or user not found" in message:
+        return "pooler_tenant_or_user_not_found"
     if "password authentication failed" in message or "authentication failed" in message:
         return "authentication_failed"
+    if "database" in message and "does not exist" in message:
+        return "database_not_found"
     if "could not translate host name" in message or "name or service not known" in message:
         return "host_resolution_failed"
     if "network is unreachable" in message or "connection timed out" in message:
         return "connection_unreachable"
     if "connection refused" in message:
         return "connection_refused"
+    if "remaining connection slots" in message or "too many connections" in message:
+        return "connection_limit_reached"
+    if "server closed the connection unexpectedly" in message:
+        return "provider_connection_closed"
     if "ssl" in message and ("error" in message or "failed" in message):
         return "ssl_error"
     if "could not parse" in message or "invalid dsn" in message or "invalid url" in message:
         return "invalid_url_syntax"
-    return "connection_or_schema_failed"
+    return f"connection_or_schema_failed_{type(error).__name__.lower()}"
 
 
 def _initialize_deployment_schema(app: FastAPI) -> None:
