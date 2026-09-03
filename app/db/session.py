@@ -1,3 +1,4 @@
+import psycopg
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session, sessionmaker
@@ -46,11 +47,15 @@ def create_session_factory(database_url: str | URL) -> sessionmaker[Session]:
             connect_args={"check_same_thread": False},
         )
     else:
-        # Vercel/serverless instances should not hold an application-side
-        # PostgreSQL pool. Supabase's transaction pooler owns pooling instead.
+        # Keep the driver as an explicit import so Vercel bundles it with the
+        # function. Supabase transaction pooling owns connection pooling and
+        # does not need psycopg's automatic server-side prepared statements.
+        if psycopg.__name__ != "psycopg":
+            raise RuntimeError("unexpected PostgreSQL driver")
         engine = create_engine(
             engine_url,
             poolclass=NullPool,
             pool_pre_ping=True,
+            connect_args={"prepare_threshold": None},
         )
     return sessionmaker(bind=engine, expire_on_commit=False)
