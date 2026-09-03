@@ -6,12 +6,46 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.db.tables import AuditEvent, Customer, Decision, RecoveryCase
-from app.domain.models import DecisionResponse, StructuredDecision
-from app.policy import evaluate_policy
+from app.domain.models import DecisionResponse, PolicyResponse, StructuredDecision
+from app.policy import RECOVERY_ACTIONS, evaluate_policy
 from app.recovery.actions import execute_action
 from app.recovery.scoring import RecoveryModel
 
 AI_RANKING_INPUT_VERSION = "policy-filtered-ranking-v1"
+
+
+def evaluate_decision_policy(
+    session: Session,
+    case: RecoveryCase,
+    now: datetime,
+    quiet_hours_start: int,
+    quiet_hours_end: int,
+    kill_switch: bool = False,
+    contact_limit: int = 3,
+    policy_version: str = "v1",
+) -> PolicyResponse:
+    """Policy used for action ranking; state eligibility is part of this boundary."""
+    policy = evaluate_policy(
+        session,
+        case,
+        now,
+        quiet_hours_start,
+        quiet_hours_end,
+        kill_switch,
+        contact_limit,
+        policy_version,
+    )
+    if case.state == "eligible":
+        return policy
+    blocked = {action: list(policy.blocked_reasons.get(action, [])) for action in RECOVERY_ACTIONS}
+    for reasons in blocked.values():
+        if "invalid_state" not in reasons:
+            reasons.append("invalid_state")
+    return PolicyResponse(
+        allowed_actions=[],
+        blocked_reasons=blocked,
+        policy_version=policy.policy_version,
+    )
 
 
 def _build_ai_ranking_input(
@@ -102,7 +136,7 @@ def run_decision(
             True,
         )
 
-    policy = evaluate_policy(
+    policy = evaluate_decision_policy(
         session,
         case,
         now,
