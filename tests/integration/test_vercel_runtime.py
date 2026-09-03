@@ -1,5 +1,5 @@
-import tomllib
 from pathlib import Path
+import tomllib
 
 from app.main import create_app
 
