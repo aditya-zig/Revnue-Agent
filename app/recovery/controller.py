@@ -11,6 +11,27 @@ from app.policy import evaluate_policy
 from app.recovery.actions import execute_action
 from app.recovery.scoring import RecoveryModel
 
+AI_RANKING_INPUT_VERSION = "policy-filtered-ranking-v1"
+
+
+def _build_ai_ranking_input(
+    policy_version: str,
+    model_version: str,
+    scores: list[dict[str, int | float | str]],
+) -> dict:
+    """Build the only action-ranking payload an external model may receive.
+
+    Policy has already removed forbidden actions before this function is called.
+    Blocked action names and reasons deliberately stay out of this payload so a
+    model cannot restore an action that deterministic Policy removed.
+    """
+    return {
+        "input_version": AI_RANKING_INPUT_VERSION,
+        "policy_version": policy_version,
+        "model_version": model_version,
+        "candidate_actions": scores,
+    }
+
 
 def run_decision(
     session: Session,
@@ -93,7 +114,34 @@ def run_decision(
     )
     customer = session.get(Customer, case.customer_id) if case.customer_id else None
     scores = recovery_model.rank(case, customer, policy.allowed_actions)
+    model_version = str(recovery_model.report["model_version"])
+    ai_ranking_input = _build_ai_ranking_input(
+        policy.policy_version,
+        model_version,
+        scores,
+    )
+    blocked_before_ai = [
+        {
+            "action": action,
+            "reasons": reasons,
+            "status": "removed_before_ai_ranking",
+        }
+        for action, reasons in policy.blocked_reasons.items()
+    ]
+    session.add(
+        AuditEvent(
+            case_id=case.case_id,
+            event_type="policy.evaluated_before_ai_ranking",
+            payload={
+                "policy_version": policy.policy_version,
+                "allowed_actions": policy.allowed_actions,
+                "blocked_actions": blocked_before_ai,
+                "ranking_input_version": AI_RANKING_INPUT_VERSION,
+            },
+        )
+    )
     if not scores:
+        session.commit()
         raise PermissionError(["no_allowed_action"])
     evidence = {
         "case": {
@@ -103,24 +151,27 @@ def run_decision(
         },
         "policy": policy.model_dump(),
         "scores": scores,
+        "ai_ranking_input": ai_ranking_input,
+        "blocked_before_ai_ranking": blocked_before_ai,
     }
     selection_source: Literal["model", "fallback"]
     if requested_action is not None:
         if requested_action not in policy.allowed_actions:
+            session.commit()
             raise PermissionError(
                 policy.blocked_reasons.get(requested_action, ["action_not_allowed"])
             )
         selected_action, selection_source, rejection = requested_action, "fallback", None
     else:
         selected_action, selection_source, rejection = _select_action(
-            evidence, policy.allowed_actions, decide_recovery_action
+            ai_ranking_input, decide_recovery_action
         )
     session.add(
         Decision(
             decision_id=decision_id,
             case_id=case.case_id,
             policy_version=policy.policy_version,
-            model_version=recovery_model.report["model_version"],
+            model_version=model_version,
             allowed_actions=policy.allowed_actions,
             selected_action=selected_action,
             expected_value=next(
@@ -151,7 +202,7 @@ def run_decision(
                 selected_action=selected_action,
                 selection_source=selection_source,
                 policy_version=policy.policy_version,
-                model_version=recovery_model.report["model_version"],
+                model_version=model_version,
                 evidence=evidence,
                 action=None,
             ),
@@ -183,7 +234,7 @@ def run_decision(
             selected_action=selected_action,
             selection_source=selection_source,
             policy_version=policy.policy_version,
-            model_version=recovery_model.report["model_version"],
+            model_version=model_version,
             evidence=evidence,
             action=result,
         ),
@@ -192,17 +243,18 @@ def run_decision(
 
 
 def _select_action(
-    evidence: dict,
-    allowed_actions: list[str],
+    ranking_input: dict,
     decide_recovery_action: Callable[[dict], object] | None,
 ) -> tuple[str, Literal["model", "fallback"], str | None]:
-    fallback = str(evidence["scores"][0]["action"])
+    candidate_actions = ranking_input["candidate_actions"]
+    fallback = str(candidate_actions[0]["action"])
     if decide_recovery_action is None:
         return fallback, "fallback", "model_unavailable"
     try:
-        decision = StructuredDecision.model_validate(decide_recovery_action(evidence))
+        decision = StructuredDecision.model_validate(decide_recovery_action(ranking_input))
     except Exception as error:
         return fallback, "fallback", f"invalid_model_output: {error}"
+    allowed_actions = {str(candidate["action"]) for candidate in candidate_actions}
     if decision.selected_action not in allowed_actions:
         return fallback, "fallback", "blocked_action"
     return decision.selected_action, "model", None
