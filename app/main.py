@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +19,9 @@ from app.core.config import Settings
 from app.db.session import create_session_factory
 from app.finding_analysis import FindingAnalysisProvider, OpenRouterProvider
 from app.recovery import RecoveryModel
+
+APP_DIR = Path(__file__).resolve().parent
+STATIC_DIR = APP_DIR / "static"
 
 
 def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
@@ -69,7 +73,7 @@ def create_app(
 ) -> FastAPI:
     settings = Settings()
     app = FastAPI(title="ReRoute Intelligence")
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.state.session_factory = create_session_factory(database_url or settings.database_url)
     app.state.webhook_secret = (
         webhook_secret if webhook_secret is not None else settings.razorpay_webhook_secret
