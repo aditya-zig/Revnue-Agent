@@ -111,7 +111,11 @@ def _timeline_from_snapshot(
     outcome: Outcome | None,
 ) -> dict:
     events = [
-        {"kind": "raw event", "at": legacy._time(event.occurred_at), "data": legacy._payment(event)}
+        {
+            "kind": "raw event",
+            "at": legacy._time(event.occurred_at),
+            "data": legacy._payment(event),
+        }
         for event in sorted(payment_events, key=lambda item: (item.occurred_at, item.event_id))
     ]
     events += [
@@ -129,7 +133,11 @@ def _timeline_from_snapshot(
         for decision in sorted(decisions, key=lambda item: item.decision_id)
     ]
     events += [
-        {"kind": "action", "at": legacy._time(action.executed_at), "data": legacy._action(action)}
+        {
+            "kind": "action",
+            "at": legacy._time(action.executed_at),
+            "data": legacy._action(action),
+        }
         for action in sorted(actions, key=lambda item: item.executed_at)
     ]
     events += [
@@ -233,9 +241,7 @@ def get_dashboard_fast(request: Request) -> dict:
             decision = max(case_decisions, key=lambda item: item.decision_id, default=None)
             case_actions = actions_by_case.get(case.case_id, [])
             action = max(case_actions, key=lambda item: item.executed_at, default=None)
-            contact_count = sum(
-                item.tool in CONTACT_ACTIONS for item in case_actions
-            )
+            contact_count = sum(item.tool in CONTACT_ACTIONS for item in case_actions)
             recent_action = any(
                 item.status != "failed" and _as_utc(item.executed_at) >= cutoff
                 for item in case_actions
@@ -280,7 +286,9 @@ def get_dashboard_fast(request: Request) -> dict:
                 "open_payment_exception": case.case_id in open_exceptions_by_case,
                 "open_payment_exception_at": open_exceptions_by_case.get(case.case_id),
                 "contact_budget": max(0, configuration.contact_limit - contact_count),
-                "owner": "business_owner" if case.state == "escalated" else "operations_worker",
+                "owner": (
+                    "business_owner" if case.state == "escalated" else "operations_worker"
+                ),
                 "blocked_reasons": policy.blocked_reasons,
                 "customer": (
                     {
@@ -329,7 +337,9 @@ def get_dashboard_fast(request: Request) -> dict:
         payment_total = len(payments)
         payment_captured = sum(payment.status == "captured" for payment in payments)
         payment_failed = sum(payment.status == "failed" for payment in payments)
-        test_mode_payments = [payment for payment in payments if payment.provider == "razorpay_test"]
+        test_mode_payments = [
+            payment for payment in payments if payment.provider == "razorpay_test"
+        ]
         latest_test_mode_payment = max(
             test_mode_payments,
             key=lambda item: (item.occurred_at, item.event_id),
@@ -381,7 +391,9 @@ def get_dashboard_fast(request: Request) -> dict:
             "investigation": top_finding,
             "worklist": worklist,
             "timeline": timelines,
-            "payment_exceptions": [legacy._payment_exception(exception) for exception in exceptions],
+            "payment_exceptions": [
+                legacy._payment_exception(exception) for exception in exceptions
+            ],
             "policy_settings": legacy._policy_settings(configuration),
             "evaluation": get_published_evaluation(),
             "mock_inbox": mock_inbox,
