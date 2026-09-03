@@ -27,6 +27,7 @@ REQUIRED_TABLES = {
 ROUTER_MODULES = (
     ("webhooks", "app.api.webhooks"),
     ("cases", "app.api.cases"),
+    ("incidents", "app.api.incidents"),
     ("data", "app.api.data"),
     ("evaluations", "app.api.evaluations"),
     ("leak_findings", "app.api.leak_findings"),
