@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.enums import PaymentEventType, PaymentStatus
+from app.domain.enums import EvidenceSource, PaymentEventType, PaymentStatus
 
 
 class NormalizedPaymentEvent(BaseModel):
@@ -12,6 +12,8 @@ class NormalizedPaymentEvent(BaseModel):
     event_type: PaymentEventType
     payment_id: str
     obligation_reference: str | None = None
+    merchant_order_reference: str | None = None
+    provider_order_id: str | None = None
     customer_id: str | None = None
     amount: int = Field(ge=0)
     currency: str = Field(min_length=3, max_length=3)
@@ -23,6 +25,8 @@ class NormalizedPaymentEvent(BaseModel):
     error_reason: str | None = None
     occurred_at: datetime
     provider: str
+    source_kind: EvidenceSource = EvidenceSource.SIMULATED_MERCHANT
+    authenticity_verified: bool = False
     raw_hash: str
     raw_body: bytes | None = None
 
@@ -32,25 +36,24 @@ class NormalizedPaymentEvent(BaseModel):
         payload: dict,
         raw_hash: str,
         webhook_event_id: str | None = None,
+        *,
+        authenticity_verified: bool = False,
     ) -> "NormalizedPaymentEvent":
         event_type = payload["event"]
         payment = payload["payload"]["payment"]["entity"]
         payment_id = payment["id"]
         created_at = datetime.fromtimestamp(payment["created_at"], tz=UTC)
-        # Prefer order_id, then notes obligation; fallback handled in state machine
-        # PaymentObligation is explicit verified merchant reference
+        provider_order_id = payment.get("order_id")
         notes = payment.get("notes", {})
         if isinstance(notes, dict):
-            obligation_reference = (
-                payment.get("order_id")
-                or notes.get("obligation_reference")
-                or notes.get("order_id")
-            )
+            merchant_order_reference = notes.get("obligation_reference") or notes.get("order_id")
         else:
-            obligation_reference = payment.get("order_id")
-        # treat empty string as missing reference -> isolated attempt
+            merchant_order_reference = None
+        obligation_reference = provider_order_id or merchant_order_reference
         if obligation_reference == "":
             obligation_reference = None
+        if merchant_order_reference == "":
+            merchant_order_reference = None
         customer_id = notes.get("customer_id") if isinstance(notes, dict) else None
         # ``webhook_event_id`` is retained as a compatibility argument only. It
         # is an unsigned header value and must never influence deduplication.
@@ -66,6 +69,8 @@ class NormalizedPaymentEvent(BaseModel):
             event_type=event_type,
             payment_id=payment_id,
             obligation_reference=obligation_reference,
+            merchant_order_reference=merchant_order_reference,
+            provider_order_id=provider_order_id,
             customer_id=customer_id,
             amount=payment["amount"],
             currency=payment["currency"],
@@ -77,6 +82,8 @@ class NormalizedPaymentEvent(BaseModel):
             error_reason=payment.get("error_reason") or payment.get("error_description"),
             occurred_at=created_at,
             provider="razorpay_test",
+            source_kind=EvidenceSource.RAZORPAY_TEST,
+            authenticity_verified=authenticity_verified,
             raw_hash=raw_hash,
         )
 
@@ -118,9 +125,9 @@ class ActionResponse(BaseModel):
 class DecisionRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128)
     approved: bool = False
-    selected_action: Literal["payment_link", "contact", "retry", "promise", "escalate"] | None = (
-        None
-    )
+    selected_action: Literal[
+        "payment_link", "contact", "retry", "promise", "escalate"
+    ] | None = None
 
 
 class ResumeRequest(BaseModel):
