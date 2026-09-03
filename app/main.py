@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib import import_module
@@ -8,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 
 from app.core.config import Settings
-from app.db.session import create_session_factory
+from app.db.session import create_session_factory, normalize_database_url
 from app.finding_analysis import FindingAnalysisProvider, OpenRouterProvider
 from app.recovery import RecoveryModel
 
@@ -32,6 +33,13 @@ ROUTER_MODULES = (
     ("judge", "app.api.judge"),
     ("dashboard", "app.api.dashboard"),
 )
+DATABASE_ENV_CANDIDATES = (
+    "REROUTE_DATABASE_URL",
+    "DATABASE_URL",
+    "POSTGRES_URL",
+    "POSTGRES_PRISMA_URL",
+    "POSTGRES_URL_NON_POOLING",
+)
 
 
 def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
@@ -44,6 +52,23 @@ def _order_not_configured(amount: int, idempotency_key: str) -> str:
 
 def _database_not_configured():
     raise RuntimeError("database is not configured")
+
+
+def _supported_database_url(value: str | None) -> bool:
+    if not value:
+        return False
+    normalized = normalize_database_url(value)
+    return normalized.startswith(("postgresql://", "sqlite"))
+
+
+def _select_database_url(settings: Settings, explicit: str | None) -> tuple[str, str]:
+    if explicit is not None:
+        return explicit, "explicit"
+    for env_name in DATABASE_ENV_CANDIDATES:
+        value = os.getenv(env_name)
+        if _supported_database_url(value):
+            return value or "", env_name.lower()
+    return settings.database_url, "settings"
 
 
 def _build_razorpay_creator_from_settings(
@@ -134,14 +159,21 @@ def create_app(
     else:
         app.state.static_configuration = "ok"
 
-    effective_database_url = database_url or settings.database_url
+    effective_database_url, database_source = _select_database_url(settings, database_url)
+    app.state.database_source = database_source
     try:
         app.state.session_factory = create_session_factory(effective_database_url)
     except Exception:
         app.state.session_factory = _database_not_configured
         app.state.database_configuration = "configuration_error"
+        app.state.database_configuration_reason = (
+            "unsupported_scheme"
+            if not _supported_database_url(effective_database_url)
+            else "invalid_url"
+        )
     else:
         app.state.database_configuration = "ok"
+        app.state.database_configuration_reason = "ok"
 
     app.state.webhook_secret = (
         webhook_secret if webhook_secret is not None else settings.razorpay_webhook_secret
@@ -212,6 +244,8 @@ def create_app(
                 "settings": app.state.settings_configuration,
                 "static": app.state.static_configuration,
                 "database": database,
+                "database_source": app.state.database_source,
+                "database_configuration_reason": app.state.database_configuration_reason,
                 "routers": app.state.router_statuses,
             },
         }
