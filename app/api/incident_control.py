@@ -4,9 +4,17 @@ from sqlalchemy import select
 
 from app.db.tables import IncidentAuditEvent, PaymentIncident, RecoveryCase
 from app.domain.enums import IncidentState
-from app.domain.incidents import build_incident_evidence_bundle, incident_case_chain, transition_incident
+from app.domain.incidents import (
+    build_incident_evidence_bundle,
+    incident_case_chain,
+    transition_incident,
+)
 from app.domain.models import DecisionRequest
-from app.incident_analysis import create_incident_analysis, read_incident_analysis
+from app.incident_analysis import (
+    OpenRouterIncidentProvider,
+    create_incident_analysis,
+    read_incident_analysis,
+)
 from app.incident_recovery import (
     create_incident_recommendation,
     mark_merchant_notified,
@@ -17,7 +25,7 @@ from app.incident_recovery import (
 from app.policy import get_policy_configuration
 from app.recovery.actions import ProviderError
 
-router = APIRouter(prefix="/api/v1", tags=["incident-control"])
+router = APIRouter(tags=["incident-control"])
 
 
 class IncidentInvestigateRequest(BaseModel):
@@ -29,6 +37,27 @@ def _incident_or_404(session, incident_id: str) -> PaymentIncident:
     if incident is None:
         raise HTTPException(status_code=404, detail="incident not found")
     return incident
+
+
+def _analysis_provider(request: Request):
+    provider = getattr(request.app.state, "incident_analysis_provider", None)
+    if provider is not None:
+        return provider
+    settings = request.app.state.settings
+    provider = OpenRouterIncidentProvider(
+        api_key=settings.openrouter_api_key,
+        timeout=settings.openrouter_timeout_seconds,
+        http_referer=settings.openrouter_http_referer or None,
+    )
+    request.app.state.incident_analysis_provider = provider
+    return provider
+
+
+def _payment_link_test_mode(request: Request) -> bool:
+    return bool(
+        request.app.state.razorpay_key_id.startswith("rzp_test_")
+        and request.app.state.razorpay_key_secret
+    )
 
 
 def _control_payload(session, incident: PaymentIncident) -> dict:
@@ -64,7 +93,7 @@ def investigate_incident(
                 session,
                 incident,
                 f"{payload.idempotency_key}:analysis",
-                request.app.state.incident_analysis_provider,
+                _analysis_provider(request),
             )
             configuration = get_policy_configuration(session, request.app.state)
             recommendation, _ = create_incident_recommendation(
@@ -77,7 +106,7 @@ def investigate_incident(
                 configuration.kill_switch,
                 configuration.contact_limit,
                 request.app.state.recovery_model,
-                request.app.state.payment_link_test_mode,
+                _payment_link_test_mode(request),
                 configuration.policy_version,
             )
         except ValueError as error:
