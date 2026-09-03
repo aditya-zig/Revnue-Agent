@@ -1,0 +1,58 @@
+name: Sentinel Session 2 Gates
+
+on:
+  pull_request:
+    paths:
+      - "app/api/evaluations.py"
+      - "app/api/incidents.py"
+      - "app/incidents/**"
+      - "app/ingestion/record_event.py"
+      - "simulator/merchant_day.py"
+      - "tests/integration/test_sentinel_session2_replay.py"
+      - ".github/workflows/sentinel-session2-gates.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  session2-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync
+        run: uv sync --dev
+
+      - name: Fresh database migration
+        env:
+          REROUTE_DATABASE_URL: sqlite:////tmp/reroute-session2-fresh.db
+        run: uv run alembic upgrade head
+
+      - name: Upgrade existing pre-Sentinel database
+        env:
+          REROUTE_DATABASE_URL: sqlite:////tmp/reroute-session2-upgrade.db
+        run: |
+          uv run alembic upgrade 0013_durable_checkout_order_recovery
+          uv run alembic upgrade head
+
+      - name: Replay to incident API smoke
+        run: uv run pytest -q tests/integration/test_sentinel_session2_replay.py
+
+      - name: Session 1 contract regression
+        run: uv run pytest -q tests/integration/test_incident_foundation.py tests/integration/test_webhooks.py
+
+      - name: Diff whitespace check
+        run: git diff --check "origin/${{ github.base_ref }}...HEAD"
