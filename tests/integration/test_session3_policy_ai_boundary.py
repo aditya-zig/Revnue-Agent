@@ -91,7 +91,9 @@ async def test_hard_decline_retry_is_removed_before_model_receives_ranking_input
         "status": "removed_before_ai_ranking",
     } in evidence["blocked_before_ai_ranking"]
     policy_event = next(
-        event for event in audit.json() if event["event_type"] == "policy.evaluated_before_ai_ranking"
+        event
+        for event in audit.json()
+        if event["event_type"] == "policy.evaluated_before_ai_ranking"
     )
     assert policy_event["payload"]["allowed_actions"] == [
         "payment_link",
@@ -169,7 +171,9 @@ async def test_kill_switch_stops_before_model_ranking(database_url):
     assert response.json() == {"detail": ["no_allowed_action"]}
     assert calls == 0
     policy_event = next(
-        event for event in audit.json() if event["event_type"] == "policy.evaluated_before_ai_ranking"
+        event
+        for event in audit.json()
+        if event["event_type"] == "policy.evaluated_before_ai_ranking"
     )
     assert policy_event["payload"]["allowed_actions"] == []
     assert {entry["action"] for entry in policy_event["payload"]["blocked_actions"]} == {
