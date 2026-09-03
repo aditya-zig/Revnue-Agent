@@ -5,10 +5,13 @@ on:
     paths:
       - "app/api/evaluations.py"
       - "app/api/incidents.py"
+      - "app/db/replay.py"
       - "app/incidents/**"
       - "app/ingestion/record_event.py"
+      - "migrations/versions/0015_add_merchant_replay_control.py"
       - "simulator/merchant_day.py"
       - "tests/integration/test_sentinel_session2_replay.py"
+      - "tests/integration/test_sentinel_session2_contract_hardening.py"
       - ".github/workflows/sentinel-session2-gates.yml"
 
 permissions:
@@ -48,8 +51,19 @@ jobs:
           uv run alembic upgrade 0013_durable_checkout_order_recovery
           uv run alembic upgrade head
 
-      - name: Replay to incident API smoke
-        run: uv run pytest -q tests/integration/test_sentinel_session2_replay.py
+      - name: Replay and incident contract smoke
+        run: |
+          uv run pytest -q \
+            tests/integration/test_sentinel_session2_replay.py \
+            tests/integration/test_sentinel_session2_contract_hardening.py
+
+      - name: Detector evaluation report
+        run: |
+          uv run python - <<'PY'
+          import json
+          from app.incidents.evaluation import run_detector_evaluation
+          print(json.dumps(run_detector_evaluation(), indent=2, sort_keys=True))
+          PY
 
       - name: Session 1 contract regression
         run: uv run pytest -q tests/integration/test_incident_foundation.py tests/integration/test_webhooks.py
