@@ -8,20 +8,20 @@ def test_normalize_database_url_accepts_supabase_postgres_scheme() -> None:
         db_session.normalize_database_url(
             "postgres://postgres.example:secret@pooler.supabase.com:6543/postgres"
         )
-        == "postgresql+psycopg://postgres.example:secret@pooler.supabase.com:6543/postgres"
+        == "postgresql://postgres.example:secret@pooler.supabase.com:6543/postgres"
     )
 
 
-def test_normalize_database_url_selects_psycopg_for_postgresql_scheme() -> None:
+def test_normalize_database_url_keeps_postgresql_scheme() -> None:
     assert (
         db_session.normalize_database_url(
             "postgresql://postgres.example:secret@pooler.supabase.com:6543/postgres"
         )
-        == "postgresql+psycopg://postgres.example:secret@pooler.supabase.com:6543/postgres"
+        == "postgresql://postgres.example:secret@pooler.supabase.com:6543/postgres"
     )
 
 
-def test_postgres_session_factory_uses_null_pool(monkeypatch) -> None:
+def test_postgres_session_factory_uses_psycopg_and_null_pool(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_create_engine(url: str, **kwargs):
