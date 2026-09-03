@@ -13,9 +13,12 @@ async def test_judge_playground_links_dashboard_and_storefront(tmp_path):
         response = await client.get("/judge")
 
     assert response.status_code == 200
-    assert "Try ReRoute Intelligence" in response.text
+    assert "Find the leak. Recover safely." in response.text
+    assert "Prove the outcome." in response.text
+    assert 'href="/?autostart=1"' in response.text
     assert 'href="/"' in response.text
     assert 'href="/storefront"' in response.text
-    assert "SIMULATED" in response.text
+    assert "SIMULATED DEMO DATA" in response.text
     assert "ESTIMATED" in response.text
     assert "TEST MODE" in response.text
+    assert "No production payment or production revenue claim" in response.text
