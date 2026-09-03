@@ -28,7 +28,11 @@ async def test_dashboard_frontend_preserves_claim_provenance_copy(app):
     assert 'claimTag("SIMULATED")' in frontend.text
     assert "Razorpay Test Mode recovered" in frontend.text
     assert "No provider evidence → no recovered claim" in frontend.text
-    assert "These figures are simulated evaluation evidence, not production merchant performance." in frontend.text
+    evaluation_copy = (
+        "These figures are simulated evaluation evidence, "
+        "not production merchant performance."
+    )
+    assert evaluation_copy in frontend.text
     assert "Evaluation is a deterministic sandbox comparison." in frontend.text
 
     # The model and UI cannot turn estimates into provider facts.
