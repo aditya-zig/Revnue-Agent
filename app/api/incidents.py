@@ -30,7 +30,47 @@ class IncidentLinkRequest(BaseModel):
     case_id: str | None = None
 
 
+def _integer(value: object | None) -> int:
+    return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _failed_attempt_count(incident: PaymentIncident) -> int:
+    evidence = incident.detection_evidence_json or {}
+    peak = _integer(evidence.get("peak_failed_attempt_count"))
+    if peak:
+        return peak
+    trigger = evidence.get("trigger_snapshot")
+    if isinstance(trigger, dict):
+        explicit = _integer(trigger.get("failed_attempts"))
+        if explicit:
+            return explicit
+        attempts = _integer(trigger.get("current_attempts"))
+        rate = trigger.get("current_success_rate")
+        if isinstance(rate, (int, float)):
+            return max(0, attempts - round(attempts * float(rate)))
+    observed = incident.observed_metrics or {}
+    attempts = _integer(observed.get("attempts"))
+    rate = observed.get("success_rate")
+    if isinstance(rate, (int, float)):
+        return max(0, attempts - round(attempts * float(rate)))
+    return 0
+
+
 def _incident_summary(incident: PaymentIncident) -> dict[str, Any]:
+    cohort = incident.cohort_filter or {}
+    evidence = incident.detection_evidence_json or {}
+    trigger = evidence.get("trigger_snapshot")
+    trigger = trigger if isinstance(trigger, dict) else {}
+    amount_affected = max(
+        _integer(evidence.get("peak_failed_value_paise")),
+        _integer(trigger.get("failed_value_paise")),
+        _integer((incident.observed_metrics or {}).get("failed_value_paise")),
+    )
+    estimated_recoverable = max(
+        _integer(evidence.get("peak_estimated_recoverable_paise")),
+        _integer(trigger.get("estimated_recoverable_paise")),
+        _integer(evidence.get("estimated_recoverable_paise")),
+    )
     return {
         "incident_id": incident.incident_id,
         "state": incident.state,
@@ -39,12 +79,19 @@ def _incident_summary(incident: PaymentIncident) -> dict[str, Any]:
         "resolved_at": incident.resolved_at.isoformat() if incident.resolved_at else None,
         "detection_version": incident.detection_version,
         "cohort_filter": incident.cohort_filter,
+        "provider": cohort.get("provider"),
+        "method": cohort.get("method"),
+        "source_kind": cohort.get("source_kind"),
         "baseline_metrics": incident.baseline_metrics,
         "observed_metrics": incident.observed_metrics,
         "affected_attempt_count": incident.affected_attempt_count,
+        "failed_attempt_count": _failed_attempt_count(incident),
+        "amount_affected_paise": amount_affected,
         "estimated_amount_at_risk": incident.estimated_amount_at_risk,
+        "estimated_recoverable_paise": estimated_recoverable,
         "confidence": incident.confidence,
         "provenance_summary": incident.provenance_summary_json,
+        "resolution_reason": evidence.get("resolution_reason"),
         "analysis_reference": incident.analysis_reference,
         "recommendation_reference": incident.recommendation_reference,
     }
