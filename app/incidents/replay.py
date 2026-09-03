@@ -1,24 +1,13 @@
 """Merchant-day replay controller built on the Session 1 incident contracts."""
 
+from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from app.db.tables import (
-    ActionEvent,
-    AuditEvent,
-    Customer,
-    Decision,
-    IncidentAuditEvent,
-    IncidentPaymentEvent,
-    IncidentRecoveryCase,
-    Outcome,
-    PaymentEvent,
-    PaymentException,
-    PaymentIncident,
-    RecoveryCase,
-)
+from app.db.replay import MerchantReplayControl
+from app.db.tables import AuditEvent, Customer, PaymentEvent, PaymentIncident, RecoveryCase
 from app.domain.enums import CaseState, PaymentEventType
 from app.domain.models import NormalizedPaymentEvent
 from app.incidents.detector import DETECTOR_VERSION, detect_incidents, triggered_measurements
@@ -34,6 +23,7 @@ from simulator.merchant_day import (
 )
 
 CHECKPOINT_INTERVAL = 6
+ReplayState = Literal["reset", "running", "incident_detected", "complete"]
 
 
 def replay_status(
@@ -43,105 +33,54 @@ def replay_status(
     seed: int = DEFAULT_SEED,
 ) -> dict[str, object]:
     _validate_replay_id(replay_id)
-    cursor = _cursor(session, replay_id=replay_id, seed=seed)
-    incident = _latest_replay_incident(session, replay_id=replay_id, seed=seed)
-    return _payload(
-        replay_id=replay_id,
-        seed=seed,
-        scenario="primary",
-        cursor=cursor,
-        incident=incident,
-    )
+    control = session.get(MerchantReplayControl, replay_id)
+    if control is None:
+        return _empty_payload(replay_id=replay_id, seed=seed)
+    incident = _latest_replay_incident(session, control=control)
+    return _payload(control=control, incident=incident)
 
 
-def reset_replay(session: Session, *, replay_id: str = DEFAULT_REPLAY_ID) -> dict[str, object]:
-    """Delete only data belonging to a named deterministic replay namespace."""
+def reset_replay(
+    session: Session,
+    *,
+    replay_id: str = DEFAULT_REPLAY_ID,
+) -> dict[str, object]:
+    """Advance to a fresh replay generation without deleting historical evidence."""
 
     _validate_replay_id(replay_id)
-    prefix = f"evt_replay_{replay_id}_s%"
-    events = list(
-        session.scalars(
-            select(PaymentEvent).where(PaymentEvent.event_id.like(prefix))
-        ).all()
-    )
-    event_ids = [event.event_id for event in events]
-    obligations = [
-        event.obligation_reference for event in events if event.obligation_reference
-    ]
-    customer_ids = [event.customer_id for event in events if event.customer_id]
-    cases: list[RecoveryCase] = []
-    if obligations:
-        cases = list(
-            session.scalars(
-                select(RecoveryCase).where(
-                    RecoveryCase.obligation_reference.in_(obligations)
-                )
-            ).all()
+    control = session.get(MerchantReplayControl, replay_id)
+    generation = 1 if control is None else control.generation + 1
+    if control is None:
+        control = MerchantReplayControl(
+            replay_id=replay_id,
+            generation=generation,
+            seed=DEFAULT_SEED,
+            scenario="primary",
+            cursor=0,
+            state="reset",
+            active_run_id=_run_id(replay_id, generation, DEFAULT_SEED, "primary"),
+            updated_at=datetime.now(UTC),
         )
-    case_ids = [case.case_id for case in cases]
-    incidents = [
-        incident
-        for incident in session.scalars(
-            select(PaymentIncident).where(
-                PaymentIncident.detection_version == DETECTOR_VERSION
-            )
-        ).all()
-        if incident.cohort_filter.get("replay_id") == replay_id
-    ]
-    incident_ids = [incident.incident_id for incident in incidents]
-
-    if case_ids:
-        session.execute(delete(Decision).where(Decision.case_id.in_(case_ids)))
-        session.execute(delete(ActionEvent).where(ActionEvent.case_id.in_(case_ids)))
-        session.execute(delete(Outcome).where(Outcome.case_id.in_(case_ids)))
-        session.execute(
-            delete(PaymentException).where(PaymentException.case_id.in_(case_ids))
+        session.add(control)
+    else:
+        control.generation = generation
+        control.seed = DEFAULT_SEED
+        control.scenario = "primary"
+        control.cursor = 0
+        control.state = "reset"
+        control.active_run_id = _run_id(
+            replay_id, generation, DEFAULT_SEED, "primary"
         )
-        session.execute(delete(AuditEvent).where(AuditEvent.case_id.in_(case_ids)))
-        session.execute(
-            delete(IncidentRecoveryCase).where(
-                IncidentRecoveryCase.case_id.in_(case_ids)
-            )
-        )
-        session.execute(delete(RecoveryCase).where(RecoveryCase.case_id.in_(case_ids)))
-    if incident_ids:
-        session.execute(
-            delete(IncidentRecoveryCase).where(
-                IncidentRecoveryCase.incident_id.in_(incident_ids)
-            )
-        )
-        session.execute(
-            delete(IncidentPaymentEvent).where(
-                IncidentPaymentEvent.incident_id.in_(incident_ids)
-            )
-        )
-        session.execute(
-            delete(IncidentAuditEvent).where(
-                IncidentAuditEvent.incident_id.in_(incident_ids)
-            )
-        )
-        session.execute(
-            delete(PaymentIncident).where(
-                PaymentIncident.incident_id.in_(incident_ids)
-            )
-        )
-    if event_ids:
-        session.execute(
-            delete(IncidentPaymentEvent).where(
-                IncidentPaymentEvent.event_id.in_(event_ids)
-            )
-        )
-        session.execute(delete(PaymentEvent).where(PaymentEvent.event_id.in_(event_ids)))
-    if customer_ids:
-        session.execute(delete(Customer).where(Customer.customer_id.in_(customer_ids)))
+        control.updated_at = datetime.now(UTC)
     session.flush()
     return {
         "claim": "SIMULATED",
         "replay_id": replay_id,
+        "generation": generation,
+        "run_id": control.active_run_id,
         "cursor": 0,
-        "events_deleted": len(event_ids),
-        "cases_deleted": len(case_ids),
-        "incidents_deleted": len(incident_ids),
+        "history_preserved": True,
+        "state": "reset",
     }
 
 
@@ -155,10 +94,19 @@ def advance_replay(
 ) -> dict[str, object]:
     if count < 1:
         raise ValueError("count must be positive")
-    day = generate_merchant_day(seed=seed, replay_id=replay_id, scenario=scenario)
-    current = _cursor(session, replay_id=replay_id, seed=seed)
-    if current > len(day.events):
-        raise ValueError("stored replay cursor exceeds deterministic merchant day")
+    control = _control_for_progress(
+        session,
+        replay_id=replay_id,
+        seed=seed,
+        scenario=scenario,
+    )
+    day = generate_merchant_day(
+        seed=seed,
+        replay_id=replay_id,
+        scenario=scenario,
+        run_id=control.active_run_id,
+    )
+    current = control.cursor
     _verify_existing_prefix(session, day, current)
     target = min(len(day.events), current + count)
     if target > current:
@@ -170,17 +118,18 @@ def advance_replay(
                 as_of=day.events[checkpoint - 1].occurred_at,
                 replay_id=replay_id,
                 seed=seed,
+                run_id=control.active_run_id,
                 events=day.events[:checkpoint],
             )
             session.flush()
-    incident = _latest_replay_incident(session, replay_id=replay_id, seed=seed)
-    return _payload(
-        replay_id=replay_id,
-        seed=seed,
-        scenario=scenario,
-        cursor=target,
-        incident=incident,
-    )
+        control.cursor = target
+        control.updated_at = datetime.now(UTC)
+        incident = _latest_replay_incident(session, control=control)
+        control.state = _control_state(target, incident)
+    else:
+        incident = _latest_replay_incident(session, control=control)
+    session.flush()
+    return _payload(control=control, incident=incident)
 
 
 def start_replay(
@@ -189,10 +138,40 @@ def start_replay(
     replay_id: str = DEFAULT_REPLAY_ID,
     seed: int = DEFAULT_SEED,
 ) -> dict[str, object]:
-    """Reset and replay only until Sentinel first detects the planted incident."""
+    """Replay only until Sentinel first detects the planted incident."""
 
-    reset_replay(session, replay_id=replay_id)
-    day = generate_merchant_day(seed=seed, replay_id=replay_id, scenario="primary")
+    control = session.get(MerchantReplayControl, replay_id)
+    if (
+        control is not None
+        and control.seed == seed
+        and control.scenario == "primary"
+        and control.state == "incident_detected"
+    ):
+        incident = _latest_replay_incident(session, control=control)
+        if incident is not None:
+            return _payload(control=control, incident=incident)
+
+    if control is None:
+        control = _create_control(
+            session,
+            replay_id=replay_id,
+            seed=seed,
+            scenario="primary",
+        )
+    elif control.cursor == 0:
+        _configure_empty_control(control, seed=seed, scenario="primary")
+    else:
+        control = _next_generation(
+            control,
+            seed=seed,
+            scenario="primary",
+        )
+    day = generate_merchant_day(
+        seed=seed,
+        replay_id=replay_id,
+        scenario="primary",
+        run_id=control.active_run_id,
+    )
     target = _first_detection_cursor(day)
     if target is None:
         raise RuntimeError("primary merchant-day fixture did not trigger the detector")
@@ -203,25 +182,18 @@ def start_replay(
         as_of=day.events[target - 1].occurred_at,
         replay_id=replay_id,
         seed=seed,
+        run_id=control.active_run_id,
         events=day.events[:target],
     )
     session.flush()
-    incident = (
-        touched[0]
-        if touched
-        else _latest_replay_incident(session, replay_id=replay_id, seed=seed)
-    )
+    incident = touched[0] if touched else _latest_replay_incident(session, control=control)
     if incident is None:
         raise RuntimeError("detector did not persist the planted incident")
-    payload = _payload(
-        replay_id=replay_id,
-        seed=seed,
-        scenario="primary",
-        cursor=target,
-        incident=incident,
-    )
-    payload["state"] = "incident_detected"
-    return payload
+    control.cursor = target
+    control.state = "incident_detected"
+    control.updated_at = datetime.now(UTC)
+    session.flush()
+    return _payload(control=control, incident=incident)
 
 
 def run_replay(
@@ -231,8 +203,47 @@ def run_replay(
     seed: int = DEFAULT_SEED,
     scenario: ScenarioName = "primary",
 ) -> dict[str, object]:
-    reset_replay(session, replay_id=replay_id)
-    day = generate_merchant_day(seed=seed, replay_id=replay_id, scenario=scenario)
+    control = session.get(MerchantReplayControl, replay_id)
+    if (
+        control is not None
+        and control.seed == seed
+        and control.scenario == scenario
+        and control.state == "complete"
+        and control.cursor == TOTAL_EVENTS
+    ):
+        _verify_existing_prefix(
+            session,
+            generate_merchant_day(
+                seed=seed,
+                replay_id=replay_id,
+                scenario=scenario,
+                run_id=control.active_run_id,
+            ),
+            control.cursor,
+        )
+        return _payload(
+            control=control,
+            incident=_latest_replay_incident(session, control=control),
+        )
+
+    if control is None:
+        control = _create_control(
+            session,
+            replay_id=replay_id,
+            seed=seed,
+            scenario=scenario,
+        )
+    elif control.cursor == 0:
+        _configure_empty_control(control, seed=seed, scenario=scenario)
+    else:
+        control = _next_generation(control, seed=seed, scenario=scenario)
+
+    day = generate_merchant_day(
+        seed=seed,
+        replay_id=replay_id,
+        scenario=scenario,
+        run_id=control.active_run_id,
+    )
     _bulk_insert_events(session, day.events)
     session.flush()
     for checkpoint in range(
@@ -243,17 +254,98 @@ def run_replay(
             as_of=day.events[checkpoint - 1].occurred_at,
             replay_id=replay_id,
             seed=seed,
+            run_id=control.active_run_id,
             events=day.events[:checkpoint],
         )
         session.flush()
-    incident = _latest_replay_incident(session, replay_id=replay_id, seed=seed)
-    return _payload(
+    control.cursor = len(day.events)
+    control.state = "complete"
+    control.updated_at = datetime.now(UTC)
+    incident = _latest_replay_incident(session, control=control)
+    session.flush()
+    return _payload(control=control, incident=incident)
+
+
+def _create_control(
+    session: Session,
+    *,
+    replay_id: str,
+    seed: int,
+    scenario: ScenarioName,
+) -> MerchantReplayControl:
+    _validate_replay_id(replay_id)
+    control = MerchantReplayControl(
         replay_id=replay_id,
+        generation=1,
         seed=seed,
         scenario=scenario,
-        cursor=len(day.events),
-        incident=incident,
+        cursor=0,
+        state="reset",
+        active_run_id=_run_id(replay_id, 1, seed, scenario),
+        updated_at=datetime.now(UTC),
     )
+    session.add(control)
+    session.flush()
+    return control
+
+
+def _next_generation(
+    control: MerchantReplayControl,
+    *,
+    seed: int,
+    scenario: ScenarioName,
+) -> MerchantReplayControl:
+    control.generation += 1
+    control.seed = seed
+    control.scenario = scenario
+    control.cursor = 0
+    control.state = "reset"
+    control.active_run_id = _run_id(
+        control.replay_id, control.generation, seed, scenario
+    )
+    control.updated_at = datetime.now(UTC)
+    return control
+
+
+def _configure_empty_control(
+    control: MerchantReplayControl,
+    *,
+    seed: int,
+    scenario: ScenarioName,
+) -> None:
+    control.seed = seed
+    control.scenario = scenario
+    control.active_run_id = _run_id(
+        control.replay_id, control.generation, seed, scenario
+    )
+    control.state = "reset"
+    control.updated_at = datetime.now(UTC)
+
+
+def _control_for_progress(
+    session: Session,
+    *,
+    replay_id: str,
+    seed: int,
+    scenario: ScenarioName,
+) -> MerchantReplayControl:
+    _validate_replay_id(replay_id)
+    control = session.get(MerchantReplayControl, replay_id)
+    if control is None:
+        return _create_control(
+            session,
+            replay_id=replay_id,
+            seed=seed,
+            scenario=scenario,
+        )
+    if control.cursor == 0:
+        _configure_empty_control(control, seed=seed, scenario=scenario)
+        return control
+    if control.seed != seed or control.scenario != scenario:
+        raise ValueError(
+            "active replay seed/scenario differs; reset or run a new generation"
+        )
+    return control
 
 
 def _bulk_insert_events(
@@ -331,7 +423,7 @@ def _bulk_insert_events(
 def _verify_existing_prefix(session: Session, day: MerchantDay, cursor: int) -> None:
     if cursor == 0:
         return
-    prefix = f"evt_replay_{day.replay_id}_s{day.seed}_provider_event_%"
+    prefix = f"evt_{day.run_id}_provider_event_%"
     existing = list(
         session.scalars(
             select(PaymentEvent)
@@ -344,18 +436,6 @@ def _verify_existing_prefix(session: Session, day: MerchantDay, cursor: int) -> 
     for stored, expected in zip(existing, day.events[:cursor], strict=True):
         if stored.raw_hash != expected.raw_hash:
             raise ValueError("stored replay data does not match the requested seed/scenario")
-
-
-def _cursor(session: Session, *, replay_id: str, seed: int) -> int:
-    prefix = f"evt_replay_{replay_id}_s{seed}_provider_event_%"
-    return int(
-        session.scalar(
-            select(func.count())
-            .select_from(PaymentEvent)
-            .where(PaymentEvent.event_id.like(prefix))
-        )
-        or 0
-    )
 
 
 def _checkpoints(current: int, target: int) -> list[int]:
@@ -386,8 +466,7 @@ def _first_detection_cursor(day: MerchantDay) -> int | None:
 def _latest_replay_incident(
     session: Session,
     *,
-    replay_id: str,
-    seed: int,
+    control: MerchantReplayControl,
 ) -> PaymentIncident | None:
     candidates = session.scalars(
         select(PaymentIncident)
@@ -398,8 +477,9 @@ def _latest_replay_incident(
         (
             incident
             for incident in candidates
-            if incident.cohort_filter.get("replay_id") == replay_id
-            and incident.cohort_filter.get("seed") == seed
+            if incident.cohort_filter.get("replay_id") == control.replay_id
+            and incident.cohort_filter.get("seed") == control.seed
+            and incident.cohort_filter.get("run_id") == control.active_run_id
         ),
         None,
     )
@@ -407,27 +487,68 @@ def _latest_replay_incident(
 
 def _payload(
     *,
-    replay_id: str,
-    seed: int,
-    scenario: ScenarioName,
-    cursor: int,
+    control: MerchantReplayControl,
     incident: PaymentIncident | None,
 ) -> dict[str, object]:
     return {
         "claim": "SIMULATED",
-        "replay_id": replay_id,
-        "seed": seed,
-        "scenario": scenario,
-        "cursor": cursor,
+        "replay_id": control.replay_id,
+        "generation": control.generation,
+        "run_id": control.active_run_id,
+        "seed": control.seed,
+        "scenario": control.scenario,
+        "cursor": control.cursor,
         "total_events": TOTAL_EVENTS,
-        "stage": _stage(cursor),
+        "stage": _stage(control.cursor),
+        "state": control.state,
         "incident_id": incident.incident_id if incident else None,
         "incident_state": incident.state if incident else None,
         "estimated_amount_at_risk": (
             incident.estimated_amount_at_risk if incident else 0
         ),
         "updated_at": incident.updated_at.isoformat() if incident else None,
+        "history_preserved": True,
     }
+
+
+def _empty_payload(*, replay_id: str, seed: int) -> dict[str, object]:
+    return {
+        "claim": "SIMULATED",
+        "replay_id": replay_id,
+        "generation": 0,
+        "run_id": None,
+        "seed": seed,
+        "scenario": "primary",
+        "cursor": 0,
+        "total_events": TOTAL_EVENTS,
+        "stage": "empty",
+        "state": "reset",
+        "incident_id": None,
+        "incident_state": None,
+        "estimated_amount_at_risk": 0,
+        "updated_at": None,
+        "history_preserved": True,
+    }
+
+
+def _run_id(
+    replay_id: str,
+    generation: int,
+    seed: int,
+    scenario: ScenarioName,
+) -> str:
+    return f"replay_{replay_id}_g{generation}_s{seed}_{scenario}"
+
+
+def _control_state(
+    cursor: int,
+    incident: PaymentIncident | None,
+) -> ReplayState:
+    if cursor >= TOTAL_EVENTS:
+        return "complete"
+    if incident is not None:
+        return "incident_detected"
+    return "running"
 
 
 def _validate_replay_id(replay_id: str) -> None:
