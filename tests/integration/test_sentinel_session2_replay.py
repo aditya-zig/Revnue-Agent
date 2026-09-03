@@ -4,9 +4,10 @@ import json
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, inspect, select
 
-from app.db.tables import IncidentAuditEvent, PaymentEvent, PaymentIncident
+from app.db.replay import MerchantReplayControl
+from app.db.tables import AuditEvent, IncidentAuditEvent, PaymentEvent, PaymentIncident
 from app.main import create_app
 
 REPLAY_ID = "merchant_day_demo"
@@ -49,6 +50,7 @@ async def test_replay_establishes_healthy_baseline_then_opens_updates_and_resolv
             params={"replay_id": REPLAY_ID, "seed": SEED, "count": 6},
         )
         detail_after_update = await client.get(f"/api/v1/incidents/{incident_id}")
+        visible_after_update = await client.get("/api/v1/incidents")
         completed = await client.post(
             "/api/v1/replay/advance",
             params={"replay_id": REPLAY_ID, "seed": SEED, "count": TOTAL_EVENTS},
@@ -58,6 +60,7 @@ async def test_replay_establishes_healthy_baseline_then_opens_updates_and_resolv
     assert reset.status_code == 200
     assert reset.json()["claim"] == "SIMULATED"
     assert reset.json()["cursor"] == 0
+    assert reset.json()["history_preserved"] is True
     assert baseline.status_code == 201
     assert baseline.json()["cursor"] == BASELINE_EVENTS
     assert baseline.json()["stage"] == "baseline"
@@ -87,7 +90,7 @@ async def test_replay_establishes_healthy_baseline_then_opens_updates_and_resolv
     assert payload["detection_evidence"]["estimated_recoverable_paise"] <= expected_risk
 
     assert updated.status_code == 201
-    assert len((await client.get("/api/v1/incidents")).json()) == 1
+    assert len(visible_after_update.json()) == 1
     assert detail_after_update.json()["updated_at"] != version_before
 
     assert completed.status_code == 201
@@ -137,6 +140,7 @@ async def test_replay_start_stops_at_first_incident_for_the_interactive_demo(app
     assert first.json()["incident_id"] == incidents.json()[0]["incident_id"]
     assert second.status_code == 201
     assert second.json()["incident_id"] == first.json()["incident_id"]
+    assert second.json()["run_id"] == first.json()["run_id"]
     assert len(incidents.json()) == 1
 
 
@@ -154,6 +158,9 @@ async def test_replay_seed_is_reproducible_and_healthy_scenario_has_no_false_pos
                     select(PaymentEvent).order_by(PaymentEvent.occurred_at, PaymentEvent.event_id)
                 )
             ]
+            audit_count_before = session.scalar(
+                select(func.count()).select_from(AuditEvent)
+            )
         second = await client.post(
             "/api/v1/replay/run",
             params={"replay_id": REPLAY_ID, "seed": SEED, "scenario": "primary"},
@@ -177,7 +184,47 @@ async def test_replay_seed_is_reproducible_and_healthy_scenario_has_no_false_pos
     assert len(first_rows) == TOTAL_EVENTS
     assert healthy.status_code == 201
     assert healthy.json()["scenario"] == "healthy"
+    assert healthy.json()["generation"] == first.json()["generation"] + 1
     assert healthy_incidents.json() == []
+    with app.state.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(PaymentEvent)) == 2 * TOTAL_EVENTS
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) >= audit_count_before
+        history = session.scalars(select(PaymentIncident)).all()
+        assert any(item.cohort_filter.get("run_id") == first.json()["run_id"] for item in history)
+        control = session.get(MerchantReplayControl, REPLAY_ID)
+        assert control is not None
+        assert control.active_run_id == healthy.json()["run_id"]
+
+
+@pytest.mark.asyncio
+async def test_explicit_reset_preserves_append_only_case_audit_history(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/replay/start",
+            params={"replay_id": REPLAY_ID, "seed": SEED},
+        )
+        with app.state.session_factory() as session:
+            events_before = session.scalar(select(func.count()).select_from(PaymentEvent))
+            audits_before = session.scalar(select(func.count()).select_from(AuditEvent))
+        reset = await client.post("/api/v1/replay/reset", params={"replay_id": REPLAY_ID})
+        active_incidents = await client.get("/api/v1/incidents")
+        history = await client.get(
+            "/api/v1/incidents", params={"include_replay_history": "true"}
+        )
+
+    assert reset.status_code == 200
+    assert reset.json()["history_preserved"] is True
+    assert reset.json()["generation"] == first.json()["generation"] + 1
+    assert active_incidents.json() == []
+    assert len(history.json()) == 1
+    with app.state.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(PaymentEvent)) == events_before
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == audits_before
+
+
+def test_replay_control_table_is_present_after_head_migration(database_url):
+    engine = create_engine(database_url)
+    assert "merchant_replay_controls" in inspect(engine).get_table_names()
 
 
 @pytest.mark.asyncio
