@@ -160,8 +160,8 @@ def _select_database_url(settings: Settings, explicit: str | None) -> tuple[str 
     return settings.database_url, "settings"
 
 
-def _initialize_fallback_schema(app: FastAPI) -> None:
-    if app.state.database_source != "vercel_sqlite_fallback":
+def _initialize_deployment_schema(app: FastAPI) -> None:
+    if app.state.database_source not in {"vercel_sqlite_fallback", "reroute_database_url"}:
         return
     with app.state.session_factory() as session:
         Base.metadata.create_all(session.get_bind())
@@ -260,7 +260,7 @@ def create_app(
     app.state.database_env_capabilities = _database_env_capabilities()
     try:
         app.state.session_factory = create_session_factory(effective_database_url)
-        _initialize_fallback_schema(app)
+        _initialize_deployment_schema(app)
     except Exception:
         app.state.session_factory = _database_not_configured
         app.state.database_configuration = "configuration_error"
