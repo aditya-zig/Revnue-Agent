@@ -46,6 +46,14 @@ DATABASE_ENV_CANDIDATES = (
     "SUPABASE_DATABASE_URL",
     "DIRECT_URL",
 )
+PASSWORD_PLACEHOLDERS = (
+    "[YOUR-PASSWORD]",
+    "[YOUR_PASSWORD]",
+    "<YOUR-PASSWORD>",
+    "<YOUR_PASSWORD>",
+    "YOUR-PASSWORD",
+    "YOUR_PASSWORD",
+)
 
 
 def _payment_link_not_configured(amount: int, idempotency_key: str) -> str:
@@ -160,6 +168,29 @@ def _select_database_url(settings: Settings, explicit: str | None) -> tuple[str 
     return settings.database_url, "settings"
 
 
+def _classify_database_configuration_error(error: Exception, database_url: str | URL) -> str:
+    if not _supported_database_url(database_url):
+        return "unsupported_scheme"
+    if isinstance(database_url, str):
+        normalized = normalize_database_url(database_url)
+        if any(placeholder in normalized.upper() for placeholder in PASSWORD_PLACEHOLDERS):
+            return "password_placeholder_present"
+    message = str(error).lower()
+    if "password authentication failed" in message or "authentication failed" in message:
+        return "authentication_failed"
+    if "could not translate host name" in message or "name or service not known" in message:
+        return "host_resolution_failed"
+    if "network is unreachable" in message or "connection timed out" in message:
+        return "connection_unreachable"
+    if "connection refused" in message:
+        return "connection_refused"
+    if "ssl" in message and ("error" in message or "failed" in message):
+        return "ssl_error"
+    if "could not parse" in message or "invalid dsn" in message or "invalid url" in message:
+        return "invalid_url_syntax"
+    return "connection_or_schema_failed"
+
+
 def _initialize_deployment_schema(app: FastAPI) -> None:
     if app.state.database_source not in {"vercel_sqlite_fallback", "reroute_database_url"}:
         return
@@ -261,13 +292,11 @@ def create_app(
     try:
         app.state.session_factory = create_session_factory(effective_database_url)
         _initialize_deployment_schema(app)
-    except Exception:
+    except Exception as error:
         app.state.session_factory = _database_not_configured
         app.state.database_configuration = "configuration_error"
-        app.state.database_configuration_reason = (
-            "unsupported_scheme"
-            if not _supported_database_url(effective_database_url)
-            else "invalid_url"
+        app.state.database_configuration_reason = _classify_database_configuration_error(
+            error, effective_database_url
         )
     else:
         app.state.database_configuration = "ok"
