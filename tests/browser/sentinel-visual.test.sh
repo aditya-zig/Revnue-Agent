@@ -91,20 +91,36 @@ PYTHONPATH="$root:$scratch" REROUTE_DATABASE_URL="sqlite:///$db" \
 server_pid=$!
 wait_for_url "http://127.0.0.1:$port/health" "$scratch/server.log" "Sentinel test server"
 
-echo "running merchant replay"
-if ! curl --silent --show-error --fail -X POST "http://127.0.0.1:$port/api/v1/replay/run?scenario=primary" >"$scratch/replay.json"; then
-  echo "merchant replay request failed" >&2
+echo "starting merchant replay"
+curl --silent --show-error --fail -X POST "http://127.0.0.1:$port/api/v1/replay/start" >"$scratch/replay-start.json"
+cat "$scratch/replay-start.json"
+
+active_incident=""
+for step in {1..50}; do
+  curl --silent --show-error --fail -X POST \
+    "http://127.0.0.1:$port/api/v1/replay/advance?count=6&scenario=primary" \
+    >"$scratch/replay-advance.json"
+  active_incident=$(curl --silent --show-error --fail "http://127.0.0.1:$port/api/v1/incidents" | uv run python -c '
+import json, sys
+rows = json.load(sys.stdin)
+active = [row for row in rows if row.get("state") not in {"resolved"}]
+print(active[0]["incident_id"] if active else "")
+')
+  if [[ -n "$active_incident" ]]; then
+    echo "active incident found after replay step $step: $active_incident"
+    break
+  fi
+done
+
+if [[ -z "$active_incident" ]]; then
+  echo "merchant replay never entered an active incident window" >&2
+  cat "$scratch/replay-advance.json" >&2 || true
   cat "$scratch/server.log" >&2 || true
   exit 1
 fi
-cat "$scratch/replay.json"
-incident_count=$(curl --silent --show-error --fail "http://127.0.0.1:$port/api/v1/incidents" | uv run python -c 'import json,sys; print(len(json.load(sys.stdin)))')
-echo "incident count: $incident_count"
-if [[ "$incident_count" -lt 1 ]]; then
-  echo "merchant replay did not produce an incident" >&2
-  cat "$scratch/server.log" >&2 || true
-  exit 1
-fi
+
+curl --silent --show-error --fail "http://127.0.0.1:$port/api/v1/incidents/$active_incident" >"$scratch/incident.json"
+cat "$scratch/incident.json"
 
 chrome_bin=""
 for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
