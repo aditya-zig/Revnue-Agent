@@ -9,8 +9,13 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 
-from app.db.tables import CheckoutOrder
-from app.domain.models import CheckoutCallbackRequest, CheckoutFailureRequest, CheckoutOrderRequest
+from app.db.tables import CheckoutOrder, Customer
+from app.domain.models import (
+    CheckoutCallbackRequest,
+    CheckoutFailureRequest,
+    CheckoutOrderRequest,
+    StorefrontConsentRequest,
+)
 from app.integrations.razorpay import (
     DUMBBELL_AMOUNT_PAISE,
     DUMBBELL_CURRENCY,
@@ -42,6 +47,30 @@ def _checkout_response(order: CheckoutOrder, key_id: str) -> dict[str, object]:
         "description": DUMBBELL_DESCRIPTION,
         "status": order.status,
     }
+
+
+@router.post("/api/v1/storefront/consent", status_code=status.HTTP_200_OK)
+def record_storefront_consent(
+    payload: StorefrontConsentRequest, request: Request
+) -> dict[str, object]:
+    if not payload.consent:
+        raise HTTPException(status_code=400, detail="explicit recovery consent required")
+    with request.app.state.session_factory() as session:
+        order = session.get(CheckoutOrder, payload.checkout_id)
+        if order is None:
+            raise HTTPException(status_code=404, detail="checkout order not found")
+        if not order.customer_id:
+            raise HTTPException(status_code=409, detail="checkout customer is unavailable")
+        customer = session.get(Customer, order.customer_id)
+        if customer is None:
+            raise HTTPException(status_code=409, detail="checkout customer is unavailable")
+        customer.consent = True
+        session.commit()
+        return {
+            "checkout_id": order.checkout_id,
+            "customer_id": customer.customer_id,
+            "consent": True,
+        }
 
 
 def _provider_order_id(provider_order: object) -> str | None:
@@ -228,10 +257,12 @@ def create_storefront_order(
             response.status_code = status.HTTP_200_OK
             return _checkout_response(existing, key_id)
         if existing is None:
+            customer_id = f"storefront_{hashlib.sha256(idempotency_key.encode()).hexdigest()[:32]}"
             existing = CheckoutOrder(
                 checkout_id=checkout_id,
                 idempotency_key=idempotency_key,
                 provider_receipt=receipt,
+                customer_id=customer_id,
                 product_code=DUMBBELL_PRODUCT_CODE,
                 product_name=DUMBBELL_PRODUCT_NAME,
                 amount=DUMBBELL_AMOUNT_PAISE,
@@ -242,6 +273,7 @@ def create_storefront_order(
                 created_at=now,
             )
             session.add(existing)
+            session.add(Customer(customer_id=customer_id, consent=False))
             try:
                 session.commit()
             except IntegrityError:

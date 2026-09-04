@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
-from app.db.tables import ActionEvent, CheckoutOrder, Outcome, PaymentEvent, RecoveryCase
+from app.db.tables import ActionEvent, CheckoutOrder, Customer, Outcome, PaymentEvent, RecoveryCase
 from app.integrations.razorpay import (
     PaymentLinkReference,
     order_receipt_for_idempotency_key,
@@ -28,6 +28,7 @@ def webhook(
     payment_id: str,
     status: str,
     payment_link_id: str | None = None,
+    customer_id: str | None = "cust_dumbbell",
 ) -> bytes:
     entity = {
         "id": payment_id,
@@ -36,7 +37,7 @@ def webhook(
         "status": status,
         "created_at": 1724481000 if status == "failed" else 1724481100,
         "method": "card",
-        "notes": {"customer_id": "cust_dumbbell"},
+        "notes": {"customer_id": customer_id} if customer_id else {},
     }
     if order_id is not None:
         entity["order_id"] = order_id
@@ -127,6 +128,62 @@ async def test_storefront_exposes_dumbbell_and_creates_one_server_owned_test_ord
     assert app.state.created_orders == [(249900, "dumbbell-checkout-1")]
     with app.state.session_factory() as session:
         assert session.scalar(select(func.count()).select_from(CheckoutOrder)) == 1
+
+
+@pytest.mark.asyncio
+async def test_storefront_consent_is_explicit_and_persisted_for_checkout_customer(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        order = await client.post(
+            "/api/v1/orders", json={"idempotency_key": "consent-checkout"}
+        )
+        checkout_id = order.json()["checkout_id"]
+        before = await client.post(
+            "/api/v1/storefront/consent",
+            json={"checkout_id": checkout_id, "consent": False},
+        )
+        accepted = await client.post(
+            "/api/v1/storefront/consent",
+            json={"checkout_id": checkout_id, "consent": True},
+        )
+
+    assert before.status_code == 400
+    assert accepted.status_code == 200
+    assert accepted.json()["consent"] is True
+    with app.state.session_factory() as session:
+        checkout = session.get(CheckoutOrder, checkout_id)
+        assert checkout is not None and checkout.customer_id
+        customer = session.get(Customer, checkout.customer_id)
+        assert customer is not None and customer.consent is True
+
+
+@pytest.mark.asyncio
+async def test_order_linked_provider_failure_uses_persisted_consented_customer(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        order = await client.post("/api/v1/orders", json={"idempotency_key": "consented-failure"})
+        checkout_id = order.json()["checkout_id"]
+        await client.post(
+            "/api/v1/storefront/consent",
+            json={"checkout_id": checkout_id, "consent": True},
+        )
+        body = webhook(
+            "payment.failed",
+            order.json()["order_id"],
+            "pay_consented_failure",
+            "failed",
+            customer_id=None,
+        )
+        failure = await client.post(
+            "/api/v1/webhooks/razorpay",
+            content=body,
+            headers={"X-Razorpay-Signature": signed(body)},
+        )
+
+    assert failure.status_code == 202
+    with app.state.session_factory() as session:
+        checkout = session.get(CheckoutOrder, checkout_id)
+        assert checkout is not None and checkout.customer_id
+        case = session.get(RecoveryCase, f"case_{order.json()['order_id']}")
+        assert case is not None and case.customer_id == checkout.customer_id
 
 
 @pytest.mark.asyncio

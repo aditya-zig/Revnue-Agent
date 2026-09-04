@@ -1,6 +1,7 @@
 (() => {
   const button = document.getElementById("buy-now");
   const status = document.getElementById("checkout-status");
+  const consent = document.getElementById("recovery-consent");
   if (!button || !status) return;
 
   const key = `dumbbell-checkout-${window.crypto?.randomUUID?.() || Date.now()}`;
@@ -46,6 +47,10 @@
   }
 
   async function openCheckout() {
+    if (!consent?.checked) {
+      show("Please allow recovery contact before opening checkout.", "error");
+      return;
+    }
     button.disabled = true;
     show("Preparing secure Test Mode checkout…");
     try {
@@ -59,6 +64,12 @@
       });
       const order = await response.json();
       if (!response.ok) throw new Error(order.detail || "Could not create order");
+      const consentResponse = await fetch("/api/v1/storefront/consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checkout_id: order.checkout_id, consent: true }),
+      });
+      if (!consentResponse.ok) throw new Error("Could not save recovery consent");
       if (!order.key_id.startsWith("rzp_test_")) throw new Error("Test Mode key required");
       if (typeof window.Razorpay !== "function") throw new Error("Checkout is unavailable");
 

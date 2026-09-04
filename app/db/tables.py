@@ -32,6 +32,7 @@ class CheckoutOrder(Base):
     obligation_reference: Mapped[str | None] = mapped_column(
         String(128), unique=True, nullable=True, index=True
     )
+    customer_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     product_code: Mapped[str] = mapped_column(String(64))
     product_name: Mapped[str] = mapped_column(String(128))
     amount: Mapped[int] = mapped_column(Integer)

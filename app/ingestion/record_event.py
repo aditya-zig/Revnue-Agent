@@ -10,6 +10,17 @@ from app.incidents.detector import detect_incidents
 
 
 def record_event_and_update_case(session: Session, event: NormalizedPaymentEvent) -> bool:
+    checkout_order = None
+    if event.obligation_reference:
+        checkout_order = session.scalar(
+            select(CheckoutOrder).where(
+                CheckoutOrder.provider_order_id == event.obligation_reference
+            )
+        )
+        if checkout_order is not None and checkout_order.customer_id and not event.customer_id:
+            # The provider order's persisted customer is authoritative when
+            # webhook notes are absent or stale.
+            event.customer_id = checkout_order.customer_id
     try:
         with session.begin_nested():
             session.add(PaymentEvent(**event.model_dump()))
@@ -19,13 +30,6 @@ def record_event_and_update_case(session: Session, event: NormalizedPaymentEvent
     if event.customer_id and session.get(Customer, event.customer_id) is None:
         # A webhook identifies the customer, but it does not prove contact consent.
         session.add(Customer(customer_id=event.customer_id, consent=False))
-    checkout_order = None
-    if event.obligation_reference:
-        checkout_order = session.scalar(
-            select(CheckoutOrder).where(
-                CheckoutOrder.provider_order_id == event.obligation_reference
-            )
-        )
     if checkout_order is not None:
         checkout_order.payment_id = event.payment_id
         checkout_order.status = f"payment_{event.status}"

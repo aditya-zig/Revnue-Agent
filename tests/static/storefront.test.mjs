@@ -17,6 +17,7 @@ test("buy now opens Checkout with only the server-provided Test Mode order", asy
       addEventListener: (_type, handler) => { elements.click = handler; },
     },
     "checkout-status": { textContent: "", className: "" },
+    "recovery-consent": { checked: true },
   };
   let checkout;
   class Razorpay {
@@ -37,6 +38,7 @@ test("buy now opens Checkout with only the server-provided Test Mode order", asy
       if (url === "/api/v1/orders") {
         return response({
           order_id: "order_test_browser",
+          checkout_id: "checkout_test_browser",
           key_id: "rzp_test_browser",
           amount: 249900,
           currency: "INR",

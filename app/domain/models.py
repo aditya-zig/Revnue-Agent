@@ -90,6 +90,11 @@ class CheckoutOrderRequest(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+class StorefrontConsentRequest(BaseModel):
+    checkout_id: str = Field(min_length=1, max_length=128)
+    consent: bool
+
+
 class CheckoutCallbackRequest(BaseModel):
     razorpay_order_id: str = Field(min_length=1, max_length=128)
     razorpay_payment_id: str = Field(min_length=1, max_length=128)
