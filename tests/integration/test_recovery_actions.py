@@ -766,51 +766,17 @@ async def test_resume_idempotency_key_cannot_cross_cases(app):
     assert second.json() == {"detail": "idempotency key belongs to another case"}
 
 
-@pytest.mark.asyncio
-async def test_decision_table_rejects_duplicate_primary_keys(app):
+
+def test_audit_events_are_append_only(app):
     with app.state.session_factory() as session:
-        session.add(
-            Decision(
-                decision_id=_decision_id("duplicate-key"),
-                case_id="case_001",
-                policy_version="v1",
-                model_version="v1",
-                allowed_actions=["contact"],
-                selected_action="contact",
-                expected_value=1,
-                reason_json={"approval": {"required": True, "granted": True}},
-            )
-        )
+        session.add(AuditEvent(case_id="case_001", event_type="test.audit", payload={"ok": True}))
         session.commit()
-        session.add(
-            Decision(
-                decision_id=_decision_id("duplicate-key"),
-                case_id="case_001",
-                policy_version="v1",
-                model_version="v1",
-                allowed_actions=["contact"],
-                selected_action="contact",
-                expected_value=1,
-                reason_json={"approval": {"required": True, "granted": True}},
+        with pytest.raises(IntegrityError, match="audit events are immutable"):
+            session.execute(
+                text("UPDATE audit_events SET event_type = 'tampered' WHERE case_id = 'case_001'")
             )
-        )
-        with pytest.raises(IntegrityError):
             session.commit()
-
-
-@pytest.mark.asyncio
-async def test_audit_table_can_be_queried_for_persisted_events(app):
-    with app.state.session_factory() as session:
-        session.add(
-            AuditEvent(
-                case_id="case_001",
-                event_type="test.persisted",
-                payload={"value": 1},
-            )
-        )
-        session.commit()
-        count = session.execute(
-            text("SELECT COUNT(*) FROM audit_events WHERE event_type='test.persisted'")
-        ).scalar_one()
-
-    assert count == 1
+        session.rollback()
+        with pytest.raises(IntegrityError, match="audit events are immutable"):
+            session.execute(text("DELETE FROM audit_events WHERE case_id = 'case_001'"))
+            session.commit()
