@@ -38,6 +38,7 @@ class Cdp {
       const pending = this.pending.get(message.id);
       if (!pending) return;
       this.pending.delete(message.id);
+      window.clearTimeout?.(pending.timeout);
       if (message.error) pending.reject(new Error(message.error.message));
       else pending.resolve(message.result);
     });
@@ -45,7 +46,13 @@ class Cdp {
 
   async send(method, params = {}) {
     const id = this.nextId++;
-    const promise = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    const promise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP command timed out: ${method}`));
+      }, 15000);
+      this.pending.set(id, { resolve, reject, timeout });
+    });
     this.socket.send(JSON.stringify({ id, method, params }));
     return promise;
   }
@@ -237,3 +244,5 @@ console.log(JSON.stringify({
   ],
 }));
 cdp.close();
+await sleep(100);
+process.exit(0);
