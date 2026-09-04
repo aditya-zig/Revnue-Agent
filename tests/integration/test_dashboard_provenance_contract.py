@@ -36,6 +36,6 @@ async def test_dashboard_frontend_preserves_claim_provenance_copy(app):
 
     # The guided landing and incident copy must keep exposure and recovery claims disciplined.
     assert "Catch payment incidents before they become lost revenue." in page.text
-    assert "estimated exposure, not recovered revenue" in page.text
+    assert "These values are not provider-backed recovered revenue." in page.text
     assert "Approval is not recovery." in page.text
     assert "Recover revenue with evidence" not in page.text
