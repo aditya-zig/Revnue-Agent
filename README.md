@@ -1,75 +1,205 @@
 <div align="center">
 
-# ReRoute Intelligence
+# ReRoute Sentinel
 
-### Revenue leak investigation and bounded recovery for failed Razorpay payments
+### AI payment-incident response for revenue recovery
 
-ReRoute turns a failed payment into an evidence-backed RecoveryCase, constrains the available actions with deterministic Policy, ranks only permitted actions, requires human approval before customer-facing recovery, and measures the resulting Outcome.
+**Detect degradation. Diagnose the cause. Constrain the response. Recover safely. Prove the outcome.**
+
+ReRoute Sentinel watches merchant payment traffic in the background, detects abnormal failure incidents, explains what changed, recommends only policy-safe recovery actions, keeps consequential execution behind human approval, and counts revenue as recovered only when provider evidence proves it.
 
 [![CI](https://github.com/aditya-zig/Revnue-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/aditya-zig/Revnue-Agent/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-Tested-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Razorpay](https://img.shields.io/badge/Razorpay-Test%20Mode-0C2451)
-![OpenRouter](https://img.shields.io/badge/OpenRouter-Advisory%20AI-6C47FF)
+![Track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2003%20AI%20Revenue%20Recovery-C9933E)
 
-**[Live app](https://revnue-agent.vercel.app/) · [Judge playground](https://revnue-agent.vercel.app/judge) · [Quickstart](#quickstart) · [How it works](#how-it-works) · [Demo](#demo) · [Safety](#safety-boundaries) · [Docs](#documentation)**
+**[Try the live app](https://revnue-agent.vercel.app/) · [Judge sandbox](https://revnue-agent.vercel.app/judge) · [How it works](#how-it-works) · [Why AI](#why-ai-is-used) · [Competition](#competitive-landscape) · [Quickstart](#quickstart)**
 
 </div>
 
 ---
 
-## What ReRoute does
+## The 30-second explanation
 
-A merchant can have hundreds of failed payment attempts without knowing which failure pattern is worth fixing first or which customers are safe to contact again. ReRoute gives that workflow a deterministic spine:
+A merchant should not have to stare at failed-payment dashboards all day.
 
-1. ingest normalized payment history or a signed Razorpay Test Mode webhook;
-2. detect and rank failure cohorts by estimated recoverable impact;
-3. create a RecoveryCase with evidence;
-4. run deterministic Policy before any ranking or side effect;
-5. rank only Policy-permitted actions by expected net value;
-6. require human approval for the selected recovery action;
-7. execute a Test Mode Payment Link or explicit mock action;
-8. persist the Outcome and full audit timeline;
-9. compare the adaptive strategy with a fixed Day 0/1/3 baseline.
+Payments happen normally. Sentinel watches them. If a meaningful cohort suddenly degrades—for example, UPI success falls sharply on one route—Sentinel creates a **PaymentIncident**, calculates the estimated business exposure, assembles deterministic evidence, and performs a bounded investigation **before interrupting the merchant**.
 
-The demo uses **999 deterministic simulated historical attempts** followed by a separate **payment #1000** storefront journey.
+The merchant receives one actionable incident:
 
-### Current deterministic demo population
+> **UPI payment degradation detected**  
+> Normal success rate → current success rate  
+> Affected payments  
+> **₹X estimated revenue at risk**  
+> Likely cause + confidence  
+> **Recommended policy-safe response →**
 
-| Metric | Value |
-| --- | ---: |
-| Historical attempts | **999** |
-| Captured | **749** |
-| Failed | **250** |
-| Failure rate | **25.03%** |
-| Persisted LeakFindings | **37** |
-| Storefront item | **5 kg Dumbbell** |
-| Storefront amount | **₹2,499** |
+From there:
 
-`SIMULATED`, `ESTIMATED`, `MOCK`, and `TEST MODE` are deliberately separate claim classes throughout the UI and evidence pipeline.
+```text
+Payment traffic
+    ↓
+Deterministic incident detection
+    ↓
+Verified evidence bundle
+    ↓
+AI diagnosis / explanation
+    ↓
+Deterministic Policy
+    ↓
+AI/model ranks ONLY permitted actions
+    ↓
+Merchant approval
+    ↓
+Bounded recovery action
+    ↓
+Provider evidence
+    ↓
+Outcome: RECOVERED / FAILED / STOPPED
+```
+
+**The key idea:** AI can interpret and recommend; it cannot invent payment facts, grant itself permission, approve itself, or declare money recovered.
 
 ---
 
-## Demo
+## Judge: what should I do?
 
-> **Screenshot placeholder 1 — Dashboard overview**  
-> Tomorrow add `docs/assets/dashboard-overview.png` after starting the clean demo. Capture the 999 / 749 / 250 population, top leak, and executive metrics.
+Start here: **[Open the interactive judge sandbox →](https://revnue-agent.vercel.app/judge)**
 
-> **Screenshot placeholder 2 — Payment #1000 RecoveryCase**  
-> Add `docs/assets/payment-1000-case.png`. Capture the exact case after the Test Mode failure has been correlated.
+The intended product journey is deliberately simple:
 
-> **Screenshot placeholder 3 — Policy → ranking → approval**  
-> Add `docs/assets/policy-ranking.png`. Capture permitted actions, ranked actions, the recommended action, and human approval state in one frame if possible.
+1. **Start interactive demo** — a clearly labelled simulated merchant day begins.
+2. Watch healthy payment activity establish a baseline.
+3. A planted degradation develops automatically; no manual `Refresh` should be part of the final journey.
+4. Sentinel detects the incident and completes first-pass analysis in the background.
+5. Click **Review incident**.
+6. Compare **Verified facts** with **AI analysis — advisory**.
+7. See deterministic Policy remove unsafe actions before ranking.
+8. Review the recommended permitted action.
+9. Approve the consequential recovery action.
+10. Use Razorpay **Test Mode** for the provider-backed recovery path.
+11. Sentinel marks revenue recovered only after authoritative provider evidence is persisted.
+12. Open the audit/evaluation view to see exactly how the result was produced.
 
-> **Screenshot placeholder 4 — Razorpay storefront**  
-> Add `docs/assets/storefront-checkout.png`. Capture the 5 kg Dumbbell storefront with official Razorpay Test Mode Checkout open.
+The UI distinguishes **SIMULATED**, **ESTIMATED**, **TEST MODE**, and **MOCK** evidence. Those words are not interchangeable.
 
-### Five-minute video
+---
 
-> 🎥 **Video placeholder** — replace this block with the final five-minute demo link after recording. Keep the final video at or below five minutes.
+## Why this product exists
 
-Recommended recording sequence is in [`docs/demo.md`](docs/demo.md).
+Payment companies already solve large parts of the stack. That is exactly why Sentinel is **not** another payment gateway, router, dunning loop, or generic AI bot.
+
+The problem Sentinel targets is the **incident around the transactions**:
+
+> **Something important has started going wrong across payment traffic. Which segment is broken? How much revenue is exposed? What evidence explains it? What response is safe? Which permitted action is best? Did the intervention actually restore revenue?**
+
+That problem becomes especially painful for high-volume merchants using multiple PSPs, payment methods, issuers and recovery paths. Provider dashboards contain useful data, but the merchant still needs one operational view that connects **detection → diagnosis → decision → recovery → proof**.
+
+### The three objects are intentionally different
+
+| Object | Purpose |
+| --- | --- |
+| `LeakFinding` | Longer-term aggregate evidence that a cohort is underperforming |
+| `PaymentIncident` | A time-bounded operational degradation happening now |
+| `RecoveryCase` | One failed payment/customer obligation and its recovery lifecycle |
+
+This separation lets Sentinel reason about a population-level incident without pretending every failed payment deserves the same action.
+
+---
+
+## Why this is a strong fit for Razorpay Buildathon Track 03
+
+Track 03 is **AI Revenue Recovery**: detect revenue at risk, determine the right intervention, and execute a bounded recovery workflow.
+
+Sentinel maps directly to that brief:
+
+- **Detect revenue at risk** → deterministic payment-health detector creates a `PaymentIncident`.
+- **Determine the right intervention** → AI explains heterogeneous evidence while deterministic Policy decides what is allowed.
+- **Execute a bounded workflow** → the merchant approves one exact permitted action.
+- **Prove recovery** → a later Razorpay Test Mode provider event determines the Outcome.
+- **Handle failure safely** → hard declines, uncertain states, duplicate webhooks, model outages and browser-dismissal cases fail closed rather than becoming fake recoveries.
+
+The AI is meaningful, but it is deliberately kept outside the money-authority boundary.
+
+---
+
+## Why AI is used
+
+A pure rules engine is excellent at facts such as:
+
+- success-rate change;
+- affected cohort;
+- amount at risk;
+- provider event state;
+- hard-decline classification;
+- contact limits;
+- whether an action is allowed.
+
+AI becomes useful **after** those facts exist. A real payment incident can combine multiple PSP vocabularies, error categories, time windows, issuer cohorts, historical outcomes and competing explanations. Sentinel uses AI to turn that evidence into a compact operational answer:
+
+> What is the most plausible explanation? What evidence supports it? What is still uncertain? Of the actions Policy already permits, which one is most appropriate and why?
+
+### Authority boundary
+
+| Question | Authority |
+| --- | --- |
+| Did an incident objectively occur? | Deterministic detector |
+| What are the observed amounts/rates/events? | Persisted provider/simulator evidence |
+| What is the likely cause? | AI advisory analysis + explicit uncertainty |
+| Which actions are permitted? | Deterministic Policy |
+| Which permitted action ranks highest? | Recovery model / bounded AI reasoning |
+| Can the action execute? | Human approval + deterministic executor |
+| Was money actually recovered? | Provider-backed Outcome evidence |
+
+If the external model is unavailable or malformed, Sentinel falls back deterministically instead of breaking payment operations.
+
+### Data the model should never need
+
+Sentinel does **not** need to send PAN, CVV, OTP, raw bank credentials, PSP secrets, webhook secrets or unnecessary customer PII to an LLM. The useful model input is a sanitized incident snapshot: provider, method, normalized error categories, aggregate rates, counts, amounts, time windows, permitted actions and anonymized historical outcomes.
+
+---
+
+## Why Razorpay might care
+
+> **This section is a product thesis, not a claim that Razorpay has expressed acquisition or partnership intent.** Razorpay can build many of these capabilities internally.
+
+Sentinel is strategically interesting to the Razorpay ecosystem for five reasons:
+
+1. **It complements Optimizer instead of competing with its core job.** [Razorpay Optimizer](https://razorpay.com/docs/payments/optimizer/) chooses where an individual transaction should be routed and uses real-time payment performance to improve success rates. Sentinel starts at a different unit of work: the **incident across a population of transactions**.
+2. **It is compatible with Agent Studio's direction.** [Razorpay Agent Studio](https://razorpay.com/agent-studio/) already targets AI agents for subscription recovery, abandoned carts, disputes, settlement insights and other revenue operations. Sentinel demonstrates a specialized payment-incident agent with an unusually explicit evidence/Policy/human-approval boundary.
+3. **It can turn multi-PSP complexity into a Razorpay recovery opportunity.** The long-term architecture is provider-agnostic on ingestion while keeping Razorpay as a real recovery/execution surface. A merchant could detect an incident across several PSPs and still use Razorpay-hosted recovery primitives where appropriate.
+4. **It makes AI decisions auditable.** For payments, “the model recommended it” is not enough. Sentinel persists facts, Policy version, permitted/blocked actions, approval and provider outcome as one trace.
+5. **It focuses on merchant attention.** The merchant is interrupted only after Sentinel has something actionable to say—not for every isolated decline.
+
+The strongest strategic framing is therefore:
+
+> **Optimizer handles transaction routing. Sentinel handles payment-incident response: detect, diagnose, constrain, recover and prove.**
+
+---
+
+## Competitive landscape
+
+**Ranking below means closeness to Sentinel's problem, not an overall company/product quality ranking.** These are mature commercial products; ReRoute Sentinel is a hackathon prototype.
+
+| Competitive overlap | Product | What it already does well | Where Sentinel is differentiated for this use case | Where the existing product is stronger |
+| ---: | --- | --- | --- | --- |
+| **1 — Closest** | [Primer Observability + Workflows](https://primer.io/blog/observability-launch) | Multi-processor visibility, anomaly detection, alerts, routing/workflows, payment normalization; Primer also describes AI guidance over unified payment data | Sentinel makes the **incident object** and its closed-loop chain explicit: deterministic incident → evidence → AI hypothesis → Policy → human approval → recovery → provider Outcome | Primer is production-grade, has a broad processor ecosystem, mature orchestration, routing, analytics and workflow tooling |
+| **2** | [Juspay Payment Observability / Orchestration](https://juspay.io/blog/what-is-payment-observability-solving-silent-failures-for-multi-psp-merchants) | Cross-PSP payment traces, normalized failure semantics, segmented failure detection, safe-next-action thinking and orchestration at very large scale | Sentinel deliberately exposes Policy-before-ranking, human approval and recovery proof as the central merchant workflow | Juspay is vastly stronger in scale, connector coverage, orchestration depth and production maturity |
+| **3** | [Razorpay Optimizer](https://razorpay.com/docs/payments/optimizer/) | Multi-gateway routing, smart routing, real-time optimization, success-rate improvement and unified payment/refund/settlement visibility | Sentinel works at the **incident level**, quantifies affected revenue, separates verified facts from AI hypothesis, coordinates recovery cases and proves outcomes | Optimizer is far better at real transaction routing, provider connectivity and live payment optimization |
+| **4** | [Razorpay Agent Studio](https://razorpay.com/agent-studio/) | Broad payment/revenue agents including subscription recovery, abandoned-cart conversion, disputes and operational agents | Sentinel is narrower and more inspectable: payment incidents, evidence provenance, deterministic Policy before ranking, human approval and provider-backed outcome | Agent Studio has broader native Razorpay integration and a much wider automation surface |
+| **5** | [Stripe Revenue Recovery](https://docs.stripe.com/billing/revenue-recovery) | Mature recurring-revenue recovery: Smart Retries, emails, automatic card updates, recovery analytics and automations | Sentinel is aimed at **cross-payment incident response**, not only recurring invoice/subscription recovery | Stripe is much stronger for production subscription billing, recurring recovery and automatic collection |
+
+### So is Sentinel “better”?
+
+Not as a complete payments platform. Primer, Juspay, Razorpay and Stripe are mature production systems.
+
+Sentinel is better only in the **narrow story it is designed to prove**:
+
+> **one auditable incident-control loop that connects population-level degradation to safe recovery and provider-proven outcome, while keeping deterministic facts and money authority outside the LLM.**
+
+That narrowness is intentional.
 
 ---
 
@@ -77,64 +207,152 @@ Recommended recording sequence is in [`docs/demo.md`](docs/demo.md).
 
 ```mermaid
 flowchart LR
-    A[Payment history / Razorpay Test Mode] --> B[PaymentEvent]
-    B --> C[Leak detection]
-    C --> D[LeakFinding]
-    B --> E[RecoveryCase]
-    D --> F[Evidence / FindingAnalysis]
-    E --> G[Deterministic Policy]
-    G --> H[RecoveryModel ranking]
-    H --> I[Human approval]
-    I --> J[Test Mode Payment Link / mock action]
-    J --> K[Outcome]
-    K --> L[Audit + evaluation]
+    C[Customer / payer] --> M[Merchant checkout]
+    M --> P[Razorpay Test Mode / provider]
+    P -->|signed event| N[Canonical PaymentEvent]
+    N --> D[Deterministic health detector]
+    D --> I[PaymentIncident]
+    I --> E[Verified evidence bundle]
+    E --> A[Sanitized AI investigation]
+    E --> POL[Deterministic Policy]
+    POL --> R[Permitted actions only]
+    A --> R
+    R --> H[Merchant review / approval]
+    H --> X[Bounded recovery action]
+    X --> P
+    P -->|authoritative later event| O[Outcome]
+    O --> AU[Audit + evaluation]
 ```
 
-The important invariant is:
+### Provider rule
 
 ```text
-Policy decides what is allowed.
-RecoveryModel ranks only what Policy already allowed.
-OpenRouter can explain a finding, but it cannot authorize an action.
+Providers tell Sentinel what happened.
+Deterministic code establishes facts.
+AI explains patterns.
+Policy determines what is allowed.
+AI/model ranks only allowed actions.
+Humans authorize consequential side effects.
+Provider evidence proves the outcome.
 ```
 
-### AI is advisory, not authoritative
-
-OpenRouter is used only for bounded `FindingAnalysis`. It receives a sanitized aggregate snapshot and may author only:
-
-- hypotheses;
-- next validation steps.
-
-Observed facts, money values, Policy, action permission, approval, and execution stay deterministic. If OpenRouter is unavailable or malformed, ReRoute persists a deterministic fallback instead of breaking the workflow.
-
-Run a real configured smoke check with:
-
-```sh
-make openrouter-smoke
-```
-
-A successful check reports `external_model_generated=true` and `fallback_used=false` without printing the API key.
+A browser callback, modal dismissal or “payment link created” message is **not** sufficient proof that money was recovered.
 
 ---
 
-## Why ReRoute instead of a fixed dunning loop?
+## What is real, simulated, estimated or mock?
 
-This comparison is intentionally narrow. ✅ means the capability is explicitly demonstrated in the linked public repository/README used as prior art. ❌ means that specific capability is not demonstrated there; it is **not** a claim about every commercial feature the project may offer.
+| Label | Meaning |
+| --- | --- |
+| **RAZORPAY TEST MODE** | Genuine Razorpay Test Mode API/payment activity; no real money moves |
+| **SIMULATED DEMO DATA** | Deterministic merchant-day payment history and planted incidents |
+| **SIMULATED PROVIDER / RAIL TELEMETRY** | Explicitly synthetic signals used where a normal merchant has no direct bank/NPCI feed |
+| **ESTIMATED** | Revenue-at-risk / recoverability calculations, not booked recovered revenue |
+| **MOCK** | Customer communication or operational side effect that was not genuinely delivered by a provider |
+| **PROVIDER-BACKED OUTCOME** | A later verified provider event persisted as the source of the recovery result |
 
-| Capability | [Hyperswitch](https://github.com/juspay/hyperswitch) | [Dunning System](https://github.com/ajithmanmu/dunning-system) | [Payment & Revenue Analytics](https://github.com/sydneyjiang000/payment-revenue-analytics) | **ReRoute** |
-| --- | :---: | :---: | :---: | :---: |
-| Payment-failure recovery workflow | ✅ | ✅ | ❌ | ✅ |
-| Cohort-level leak quantification | ❌ | ❌ | ✅ | ✅ |
-| Explicit hard-decline stop rule | ❌ | ✅ | ❌ | ✅ |
-| Expected-net-value action ranking | ❌ | ❌ | ❌ | ✅ |
-| Deterministic Policy before ranking | ❌ | ❌ | ❌ | ✅ |
-| Human approval before recovery side effect | ❌ | ❌ | ❌ | ✅ |
-| Per-case evidence + audit timeline | ❌ | ❌ | ❌ | ✅ |
-| Razorpay Test Mode Checkout + Payment Link path | ❌ | ❌ | ❌ | ✅ |
-| Adaptive-vs-fixed reproducible evaluation | ❌ | ❌ | ❌ | ✅ |
-| Explicit SIMULATED / ESTIMATED / TEST MODE claim separation | ❌ | ❌ | ❌ | ✅ |
+Direct NPCI, issuing-bank or card-network access is **not** claimed. The hackathon architecture is merchant → PSP/provider APIs → Sentinel.
 
-ReRoute is not trying to replace a payment processor or a full dunning platform. It focuses on the investigation-to-recovery decision loop for a small merchant and makes the reasoning, safety constraints, approval, side effect, and outcome visible together.
+---
+
+## Current implementation
+
+The repository is a controlled evolution of the original ReRoute recovery prototype, not a rewrite.
+
+Already present in the codebase:
+
+- Python 3.12 + FastAPI;
+- SQLAlchemy + Alembic;
+- Razorpay Test Mode order/checkout/webhook tooling;
+- raw-body webhook signature verification and idempotent ingestion;
+- deterministic merchant-day replay;
+- provider/provenance-aware normalized payment events;
+- deterministic rolling/cohort incident detection;
+- `PaymentIncident` lifecycle and affected event/case linking;
+- estimated revenue-at-risk calculations;
+- deterministic Policy;
+- recovery ranking primitives;
+- human approval and bounded action primitives;
+- Outcome and audit models;
+- sanitized advisory OpenRouter boundary + deterministic fallback;
+- reproducible evaluation and CI/browser verification tooling.
+
+The active integration work is connecting those pieces into the final Sentinel journey:
+
+```text
+INCIDENT
+  → background investigation
+  → incident-level Policy/recommendation
+  → merchant notification
+  → approval
+  → bounded recovery
+  → provider-backed Outcome
+  → operator-console UI
+```
+
+---
+
+## Safety boundaries
+
+Sentinel is deliberately constrained:
+
+- **Razorpay Test Mode only** for payment execution in this prototype;
+- raw webhook body is verified before parsing authority;
+- duplicate provider events are idempotent;
+- CheckoutOrder amount/currency/correlation remains deterministic;
+- browser callbacks are presentation-only;
+- timeout/unknown does not automatically become failed;
+- hard declines cannot be restored to retry by AI ranking;
+- opt-out, quiet hours and contact limits remain Policy concerns;
+- AI receives sanitized evidence and no payment credentials;
+- human approval is required before consequential customer-facing recovery;
+- approvals can be invalidated if the policy/context changes;
+- a recovery action is not a recovered Outcome;
+- provider evidence is required before money is counted as recovered;
+- `SIMULATED`, `ESTIMATED`, `TEST MODE` and `MOCK` are kept distinct.
+
+---
+
+## Where Sentinel may *not* be the right product
+
+This is intentionally included because the idea has real limits.
+
+Sentinel is probably a weak fit when:
+
+- a small merchant has low payment volume and one PSP; the provider's native dashboard/recovery features may be enough;
+- the merchant already runs a mature orchestration/control plane such as Primer/Juspay plus a dedicated payment-operations team;
+- failure volume is too low for incident-level segmentation to be statistically useful;
+- the provider does not expose enough evidence to distinguish issuer, PSP, merchant-configuration and customer causes confidently;
+- the merchant expects a fully autonomous router—Sentinel intentionally keeps some consequential actions behind Policy/human control;
+- a buyer wants a production-ready PCI/compliance/multi-tenant platform today; this repository is a hackathon prototype;
+- the business problem is mainly recurring subscription dunning, where native Stripe/Razorpay/Chargebee-style recovery may already be a better fit.
+
+### The biggest strategic risk
+
+The category is not empty. Primer, Juspay, Razorpay and other payment infrastructure companies can move toward the same closed-loop incident-response workflow. Sentinel's defensibility would have to come from **cross-provider evidence quality, incident diagnosis, governance, merchant workflow, evaluation data and integration depth**—not from simply adding an LLM.
+
+---
+
+## Evaluation
+
+Sentinel should be judged on measurable behavior, not on how convincing the AI prose sounds.
+
+The repository includes reproducible synthetic evaluation for payment/recovery behavior and a deterministic detector evaluation endpoint.
+
+Important metrics include:
+
+- stable-traffic false-positive rate;
+- incident detection delay;
+- affected-cohort precision/recall against planted ground truth;
+- estimated financial impact accuracy;
+- recovery amount / rate in the simulated benchmark;
+- unnecessary actions;
+- Policy violations;
+- actions per recovered case;
+- time to recovery;
+- model fallback rate / malformed-output handling.
+
+Evaluation results are labelled **SIMULATED EVALUATION** and do not claim production merchant lift.
 
 ---
 
@@ -144,140 +362,41 @@ ReRoute is not trying to replace a payment processor or a full dunning platform.
 
 - Python 3.12+
 - [`uv`](https://docs.astral.sh/uv/)
-- Razorpay **Test Mode** key CSV for genuine provider order/checkout flows
-- OpenRouter key only if you want external FindingAnalysis generation
+- Razorpay **Test Mode** credentials for genuine provider flows
+- OpenRouter key only if external advisory analysis is desired
 
-### First local run
-
-```sh
+```bash
 git clone https://github.com/aditya-zig/Revnue-Agent.git
 cd Revnue-Agent
 uv sync --dev
 
+# Full repository verification
+make verify
+
+# Browser checks
+make browser-check
+
+# Start the demo with Razorpay Test Mode credentials
 make demo-start-with-credentials \
   CREDENTIALS=/path/to/razorpay-test-credentials.csv
 ```
 
-The credential-file path is stored only in ignored local runtime configuration. Secret values are not committed.
+Later runs:
 
-### Later runs
-
-```sh
+```bash
 make demo-start
 make demo-status
 make demo-open
 ```
 
-Useful controls:
-
-```sh
-make demo-logs
-make demo-restart
-make demo-stop
-```
-
 Local URLs:
 
-- Dashboard — `http://127.0.0.1:8000/`
+- Operator console — `http://127.0.0.1:8000/`
+- Judge sandbox — `http://127.0.0.1:8000/judge`
 - Storefront — `http://127.0.0.1:8000/storefront`
 - Health — `http://127.0.0.1:8000/health`
 
-There is no separate frontend process and no SQLite daemon. One FastAPI/Uvicorn process serves the dashboard, storefront, static assets, APIs, webhook receiver, Policy, RecoveryModel, mock inbox, and evaluation endpoints.
-
----
-
-## Genuine Razorpay Test Mode webhook proof
-
-Local rehearsal does **not** require a tunnel. A genuine Razorpay-delivered webhook does.
-
-ReRoute now has one bounded tunnel helper:
-
-```sh
-make genuine-webhook-start
-make genuine-webhook-status
-```
-
-`genuine-webhook-start`:
-
-- verifies the local demo is healthy;
-- starts only the ReRoute zrok public share;
-- discovers the HTTPS URL;
-- verifies `/health` through the public URL;
-- sends an invalid webhook signature and requires a `401` fail-closed result;
-- prints the exact Test Mode webhook URL, required events, local webhook-secret file, and Test Mode webhook OTP;
-- does **not** claim provider delivery from local database state.
-
-Then configure Razorpay Dashboard **Test Mode** with:
-
-```text
-URL:    https://<public-host>/api/v1/webhooks/razorpay
-Events: payment.failed, payment.captured
-Secret: value stored in .reroute-local/webhook-secret
-OTP:    754081 when the Test Mode webhook flow asks for it
-```
-
-After a real Test Mode failure:
-
-```sh
-uv run python scripts/genuine_testmode_evidence.py \
-  --require-failure \
-  --write .reroute-local/evidence-after-failure.json
-```
-
-After a real Test Mode recovery:
-
-```sh
-uv run python scripts/genuine_testmode_evidence.py \
-  --require-recovery \
-  --write .reroute-local/evidence-after-recovery.json
-```
-
-A signed local event proves ReRoute accepted valid HMAC evidence. A **genuine provider-delivered** claim additionally requires observing the delivery in Razorpay Test Mode provider tooling or the Razorpay Dashboard.
-
-Stop only the ReRoute tunnel with:
-
-```sh
-make genuine-webhook-stop
-```
-
----
-
-## Safety boundaries
-
-ReRoute is deliberately constrained for a hackathon demo:
-
-- Razorpay **Test Mode only**. Live-mode key IDs are rejected.
-- raw webhook body is verified before parsing;
-- duplicate provider events are idempotent;
-- conflicting duplicate signed bodies are rejected;
-- CheckoutOrder ownership, amount, and currency are validated;
-- browser callbacks are presentation-only and never authoritative payment evidence;
-- hard declines remove retry before ranking;
-- customer-directed actions obey Policy, contact limits, quiet hours, opt-out and exception state;
-- RecoveryModel cannot restore an action blocked by Policy;
-- human approval is required before the recovery side effect;
-- OpenRouter has no payment tools and cannot alter Policy;
-- all Test Mode, simulated, estimated and mock claims remain visibly separated.
-
----
-
-## Evaluation
-
-The repository includes a reproducible synthetic comparison between:
-
-- fixed Day 0/1/3 baseline;
-- deterministic rules;
-- adaptive action ranking.
-
-The evaluation is labelled **SIMULATED**. It is an offline policy comparison, not a claim of production merchant lift.
-
-Run:
-
-```sh
-curl http://127.0.0.1:8000/api/v1/evaluations/reproducible
-```
-
-See [`docs/evaluation.md`](docs/evaluation.md) for methodology and claim limits.
+Provider-specific setup and genuine Test Mode webhook proof are documented in [`docs/razorpay-tooling.md`](docs/razorpay-tooling.md) and [`docs/demo.md`](docs/demo.md).
 
 ---
 
@@ -285,89 +404,61 @@ See [`docs/evaluation.md`](docs/evaluation.md) for methodology and claim limits.
 
 ```text
 app/
-  api/                 FastAPI routes and webhook intake
-  db/                  SQLAlchemy persistence
+  api/                 FastAPI routes, replay, incidents, recovery and webhooks
+  db/                  SQLAlchemy persistence + incident/replay state
+  domain/              payment / incident / case domain contracts
+  incidents/           replay, detector and incident evaluation
   policy/              deterministic permission gate
-  recovery/            ranking, controller and action execution
-  integrations/        Razorpay Test Mode adapter
-  static/ + templates/ dashboard and storefront
+  recovery/            ranking, controller and bounded actions
+  integrations/        provider adapters, currently Razorpay-focused
+  static/ + templates/ operator console, judge sandbox and storefront
 
-simulator/              deterministic seeded payment corpus
+simulator/              deterministic merchant-day corpus
 scripts/                demo, provider, webhook and evidence tooling
-tests/                  unit/integration/browser verification
-docs/                   architecture, demo, safety and evaluation notes
-```
-
----
-
-## Limitations
-
-This repository is a hackathon prototype, not a production revenue-operations platform.
-
-- Historical merchant data is synthetic and deterministic.
-- Evaluation outcomes are simulated and do not establish causal production lift.
-- Razorpay integration is Test Mode only.
-- Mock inbox actions are not real WhatsApp delivery.
-- OpenRouter analysis is advisory and may fall back deterministically.
-- There is no production authentication or multi-tenant authorization layer.
-- SQLite is chosen for reproducible local demonstration, not horizontal scaling.
-- Recovery probabilities are a bounded demo baseline, not a continuously trained production model.
-- Genuine webhook provenance requires separate Razorpay Dashboard/provider evidence; local signed persistence alone is insufficient.
-
----
-
-## Verification
-
-```sh
-make verify
-make browser-check
-```
-
-Provider diagnostics:
-
-```sh
-make genuine-probe CREDENTIALS=/path/to/razorpay-test-credentials.csv
-make genuine-evidence
-make genuine-webhook-status
-make openrouter-smoke
+tests/                  unit, integration and browser verification
+docs/                   architecture, safety, evaluation and implementation plans
 ```
 
 ---
 
 ## Documentation
 
+Start with these if you want the full reasoning behind the product:
+
+- [ReRoute Sentinel implementation programme](docs/plans/reroute-sentinel-implementation-programme.md)
+- [Integration & multi-session implementation plan](docs/plans/reroute-sentinel-integration-multisession-plan.md)
 - [Architecture](docs/architecture.md)
 - [Five-minute demo](docs/demo.md)
-- [Runtime map](docs/runtime.md)
 - [Evaluation](docs/evaluation.md)
 - [Model limits](docs/model-limits.md)
 - [Threat model](docs/threat-model.md)
 - [Razorpay tooling](docs/razorpay-tooling.md)
-- [Prior art](docs/prior-art.md)
 - [Submission checklist](docs/submission-checklist.md)
 
 ---
 
-## README design references
+## Limitations / disclaimer
 
-The presentation structure here borrows common README patterns rather than project text: short value proposition and quickstart near the top, visual demo space, capability bullets/tables, architecture, explicit limitations, documentation links, badges, and a clean license/footer. Repositories reviewed include OpenAI Codex, Claude Code, Browser Use, Supabase, n8n, Open WebUI, Ollama, LangChain, Star History, and RustDesk.
+ReRoute Sentinel is a **Razorpay Buildathon prototype**, not a claim of production readiness or proven product-market fit.
+
+- Historical merchant traffic and incident ground truth are deterministic/synthetic.
+- Evaluation is simulated and does not establish causal production lift.
+- Razorpay execution is Test Mode only.
+- A direct bank/NPCI/card-network data feed is not part of the prototype.
+- External-model analysis is advisory and may fall back deterministically.
+- Production authentication, tenant isolation, enterprise RBAC, compliance certification and operational SLAs remain future work.
+- Competitor comparisons above describe the products' publicly documented positioning/capabilities and Sentinel's **narrow intended differentiation**; they are not claims that those platforms lack undisclosed/internal features.
+- There is no evidence that Razorpay has expressed intent to acquire, partner with, or deploy ReRoute Sentinel. “Why Razorpay might care” is a strategic product thesis.
 
 ---
-
-## Star history
-
-<a href="https://www.star-history.com/#aditya-zig/Revnue-Agent&Date">
-  <img src="https://api.star-history.com/svg?repos=aditya-zig/Revnue-Agent&type=Date" alt="ReRoute Intelligence star history" />
-</a>
-
----
-
-## License
-
-Licensed under the [Apache License 2.0](LICENSE).
 
 <div align="center">
 
-Built for the Razorpay AI Buildathon. Test Mode only.
+### ReRoute Sentinel
+
+**Find the incident. Recover safely. Prove the outcome.**
+
+Built for **Razorpay AI Buildathon — Track 03: AI Revenue Recovery**  
+Razorpay **Test Mode only** · Apache-2.0
 
 </div>
