@@ -39,6 +39,7 @@ jobs:
           node --check app/static/js/recovery-workflow.js
           node --check app/static/js/sentinel-api.js
           node --check app/static/js/sentinel.js
+          node --check app/static/js/guided-sandbox.js
           node --check tests/browser/sentinel-browser-test.mjs
 
       - name: Sentinel frontend contract
