@@ -14,8 +14,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("checkout_orders", sa.Column("customer_id", sa.String(length=128), nullable=True))
-    op.create_index("ix_checkout_orders_customer_id", "checkout_orders", ["customer_id"], unique=False)
+    op.add_column(
+        "checkout_orders",
+        sa.Column("customer_id", sa.String(length=128), nullable=True),
+    )
+    op.create_index(
+        "ix_checkout_orders_customer_id",
+        "checkout_orders",
+        ["customer_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
