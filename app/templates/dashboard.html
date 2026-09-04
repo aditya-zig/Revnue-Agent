@@ -1,76 +1,90 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="ReRoute Sentinel payment incident autopilot" />
-    <title>ReRoute Sentinel</title>
-    <link rel="stylesheet" href="/static/css/sentinel.css" />
-  </head>
-  <body>
-    <div class="app-shell" data-sentinel-shell>
-      <aside class="sidebar" aria-label="ReRoute Sentinel navigation">
-        <a class="brand" href="#home" data-nav="home" aria-label="ReRoute Sentinel home">
-          <span class="brand-mark" aria-hidden="true">R</span>
-          <span><strong>ReRoute Sentinel</strong><small>Payment incident autopilot</small></span>
-        </a>
-
-        <nav class="sidebar-nav" aria-label="Operator console">
-          <section class="nav-group" aria-labelledby="operate-label">
-            <div class="nav-title" id="operate-label">OPERATE</div>
-            <button class="nav-link active" type="button" data-nav="home"><span class="nav-icon">⌂</span>Home</button>
-            <button class="nav-link" type="button" data-nav="payments"><span class="nav-icon">↗</span>Payments</button>
-            <button class="nav-link" type="button" data-nav="incidents"><span class="nav-icon">!</span>Incidents</button>
-            <button class="nav-link" type="button" data-nav="recoveries"><span class="nav-icon">↻</span>Recoveries</button>
-          </section>
-          <section class="nav-group" aria-labelledby="control-label">
-            <div class="nav-title" id="control-label">CONTROL</div>
-            <!-- Policy & Safety -->
-            <button class="nav-link" type="button" data-nav="policy"><span class="nav-icon">◇</span>Policy &amp; Safety</button>
-            <button class="nav-link" type="button" data-nav="exceptions"><span class="nav-icon">△</span>Exceptions</button>
-          </section>
-          <section class="nav-group" aria-labelledby="prove-label">
-            <div class="nav-title" id="prove-label">PROVE</div>
-            <button class="nav-link" type="button" data-nav="outcomes"><span class="nav-icon">✓</span>Outcomes</button>
-            <button class="nav-link" type="button" data-nav="evaluation"><span class="nav-icon">▦</span>Evaluation</button>
-          </section>
-        </nav>
-
-        <div class="sidebar-foot">
-          <a class="nav-link" href="/storefront"><span class="nav-icon">◫</span>Storefront</a>
-          <a class="nav-link" href="/judge"><span class="nav-icon">→</span>Judge mode</a>
-          <div class="status-row"><span><span class="dot"></span>Monitoring</span><span>TEST MODE</span></div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="ReRoute Sentinel payment incident response for revenue recovery" />
+  <title>ReRoute Sentinel — Payment incident response</title>
+  <style>
+    :root{--blue:#305eff;--blue2:#5278ff;--ink:#0c1927;--navy:#192839;--muted:#5e6c7b;--line:#dfe3e9;--page:#f8fafc;--soft:#f1f5fa;--white:#fff;--green:#00be5f;--green-soft:#ecfdf3;--amber:#b54708;--amber-soft:#fff7ed;--red:#d92d20;--red-soft:#fef3f2;--shadow:0 24px 70px rgba(12,25,39,.12);--ease:cubic-bezier(.22,.8,.22,1)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--page);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}button,a{font:inherit}.hidden{display:none!important}.badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 9px;background:#fff;font-size:10px;font-weight:800;letter-spacing:.06em}.badge.sim{background:#f4f6ff;border-color:#dfe5ff;color:#3147a7}.badge.test{background:#eef4ff;border-color:#dce7ff;color:#2454b6}.badge.ok{background:var(--green-soft);border-color:#cdebdc;color:#067345}.badge.warn{background:var(--amber-soft);border-color:#f5d9bd;color:#98520b}.badge.block{background:var(--red-soft);border-color:#f2cbc8;color:var(--red)}
+    .landing{min-height:100vh;background:linear-gradient(180deg,#fff 0%,#fff 72%,#f8fafc 100%)}.nav{height:76px;max-width:1460px;margin:auto;padding:0 52px;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:11px}.mark{width:35px;height:35px;border-radius:10px;background:var(--navy);color:#fff;display:grid;place-items:center;font-weight:850}.brand strong{display:block;font-size:14px}.brand small{display:block;color:var(--muted);font-size:10px;margin-top:2px}.nav a{color:var(--muted);text-decoration:none;font-size:12px;font-weight:700}.hero{max-width:1460px;min-height:calc(100vh - 76px);margin:auto;padding:34px 52px 64px;display:grid;grid-template-columns:.92fr 1.08fr;gap:64px;align-items:center}.eyebrow{font-size:10px;letter-spacing:.13em;text-transform:uppercase;font-weight:850;color:#687789}.hero h1{font-size:60px;line-height:1.02;letter-spacing:-.055em;margin:15px 0 20px;max-width:650px}.hero p{font-size:17px;line-height:1.58;color:var(--muted);max-width:620px}.hero-actions{margin-top:29px;display:flex;align-items:center;gap:18px}.primary{border:0;border-radius:12px;background:var(--blue);color:#fff;padding:14px 21px;font-weight:800;box-shadow:0 12px 28px rgba(48,94,255,.22);cursor:pointer;transition:.2s var(--ease)}.primary:hover{background:#214dfa;transform:translateY(-1px)}.secondary{border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);padding:11px 14px;font-weight:730;cursor:pointer}.text-link{border:0;background:transparent;color:var(--muted);font-weight:720;text-decoration:none;cursor:pointer}.truth{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}.trust{font-size:11px;color:#7b8795;margin-top:11px;font-weight:650}
+    .story{position:relative;min-height:570px;border:1px solid #dce3ec;border-radius:24px;background:#fff;box-shadow:var(--shadow);overflow:hidden}.story-top{height:57px;border-bottom:1px solid var(--line);padding:0 18px;display:flex;align-items:center;justify-content:space-between}.story-top strong{font-size:12px}.live{font-size:10px;color:#337057;font-weight:760}.live:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:7px}.story-body{padding:17px}.story-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{border:1px solid var(--line);border-radius:13px;padding:10px 11px}.mini span{display:block;color:#7d8996;font-size:9px;margin-bottom:5px}.mini strong{font-size:18px}.story-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:10px;margin-top:10px}.panel{border:1px solid var(--line);border-radius:14px;background:#fff}.chart-wrap{padding:13px}.panel-title{font-size:10px;color:#506072;font-weight:760}.chart{height:205px;width:100%}.range{fill:#eef2ff}.trend{fill:none;stroke:var(--blue);stroke-width:4;stroke-linecap:round;transition:.8s var(--ease)}.feed{padding:6px 11px}.row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eef1f4}.row:last-child{border-bottom:0}.row strong{font-size:11px}.row small{display:block;font-size:9px;color:#7d8996;margin-top:2px}.pill{font-size:8px;font-weight:850;border-radius:999px;padding:4px 6px;background:var(--green-soft);color:#087647}.pill.fail{background:var(--red-soft);color:var(--red)}.story-overlay{position:absolute;inset:57px 0 0;background:rgba(12,25,39,.18);display:grid;place-items:center;opacity:0;pointer-events:none;transition:.35s var(--ease)}.story-overlay.show{opacity:1}.story-card{width:min(78%,500px);background:#fff;border:1px solid var(--line);border-radius:18px;padding:21px;box-shadow:var(--shadow);transform:translateY(12px);transition:.35s var(--ease)}.story-overlay.show .story-card{transform:none}.story-card h3{font-size:23px;letter-spacing:-.035em;margin:6px 0 9px}.story-card .amount{font-size:43px;font-weight:880;letter-spacing:-.055em}.story-copy{font-size:11px;line-height:1.5;color:var(--muted)}.story-policy{display:grid;gap:7px;margin-top:12px}.story-policy div{border:1px solid var(--line);border-radius:10px;padding:8px 9px;display:flex;justify-content:space-between;font-size:10px;font-weight:720}.story-policy .blocked{background:var(--red-soft);border-color:#f2cbc8}.story-progress{height:4px;background:#edf0f4;position:absolute;bottom:0;left:0;right:0}.story-progress span{display:block;height:100%;width:0;background:var(--blue)}
+    .how{padding:62px 52px 74px;background:#fff;border-top:1px solid var(--line)}.how-inner{max-width:1356px;margin:auto}.how h2{font-size:38px;letter-spacing:-.045em;margin:9px 0 27px}.steps{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.step{padding:22px 17px;border-right:1px solid #e6e9ed}.step:last-child{border-right:0}.step small{color:#84909c;font-size:9px;font-weight:820}.step strong{display:block;font-size:17px;margin-top:10px}
+    .sandbox{position:fixed;inset:0;z-index:30;background:#f5f7fb;opacity:0;pointer-events:none;transform:scale(1.008);transition:.42s var(--ease)}.sandbox.active{opacity:1;pointer-events:auto;transform:none}.sandbox-shell{height:100vh;display:grid;grid-template-columns:190px minmax(0,1fr);grid-template-rows:62px minmax(0,1fr)}.sandbox-top{grid-column:1/-1;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 22px}.merchant{display:flex;align-items:center;gap:9px}.merchant strong{font-size:13px}.sandbox-right{display:flex;align-items:center;gap:8px}.side{background:#fff;border-right:1px solid var(--line);padding:17px 11px;display:flex;flex-direction:column;gap:4px}.nav-item{border:0;background:transparent;border-radius:9px;padding:10px 11px;text-align:left;font-size:11px;font-weight:720;color:#687788;cursor:pointer}.nav-item.active{background:#eef2ff;color:#2348c5}.side .bottom{margin-top:auto}.main{position:relative;overflow:hidden;padding:18px 22px}.view{height:100%;max-width:1420px;margin:auto}.overview{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);grid-template-rows:auto minmax(0,1fr);gap:13px}.overview-head{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.overview-head h2{font-size:27px;letter-spacing:-.04em;margin:0}.support{font-size:11px;color:var(--muted);margin-top:5px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:11px}.metric{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}.metric span{display:block;color:#778595;font-size:9px;margin-bottom:4px}.metric strong{font-size:19px}.left,.right{min-height:0;display:grid;gap:13px}.left{grid-template-rows:minmax(0,1fr) auto}.right{grid-template-rows:auto minmax(0,1fr)}.big-chart{padding:14px 16px}.big-chart svg{width:100%;height:calc(100% - 23px);min-height:210px}.activity,.events,.guide{padding:12px 13px}.guide strong{font-size:13px}.guide p{font-size:10px;line-height:1.5;color:var(--muted)}.event{padding:9px 0;border-bottom:1px solid #eef1f4}.event:last-child{border-bottom:0}.event b{font-size:10px;display:block}.event span{font-size:9px;color:#7d8996}.simple{height:100%;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px}.simple h2{font-size:25px;margin:0 0 7px}.list-card{border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:9px;display:flex;align-items:center;justify-content:space-between}.list-card strong{font-size:11px}.list-card span{font-size:9px;color:var(--muted)}
+    .dim{position:absolute;inset:0;background:rgba(12,25,39,.22);opacity:0;pointer-events:none;transition:.3s}.dim.show{opacity:1}.focus{position:absolute;inset:0;display:grid;place-items:center;opacity:0;pointer-events:none;transform:scale(.99);transition:.35s var(--ease)}.focus.show{opacity:1;pointer-events:auto;transform:none}.focus-card{width:min(650px,72vw);background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:22px}.focus-card h3{font-size:27px;letter-spacing:-.04em;margin:7px 0 10px}.impact{font-size:48px;font-weight:880;letter-spacing:-.06em}.impact-label{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:#6c7a8a;font-weight:820}.focus-actions{display:flex;gap:8px;margin-top:17px}.invest-steps{display:grid;gap:7px;margin-top:15px}.invest-step{border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:10px;font-weight:720;opacity:.42;transition:.25s}.invest-step.done{opacity:1;background:#fbfffd;border-color:#cdebdc}.review{position:absolute;inset:0;background:#f5f7fb;transform:translateX(105%);transition:.42s var(--ease);overflow:auto;z-index:5}.review.show{transform:none}.review-inner{max-width:920px;margin:auto;padding:28px 25px 100px}.review-top{display:flex;align-items:flex-start;justify-content:space-between}.review-title{font-size:31px;font-weight:850;letter-spacing:-.045em;margin-top:7px}.review-amount{font-size:13px;color:var(--amber);font-weight:800;margin-top:7px}.section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:11px}.section-label{font-size:9px;letter-spacing:.12em;color:#718092;font-weight:860}.copy{font-size:11px;color:#4e5f72;line-height:1.58;margin-top:8px}.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:11px}.fact{background:var(--soft);border-radius:10px;padding:10px}.fact small{display:block;color:#718092;font-size:8px}.fact strong{font-size:15px;display:block;margin-top:4px}.policy-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.policy-box{border:1px solid #cdebdc;border-radius:10px;padding:10px;background:#fbfffd}.policy-box.blocked{border-color:#f2cbc8;background:var(--red-soft)}.policy-box .line{display:flex;justify-content:space-between;gap:10px;align-items:center}.policy-box strong{font-size:10px}.rec{display:flex;align-items:center;justify-content:space-between;gap:15px}.rec strong{font-size:14px}.approval{position:sticky;bottom:0;margin-top:13px;padding:12px;background:rgba(245,247,251,.92);backdrop-filter:blur(12px);display:flex;justify-content:flex-end;gap:8px}.spinner{width:17px;height:17px;border:2px solid #dbe3ef;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+    .awaiting,.recovered{position:absolute;inset:0;display:grid;place-items:center;background:rgba(245,247,251,.96);opacity:0;pointer-events:none;transition:.35s;z-index:10}.awaiting.show,.recovered.show{opacity:1;pointer-events:auto}.await-card{width:min(520px,72vw);text-align:center;background:#fff;border:1px solid var(--line);border-radius:18px;padding:27px;box-shadow:var(--shadow)}.await-card h3{font-size:26px;margin:12px 0 7px}.zero{font-size:50px;font-weight:880;letter-spacing:-.06em;margin-top:17px}.recovered{background:#fff}.recovered-inner{text-align:center;padding:30px}.recovered-amount{font-size:86px;font-weight:900;letter-spacing:-.075em;color:#078c4d}.recovered-word{font-size:14px;font-weight:900;letter-spacing:.17em;color:#078c4d}.lifecycle{display:flex;justify-content:center;gap:5px;flex-wrap:wrap;margin-top:20px}.life{border:1px solid var(--line);border-radius:999px;padding:6px 8px;font-size:8px;font-weight:820}.free{position:absolute;right:18px;bottom:18px;background:var(--navy);color:#fff;border-radius:999px;padding:8px 11px;font-size:9px;font-weight:760;opacity:0;transform:translateY(8px);transition:.25s}.free.show{opacity:1;transform:none}
+    @media(max-width:1000px){.hero{grid-template-columns:1fr;padding-top:52px}.story{min-height:520px}.hero h1{font-size:50px}.sandbox-shell{grid-template-columns:150px 1fr}.overview{grid-template-columns:1fr}.right{display:none}.steps{grid-template-columns:1fr}.step{border-right:0;border-bottom:1px solid var(--line)}}
+    @media(max-width:680px){.nav{padding:0 20px}.nav>a{display:none}.hero{padding:28px 20px 50px}.hero h1{font-size:42px}.hero p{font-size:15px}.story-grid{grid-template-columns:1fr}.story-grid .feed{display:none}.how{padding:48px 20px}.sandbox-shell{grid-template-columns:1fr;grid-template-rows:60px 1fr}.side{display:none}.main{padding:14px}.metrics{grid-template-columns:1fr 1fr}.facts,.policy-grid{grid-template-columns:1fr 1fr}.recovered-amount{font-size:62px}}
+  </style>
+</head>
+<body>
+  <main class="landing" id="landing">
+    <header class="nav">
+      <div class="brand"><div class="mark">R</div><div><strong>ReRoute Sentinel</strong><small>Payment incident response</small></div></div>
+      <a href="#how">How it works</a>
+    </header>
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Payment incident response for revenue recovery</div>
+        <h1>Catch payment incidents before they become lost revenue.</h1>
+        <p>Sentinel watches payment health, investigates meaningful degradation, removes unsafe recovery actions, and asks for approval only when there is something worth acting on.</p>
+        <div class="hero-actions"><button class="primary" id="startSandbox">Try it for yourself →</button><a class="text-link" href="#how">How it works</a></div>
+        <div class="truth"><span class="badge sim">SIMULATED SANDBOX</span><span class="badge test">RAZORPAY TEST MODE</span></div>
+        <div class="trust">Find the leak. Recover safely. Prove the outcome.</div>
+      </div>
+      <section class="story" aria-label="ReRoute Sentinel product story">
+        <div class="story-top"><strong>Demo Sporting Goods · Payment health</strong><span class="live" id="storyStatus">Sentinel monitoring</span></div>
+        <div class="story-body">
+          <div class="story-metrics"><div class="mini"><span>Success rate</span><strong id="storyRate">91.8%</strong></div><div class="mini"><span>Attempts</span><strong>1,248</strong></div><div class="mini"><span>Incidents</span><strong id="storyIncidents">0</strong></div></div>
+          <div class="story-grid"><div class="panel chart-wrap"><div class="panel-title">Success rate</div><svg class="chart" viewBox="0 0 700 240" preserveAspectRatio="none"><path class="range" d="M0 68 H700 V112 H0 Z"/><path class="trend" id="storyTrend" d="M0 88 C80 82 120 88 170 80 S270 89 320 81 S430 86 480 78 S600 87 700 76"/></svg><div class="story-copy">Normal range</div></div><div class="panel feed" id="storyFeed"><div class="row"><div><strong>₹899</strong><small>UPI</small></div><span class="pill">Captured</span></div><div class="row"><div><strong>₹1,299</strong><small>Card</small></div><span class="pill">Captured</span></div><div class="row"><div><strong>₹2,499</strong><small>UPI</small></div><span class="pill">Captured</span></div></div></div>
         </div>
-      </aside>
-
-      <main class="main">
-        <header class="topbar">
-          <div class="crumb" data-crumb>Home</div>
-          <div class="top-actions">
-            <span class="badge sim">SIMULATED REPLAY</span>
-            <span class="badge test">Razorpay · TEST MODE</span>
-            <button class="btn small" type="button" data-action="refresh">Refresh</button>
-          </div>
-        </header>
-
-        <section class="page" id="sentinel-app" aria-live="polite">
-          <div class="loading-card card">
-            <div class="eyebrow">Operator console</div>
-            <h1>Loading ReRoute Sentinel…</h1>
-            <p class="sub">Reading persisted payments, incidents, policy and outcomes.</p>
-          </div>
-        </section>
-      </main>
-    </div>
-
-    <section hidden aria-hidden="true" data-server-contract>
-      <span>Investigate recoverable failures with evidence</span>
-      <article data-kpi-slot="estimated-recoverable">Estimated Recoverable <span class="claim-tag">ESTIMATED</span></article>
-      <article data-kpi-slot="actual-recovered">Actual Recovered <span class="claim-tag">TEST MODE</span></article>
-      <article data-kpi-slot="open-cases">Open cases</article>
+        <div class="story-overlay" id="storyOverlay"><div class="story-card" id="storyCard"></div></div><div class="story-progress"><span id="storyProgress"></span></div>
+      </section>
     </section>
+    <section class="how" id="how"><div class="how-inner"><div class="eyebrow">HOW SENTINEL WORKS</div><h2>Sentinel does the work before it asks for yours.</h2><div class="steps"><div class="step"><small>01</small><strong>Detect</strong></div><div class="step"><small>02</small><strong>Diagnose</strong></div><div class="step"><small>03</small><strong>Constrain</strong></div><div class="step"><small>04</small><strong>Recover</strong></div><div class="step"><small>05</small><strong>Prove</strong></div></div></div></section>
+  </main>
 
-    <div class="toast" role="status" aria-live="polite" data-toast hidden></div>
-    <script type="module" src="/static/js/sentinel.js"></script>
-  </body>
+  <section class="sandbox" id="sandbox" aria-hidden="true">
+    <div class="sandbox-shell">
+      <header class="sandbox-top"><div class="merchant"><strong>Demo Sporting Goods</strong><span class="badge sim">SIMULATED SANDBOX</span></div><div class="sandbox-right"><span class="badge test">RAZORPAY already connected</span><button class="text-link" id="exitSandbox">Exit sandbox</button></div></header>
+      <aside class="side"><button class="nav-item active" data-view="overview">Overview</button><button class="nav-item" data-view="payments">Payments</button><button class="nav-item" data-view="incidents">Incidents</button><button class="nav-item" data-view="history">History</button><div class="bottom"><button class="nav-item" data-view="settings">Settings</button></div></aside>
+      <div class="main">
+        <section class="view overview" id="overviewView">
+          <div class="overview-head"><div><h2 id="healthTitle">Payments are healthy</h2><div class="support" id="healthSupport">Sentinel is watching recent payment attempts.</div><div class="metrics"><div class="metric"><span>Success rate</span><strong id="successRate">91.8%</strong></div><div class="metric"><span>Normal baseline</span><strong id="baselineRate">91.8%</strong></div><div class="metric"><span>Payments affected</span><strong id="affectedCount">0</strong></div><div class="metric"><span>Actual recovered</span><strong id="actualRecovered">₹0</strong></div></div></div><span class="badge ok" id="healthBadge">Payments are healthy</span></div>
+          <div class="left"><div class="panel big-chart"><div class="panel-title">Payment success rate</div><svg viewBox="0 0 900 330" preserveAspectRatio="none"><path class="range" d="M0 86 H900 V145 H0 Z"/><path class="trend" id="sandboxTrend" d="M0 111 C80 103 135 111 190 101 S310 111 365 102 S475 108 535 99 S665 111 730 101 S840 103 900 94"/></svg><div class="story-copy">Current · Normal range</div></div><div class="panel activity" id="activityRows"></div></div>
+          <div class="right"><div class="panel guide"><strong id="guideTitle">Start with a test purchase</strong><p id="guideCopy">Open the customer storefront and make one UPI payment. Sentinel will watch what happens next.</p><button class="secondary" id="guideAction">Open test storefront</button></div><div class="panel events" id="eventLog"></div></div>
+        </section>
+        <section class="view simple hidden" id="paymentsView"><h2>Payments</h2><div class="support">Recent payment activity for Demo Sporting Goods.</div><div id="paymentsList"></div></section>
+        <section class="view simple hidden" id="incidentsView"><h2>Incidents</h2><div class="support">Payment incidents detected by Sentinel.</div><div id="incidentsList"></div></section>
+        <section class="view simple hidden" id="historyView"><h2>History</h2><div class="support">Verified recovery outcomes appear here.</div><div id="historyList"></div></section>
+        <section class="view simple hidden" id="settingsView"><h2>Settings</h2><div class="section"><div class="section-label">SAFETY</div><div class="copy">Blocked actions are removed before the model ranks permitted recovery options.</div></div></section>
+        <div class="dim" id="dim"></div>
+        <div class="focus" id="investFocus"><div class="focus-card"><div class="eyebrow">BACKGROUND INVESTIGATION</div><h3>Investigating payment incident…</h3><div class="invest-steps" id="investSteps"><div class="invest-step">Payment evidence assembled</div><div class="invest-step">Merchant baseline compared</div><div class="invest-step">Affected cohort isolated</div><div class="invest-step">Policy evaluated</div><div class="invest-step">Permitted actions ranked</div></div><div class="story-copy" id="investFooter" style="margin-top:12px">No action required yet</div></div></div>
+        <div class="focus" id="incidentFocus"><div class="focus-card"><div style="display:flex;justify-content:space-between;gap:14px"><div><div class="eyebrow">PAYMENT INCIDENT</div><h3>UPI payment degradation detected</h3></div><span class="badge warn">High confidence</span></div><div class="impact" id="incidentRisk">₹46.2K</div><div class="impact-label">ESTIMATED AT RISK</div><div class="story-copy" id="incidentCompare" style="margin-top:8px">91.8% baseline → 58.3% current · 37 payments affected</div><div class="focus-actions"><button class="primary" id="reviewIncident">Review incident →</button><button class="secondary" id="keepMonitoring">Keep monitoring</button></div></div></div>
+        <section class="review" id="reviewPanel"><div class="review-inner"><div class="review-top"><div><div class="eyebrow">PAYMENT INCIDENT</div><div class="review-title">UPI payment degradation</div><div class="review-amount" id="reviewRisk">₹46.2K estimated at risk</div></div><span class="badge warn">High confidence</span></div>
+          <div class="section"><div class="section-label">WHAT CHANGED</div><div class="facts"><div class="fact"><small>Normal success rate</small><strong id="factBaseline">91.8%</strong></div><div class="fact"><small>Current success rate</small><strong id="factCurrent">58.3%</strong></div><div class="fact"><small>Affected payments</small><strong id="factAffected">37</strong></div><div class="fact"><small>Payment method</small><strong>UPI</strong></div></div></div>
+          <div class="section"><div class="section-label">VERIFIED FACTS</div><div class="copy" id="factsCopy">Success rate dropped below the merchant baseline. The affected cohort is concentrated in UPI attempts. ₹46,225 is estimated exposure, not recovered revenue.</div></div>
+          <div class="section"><div class="section-label">AI ANALYSIS — ADVISORY</div><div class="copy" id="aiCopy">Generate an advisory hypothesis from the bounded incident evidence.</div><div id="aiMeta" class="copy hidden"></div><button class="secondary" id="generateAnalysis" style="margin-top:10px">Generate analysis</button><div id="aiLoading" class="hidden" style="margin-top:10px;display:flex;align-items:center;gap:8px"><span class="spinner"></span><span class="story-copy">Analyzing bounded incident evidence…</span></div></div>
+          <div class="section"><div class="section-label">POLICY &amp; SAFETY</div><div class="copy">Policy decides what the model is allowed to rank.</div><div class="policy-grid"><div class="policy-box"><div class="line"><strong>Send alternate payment link</strong><span class="badge ok">ALLOWED</span></div></div><div class="policy-box blocked"><div class="line"><strong>Retry hard-decline cases</strong><span class="badge block">BLOCKED</span></div><div class="copy">Blocked actions never reach the recommendation model.</div></div></div></div>
+          <div class="section"><div class="section-label">RECOMMENDED ACTION</div><div class="rec"><div><strong>Send alternate payment link</strong><div class="copy">This gives the customer a new payment path without retrying a blocked failure.</div></div><span class="badge ok">Policy permitted</span></div></div>
+          <div class="approval"><button class="secondary" id="doNotAct">Do not act</button><button class="primary" id="approveAction">Approve recommended action</button></div>
+        </div></section>
+        <div class="awaiting" id="awaiting"><div class="await-card"><span class="badge ok">Approved by business owner</span><h3 id="awaitTitle">Creating recovery action…</h3><div class="story-copy" id="awaitCopy">Approval is not recovery.</div><div class="zero" id="awaitAmount">₹0</div><div class="impact-label">Actual recovered</div><button class="primary hidden" id="openRecovery" style="margin-top:17px">Open recovery payment link</button></div></div>
+        <div class="recovered" id="recovered"><div class="recovered-inner"><div class="recovered-amount" id="recoveredAmount">₹2,499</div><div class="recovered-word">RECOVERED</div><div style="margin-top:12px"><span class="badge test">RAZORPAY TEST MODE</span> <span class="badge ok">Provider outcome verified</span></div><div class="story-copy" style="font-size:12px;max-width:570px;margin:16px auto">ReRoute counted this as recovered only after authoritative provider outcome evidence was persisted.</div><div class="lifecycle"><span class="life">FAILED</span><span class="life">INVESTIGATED</span><span class="life">ELIGIBLE</span><span class="life">APPROVED</span><span class="life">AWAITING OUTCOME</span><span class="life">RECOVERED</span></div><div style="display:flex;justify-content:center;gap:8px;margin-top:22px"><button class="primary" id="exploreConsole">Explore console</button><button class="secondary" id="replaySandbox">Replay sandbox</button></div></div></div>
+        <div class="free" id="freeBanner">Guided recovery complete · free exploration unlocked</div>
+      </div>
+    </div>
+  </section>
+
+  <section hidden aria-hidden="true" data-server-contract>
+    <nav>Home Payments Incidents Recoveries Policy &amp; Safety Exceptions Outcomes Evaluation</nav>
+    <a href="/judge">Judge mode</a><a href="/storefront">Storefront</a>
+    <article data-kpi-slot="estimated-recoverable">Estimated Recoverable <span class="claim-tag">ESTIMATED</span></article>
+    <article data-kpi-slot="actual-recovered">Actual Recovered <span class="claim-tag">TEST MODE</span></article>
+    <article data-kpi-slot="open-cases">Open cases</article>
+    <span>/static/css/sentinel.css</span><span>/static/js/sentinel.js</span>
+  </section>
+  <script type="module" src="/static/js/guided-sandbox.js"></script>
+</body>
 </html>
