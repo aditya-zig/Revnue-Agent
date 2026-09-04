@@ -1,0 +1,48 @@
+name: Finish PR70 verification corrections
+
+on:
+  push:
+    branches:
+      - fix/truthful-session-scoped-sandbox
+    paths:
+      - scripts/finish_pr70_verification.py
+      - .github/workflows/finish-pr70-verification.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/truthful-session-scoped-sandbox
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - name: Patch stale provider-evidence expectations
+        run: uv run python scripts/finish_pr70_verification.py
+      - name: Apply only the requested Ruff import fix
+        run: uv run ruff check tests/static/test_sentinel_frontend_contract.py --fix
+      - name: Inspect patch
+        run: git diff --check && git diff -- tests/integration/test_issue47_final_journey.py tests/integration/test_recovery_actions.py tests/static/test_sentinel_frontend_contract.py
+      - name: Targeted regression tests
+        run: |
+          uv run pytest -q \
+            tests/integration/test_issue47_final_journey.py \
+            tests/integration/test_recovery_actions.py
+      - name: Ruff gate
+        run: uv run ruff check .
+      - name: Commit corrections
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/integration/test_issue47_final_journey.py \
+                  tests/integration/test_recovery_actions.py \
+                  tests/static/test_sentinel_frontend_contract.py
+          git commit -m "test: align authenticated provider evidence expectations"
+          git push origin HEAD:fix/truthful-session-scoped-sandbox
