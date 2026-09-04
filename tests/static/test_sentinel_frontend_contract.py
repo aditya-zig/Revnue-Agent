@@ -1,3 +1,4 @@
+from html import unescape
 from pathlib import Path
 
 
@@ -11,7 +12,7 @@ GUIDED_SANDBOX_JS = ROOT / "app/static/js/guided-sandbox.js"
 
 
 def test_dashboard_uses_real_sentinel_shell() -> None:
-    html = DASHBOARD.read_text(encoding="utf-8")
+    html = unescape(DASHBOARD.read_text(encoding="utf-8"))
     assert "/static/css/sentinel.css" in html
     assert "/static/js/sentinel.js" in html
     for label in (
