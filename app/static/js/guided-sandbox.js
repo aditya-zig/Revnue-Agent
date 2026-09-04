@@ -1,14 +1,14 @@
 const $ = (id) => document.getElementById(id);
 const money = (paise) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(paise || 0) / 100);
 const pct = (value) => `${(Number(value || 0) * 100).toFixed(1)}%`;
-const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 const state = {
   incident: null,
   control: null,
   providerLink: null,
-  baselineRecovered: 0,
-  purchaseOpened: false,
+  replayId: null,
+  runId: null,
+  incidentId: null,
   freeExplore: false,
   polling: null,
 };
@@ -42,6 +42,15 @@ function formatRisk(paise) {
   return money(paise);
 }
 
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function addEvent(title, detail = "") {
   const root = $("eventLog");
   const node = document.createElement("div");
@@ -60,13 +69,14 @@ function addActivity(amount, method, status) {
   while (root.children.length > 5) root.lastElementChild.remove();
 }
 
-function escapeHTML(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function replayIdentity() {
+  let token;
+  if (globalThis.crypto?.randomUUID) {
+    token = globalThis.crypto.randomUUID().replaceAll("-", "");
+  } else {
+    token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  }
+  return `guided_${token}`.slice(0, 64);
 }
 
 function seedHealthyUI() {
@@ -78,6 +88,7 @@ function seedHealthyUI() {
   $("actualRecovered").textContent = "₹0";
   $("healthBadge").textContent = "Payments are healthy";
   $("healthBadge").className = "badge ok";
+  $("razorpayState").textContent = "RAZORPAY TEST MODE";
   $("sandboxTrend").setAttribute("d", "M0 111 C80 103 135 111 190 101 S310 111 365 102 S475 108 535 99 S665 111 730 101 S840 103 900 94");
   $("activityRows").innerHTML = "";
   $("eventLog").innerHTML = "";
@@ -85,14 +96,17 @@ function seedHealthyUI() {
   addActivity("₹2,499", "UPI", "Captured");
   addActivity("₹1,299", "Card", "Captured");
   addActivity("₹749", "UPI", "Captured");
-  addEvent("Sentinel monitoring", "Payment health is within the merchant baseline.");
-  $("guideTitle").textContent = "Start with a test purchase";
-  $("guideCopy").textContent = "Open the customer storefront and make one UPI payment. Sentinel will watch what happens next.";
-  $("guideAction").textContent = "Open test storefront";
-  state.purchaseOpened = false;
+  addEvent("SIMULATED DEMO DATA", "Payment health is within the replay merchant baseline.");
+  $("guideTitle").textContent = "Replay a simulated merchant day";
+  $("guideCopy").textContent = "Use SIMULATED DEMO DATA to watch the real detector, investigation, Policy, approval, and provider-evidence boundaries.";
+  $("guideAction").textContent = "Start simulated replay";
+  $("guideAction").disabled = false;
   state.incident = null;
   state.control = null;
   state.providerLink = null;
+  state.replayId = null;
+  state.runId = null;
+  state.incidentId = null;
   stopOutcomePolling();
 }
 
@@ -107,7 +121,7 @@ function startStory() {
   const run = () => {
     clear();
     overlay.classList.remove("show");
-    $("storyStatus").textContent = "Sentinel monitoring";
+    $("storyStatus").textContent = "SIMULATED PRODUCT STORY";
     $("storyRate").textContent = "91.8%";
     $("storyIncidents").textContent = "0";
     $("storyFeed").innerHTML = `<div class="row"><div><strong>₹899</strong><small>UPI</small></div><span class="pill">Captured</span></div><div class="row"><div><strong>₹1,299</strong><small>Card</small></div><span class="pill">Captured</span></div><div class="row"><div><strong>₹2,499</strong><small>UPI</small></div><span class="pill">Captured</span></div>`;
@@ -118,19 +132,19 @@ function startStory() {
     later(3300, () => {
       $("storyRate").textContent = "58.3%";
       $("storyIncidents").textContent = "1";
-      $("storyStatus").textContent = "Investigating incident…";
+      $("storyStatus").textContent = "SIMULATED PRODUCT STORY";
       trend.setAttribute("d", "M0 88 C100 82 180 84 270 82 S390 88 470 83 C535 84 570 110 610 150 S660 184 700 191");
       $("storyFeed").insertAdjacentHTML("afterbegin", `<div class="row"><div><strong>₹2,499</strong><small>UPI</small></div><span class="pill fail">Failed</span></div>`);
     });
     later(5600, () => {
-      card.innerHTML = `<div class="eyebrow">PAYMENT INCIDENT</div><h3>UPI payment degradation detected</h3><div class="amount">₹46.2K</div><div class="story-copy">ESTIMATED AT RISK · 91.8% baseline → 58.3% current</div>`;
+      card.innerHTML = `<div class="eyebrow">SIMULATED PRODUCT STORY</div><h3>UPI payment degradation detected</h3><div class="amount">₹46.2K</div><div class="story-copy">ESTIMATED AT RISK · 91.8% baseline → 58.3% current</div>`;
       overlay.classList.add("show");
     });
     later(7900, () => {
-      card.innerHTML = `<div class="eyebrow">POLICY &amp; SAFETY</div><h3>Unsafe actions are removed first.</h3><div class="story-policy"><div><span>Send alternate payment link</span><span class="badge ok">ALLOWED</span></div><div class="blocked"><span>Retry hard-decline cases</span><span class="badge block">BLOCKED</span></div></div>`;
+      card.innerHTML = `<div class="eyebrow">SIMULATED PRODUCT STORY · POLICY</div><h3>Unsafe actions are removed first.</h3><div class="story-policy"><div><span>Send alternate payment link</span><span class="badge ok">ALLOWED</span></div><div class="blocked"><span>Retry hard-decline cases</span><span class="badge block">BLOCKED</span></div></div>`;
     });
     later(10100, () => {
-      card.innerHTML = `<div class="eyebrow">PROVIDER VERIFIED</div><div class="amount" style="color:#078c4d">₹2,499</div><h3 style="color:#078c4d">RECOVERED</h3><div class="truth"><span class="badge test">RAZORPAY TEST MODE</span><span class="badge ok">Provider outcome verified</span></div>`;
+      card.innerHTML = `<div class="eyebrow">SIMULATED PRODUCT STORY</div><div class="amount">₹0</div><h3>ACTUAL RECOVERED</h3><div class="story-copy">₹0 ACTUAL RECOVERED · Awaiting provider evidence</div>`;
     });
     later(12300, run);
   };
@@ -149,35 +163,38 @@ function closeSandbox() {
   stopOutcomePolling();
 }
 
-async function getDashboard() {
-  return api("/dashboard");
+async function getIncident() {
+  if (!state.incidentId) throw new Error("No sandbox incident is bound to this browser.");
+  return api(`/incidents/${encodeURIComponent(state.incidentId)}`);
 }
 
-async function listIncidents() {
-  return api("/incidents");
+async function getControl() {
+  if (!state.incidentId) throw new Error("No sandbox incident is bound to this browser.");
+  return api(`/incidents/${encodeURIComponent(state.incidentId)}/control`);
 }
 
-async function findIncident() {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const incidents = await listIncidents();
-    if (Array.isArray(incidents) && incidents.length) return incidents[0];
-    await sleep(650);
+function assertIncidentBinding(incident) {
+  if (incident?.incident_id !== state.incidentId) {
+    throw new Error("Incident response did not match this sandbox run.");
   }
-  return null;
+  if (incident?.cohort_filter?.run_id !== state.runId || incident?.cohort_filter?.replay_id !== state.replayId) {
+    throw new Error("Incident evidence belongs to a different sandbox run.");
+  }
 }
 
 function applyIncident(incident) {
   state.incident = incident;
-  const baseline = Number(incident?.baseline_metrics?.success_rate ?? .918);
-  const current = Number(incident?.observed_metrics?.success_rate ?? .583);
-  const affected = Number(incident?.affected_attempt_count ?? incident?.failed_attempt_count ?? 37);
-  const risk = Number(incident?.peak_estimated_amount_at_risk_paise ?? incident?.estimated_amount_at_risk ?? 4622500);
-  $("healthTitle").textContent = "Unusual UPI degradation detected";
+  const baseline = Number(incident?.baseline_metrics?.success_rate ?? 0);
+  const current = Number(incident?.observed_metrics?.success_rate ?? 0);
+  const affected = Number(incident?.affected_attempt_count ?? incident?.failed_attempt_count ?? 0);
+  const risk = Number(incident?.peak_estimated_amount_at_risk_paise ?? incident?.estimated_amount_at_risk ?? 0);
+  const method = String(incident?.method || incident?.cohort_filter?.method || "payment").toUpperCase();
+  $("healthTitle").textContent = `Unusual ${method} degradation detected`;
   $("healthSupport").textContent = "Success rate moved outside the merchant's normal range.";
   $("successRate").textContent = pct(current);
   $("baselineRate").textContent = pct(baseline);
   $("affectedCount").textContent = String(affected);
-  $("healthBadge").textContent = "Investigating incident…";
+  $("healthBadge").textContent = "Incident detected";
   $("healthBadge").className = "badge warn";
   $("sandboxTrend").setAttribute("d", "M0 111 C110 104 210 106 315 102 S500 108 570 109 C645 112 690 160 735 205 S830 250 900 260");
   $("incidentRisk").textContent = formatRisk(risk);
@@ -186,68 +203,29 @@ function applyIncident(incident) {
   $("factBaseline").textContent = pct(baseline);
   $("factCurrent").textContent = pct(current);
   $("factAffected").textContent = String(affected);
-  $("factsCopy").textContent = `Success rate dropped below the merchant baseline. The affected cohort is concentrated in UPI attempts. ${affected} payment attempts are linked to this incident window. ${money(risk)} is estimated exposure, not recovered revenue.`;
+  $("factMethod").textContent = method;
+  $("factsCopy").textContent = `Success rate dropped below the merchant baseline. ${affected} linked payment attempts are in this incident window. ${money(risk)} is estimated exposure, not recovered revenue.`;
 }
 
-async function startMerchantIncident() {
-  $("guideAction").disabled = true;
-  $("guideTitle").textContent = "Sentinel is watching";
-  $("guideCopy").textContent = "The merchant-day replay is adding surrounding payment activity so Sentinel can detect whether this is an incident.";
-  addEvent("Test purchase observed", "Sentinel is evaluating the surrounding merchant payment window.");
-  addActivity("₹2,499", "UPI", "Failed");
-  try {
-    const dashboard = await getDashboard();
-    state.baselineRecovered = Number(dashboard?.executive?.test_mode_value || 0);
-  } catch (_) {
-    state.baselineRecovered = 0;
-  }
-  try {
-    await api("/replay/start", { method: "POST" });
-  } catch (error) {
-    if (error.status !== 409) throw error;
-  }
-  const incident = await findIncident();
-  if (!incident) throw new Error("Sentinel did not create an incident from the replay.");
-  applyIncident(incident);
-  addActivity("₹1,299", "UPI", "Failed");
-  addActivity("₹749", "UPI", "Failed");
-  addEvent("UPI degradation detected", "The current success rate moved outside the normal range.");
-  await showInvestigation();
-  $("guideAction").disabled = false;
-}
-
-async function showInvestigation() {
-  $("dim").classList.add("show");
-  $("investFocus").classList.add("show");
-  const steps = [...document.querySelectorAll("#investSteps .invest-step")];
-  for (const step of steps) step.classList.remove("done");
-  for (let index = 0; index < steps.length; index += 1) {
-    await sleep(620);
-    steps[index].classList.add("done");
-  }
-  $("investFooter").textContent = "Incident ready for review";
-  await sleep(650);
-  $("investFocus").classList.remove("show");
-  $("incidentFocus").classList.add("show");
-}
-
-async function openReview() {
-  $("incidentFocus").classList.remove("show");
-  $("dim").classList.remove("show");
-  if (state.incident?.incident_id) {
-    try {
-      const detail = await api(`/incidents/${encodeURIComponent(state.incident.incident_id)}`);
-      applyIncident({ ...state.incident, ...detail });
-    } catch (_) {
-      // The summary remains sufficient for review if detail refresh is unavailable.
-    }
-  }
-  $("reviewPanel").classList.add("show");
+function actionLabel(action) {
+  const labels = {
+    payment_link: "Send alternate payment link",
+    retry: "Retry payment",
+    contact: "Contact customer",
+    promise: "Record promise to pay",
+    escalate: "Escalate to human review",
+  };
+  return labels[action] || String(action || "Unknown action").replaceAll("_", " ");
 }
 
 function analysisText(control) {
   const analysis = control?.analysis || control?.incident_analysis || null;
-  if (!analysis) return { text: "Sentinel completed bounded incident analysis. Root cause remains unconfirmed.", meta: "Deterministic fallback may be in use." };
+  if (!analysis) {
+    return {
+      text: "Sentinel completed bounded incident analysis. Root cause remains unconfirmed.",
+      meta: "No external AI result was asserted as fact.",
+    };
+  }
   const result = analysis.result || analysis.output || analysis;
   const hypotheses = result?.hypotheses;
   let text = "Sentinel completed bounded incident analysis. Root cause remains unconfirmed.";
@@ -257,58 +235,129 @@ function analysisText(control) {
   }
   const metadata = analysis.provider_metadata || result?.model_metadata || analysis.model_metadata || {};
   const fallback = Boolean(metadata.fallback_used ?? result?.fallback_used);
-  const model = metadata.resolved_model || metadata.requested_model || "OpenRouter model";
+  const model = metadata.resolved_model || metadata.requested_model || "configured advisory model";
   return {
     text,
-    meta: fallback ? "Deterministic fallback used; no external model claim is shown as fact." : `Advisory analysis generated by ${model}.`,
+    meta: fallback
+      ? "Deterministic fallback used; no external model claim is shown as fact."
+      : `Advisory analysis generated by ${model}.`,
   };
 }
 
-async function ensureInvestigated() {
-  if (!state.incident?.incident_id) throw new Error("No incident is selected.");
-  if (state.control?.recommendation || state.control?.analysis) return state.control;
-  const key = `guided-${state.incident.incident_id}-${Date.now()}`;
-  state.control = await api(`/incidents/${encodeURIComponent(state.incident.incident_id)}/investigate`, {
+function selectedCaseRecommendation(control) {
+  const recommendation = control?.recommendation;
+  const rows = Array.isArray(recommendation?.case_recommendations) ? recommendation.case_recommendations : [];
+  return rows.find((row) => row?.case_id === recommendation?.recommended_case_id)
+    || rows.find((row) => row?.recommended_action === recommendation?.recommended_action)
+    || null;
+}
+
+function renderControl(control) {
+  state.control = control;
+  const copy = analysisText(control);
+  $("aiCopy").textContent = copy.text;
+  $("aiMeta").textContent = copy.meta;
+  $("aiMeta").classList.remove("hidden");
+
+  const recommendation = control?.recommendation || {};
+  const selected = selectedCaseRecommendation(control);
+  const allowed = Array.isArray(selected?.allowed_actions) ? selected.allowed_actions : [];
+  const blocked = Array.isArray(selected?.blocked_actions) ? selected.blocked_actions : [];
+
+  $("policyAllowed").innerHTML = allowed.length
+    ? allowed.map((action) => `<div class="policy-box"><div class="line"><strong>${escapeHTML(actionLabel(action))}</strong><span class="badge ok">ALLOWED</span></div></div>`).join("")
+    : `<div class="policy-box"><div class="copy">No recovery action is currently permitted.</div></div>`;
+  $("policyBlocked").innerHTML = blocked.length
+    ? blocked.map((item) => `<div class="policy-box blocked"><div class="line"><strong>${escapeHTML(actionLabel(item.action))}</strong><span class="badge block">BLOCKED</span></div><div class="copy">${escapeHTML(Array.isArray(item.reasons) ? item.reasons.join(" · ") : "Removed before ranking")}</div></div>`).join("")
+    : `<div class="policy-box"><div class="copy">No additional actions were blocked for the recommended case.</div></div>`;
+
+  const recommendedAction = recommendation?.recommended_action || selected?.recommended_action || null;
+  $("recommendationAction").textContent = recommendedAction ? actionLabel(recommendedAction) : "No action available";
+  $("recommendationReason").textContent = selected?.reason || "No recovery action is currently permitted by deterministic Policy.";
+  $("approveAction").disabled = !recommendedAction;
+}
+
+async function startMerchantIncident() {
+  $("guideAction").disabled = true;
+  $("guideTitle").textContent = "SIMULATED DEMO DATA replay running";
+  $("guideCopy").textContent = "The backend is generating the merchant-day PaymentEvents and running the deterministic detector.";
+  addEvent("Replay started", "SIMULATED DEMO DATA is being processed by the real backend detector.");
+
+  state.replayId = replayIdentity();
+  const replay = await api(`/replay/start?replay_id=${encodeURIComponent(state.replayId)}&seed=47`, { method: "POST" });
+  if (!replay?.run_id || !replay?.incident_id) {
+    throw new Error("Replay did not return the exact run and incident identity.");
+  }
+  state.runId = replay.run_id;
+  state.incidentId = replay.incident_id;
+
+  const incident = await getIncident();
+  assertIncidentBinding(incident);
+  applyIncident(incident);
+  addEvent("Payment incident detected", "Deterministic incident evidence is bound to this sandbox run.");
+  await showInvestigation();
+}
+
+async function showInvestigation() {
+  $("dim").classList.add("show");
+  $("investFocus").classList.add("show");
+  $("investFooter").textContent = "Assembling persisted evidence…";
+  const steps = [...document.querySelectorAll("#investSteps .invest-step")];
+  for (const step of steps) step.classList.remove("done");
+
+  const detail = await getIncident();
+  assertIncidentBinding(detail);
+  applyIncident(detail);
+  steps.slice(0, 3).forEach((step) => step.classList.add("done"));
+  $("investFooter").textContent = "Running bounded analysis and deterministic Policy…";
+  $("aiLoading").classList.remove("hidden");
+
+  const key = `guided:${state.runId}:investigate`;
+  const control = await api(`/incidents/${encodeURIComponent(state.incidentId)}/investigate`, {
     method: "POST",
     body: { idempotency_key: key },
   });
-  return state.control;
+  renderControl(control);
+  $("aiLoading").classList.add("hidden");
+  steps.slice(3).forEach((step) => step.classList.add("done"));
+  $("investFooter").textContent = "Incident ready for review";
+  $("investFocus").classList.remove("show");
+  $("incidentFocus").classList.add("show");
 }
 
-async function generateAnalysis() {
-  $("generateAnalysis").disabled = true;
-  $("aiLoading").classList.remove("hidden");
+async function openReview() {
+  $("incidentFocus").classList.remove("show");
+  $("dim").classList.remove("show");
   try {
-    const control = await ensureInvestigated();
-    const copy = analysisText(control);
-    $("aiCopy").textContent = copy.text;
-    $("aiMeta").textContent = copy.meta;
-    $("aiMeta").classList.remove("hidden");
-    $("generateAnalysis").textContent = "Analysis generated";
+    const [detail, control] = await Promise.all([getIncident(), getControl()]);
+    assertIncidentBinding(detail);
+    applyIncident(detail);
+    renderControl(control);
   } catch (error) {
-    $("aiCopy").textContent = "Advisory analysis could not be generated. Deterministic facts and Policy remain available.";
     $("aiMeta").textContent = error.message;
     $("aiMeta").classList.remove("hidden");
-    $("generateAnalysis").disabled = false;
-  } finally {
-    $("aiLoading").classList.add("hidden");
   }
+  $("reviewPanel").classList.add("show");
 }
 
 async function approveAndExecute() {
   $("approveAction").disabled = true;
   try {
-    await ensureInvestigated();
-    await api(`/incidents/${encodeURIComponent(state.incident.incident_id)}/approve`, { method: "POST" });
+    const current = await getControl();
+    renderControl(current);
+    if (!current?.recommendation?.recommended_action) {
+      throw new Error("Deterministic Policy produced no actionable recommendation.");
+    }
+    await api(`/incidents/${encodeURIComponent(state.incidentId)}/approve`, { method: "POST" });
     $("reviewPanel").classList.remove("show");
     $("awaiting").classList.add("show");
     $("awaitTitle").textContent = "Creating recovery action…";
     $("awaitCopy").textContent = "Approval is not recovery.";
     $("awaitAmount").textContent = "₹0";
-    const result = await api(`/incidents/${encodeURIComponent(state.incident.incident_id)}/execute`, { method: "POST" });
+    const result = await api(`/incidents/${encodeURIComponent(state.incidentId)}/execute`, { method: "POST" });
     state.providerLink = typeof result?.provider_reference === "string" ? result.provider_reference : null;
     $("awaitTitle").textContent = state.providerLink ? "Payment link created" : "Recovery action created";
-    $("awaitCopy").textContent = "Waiting for provider outcome. Approval is not recovery.";
+    $("awaitCopy").textContent = "Waiting for provider evidence. Approval is not recovery.";
     if (state.providerLink && /^https?:\/\//i.test(state.providerLink)) {
       $("openRecovery").classList.remove("hidden");
     }
@@ -324,23 +373,27 @@ async function approveAndExecute() {
 function openRecoveryLink() {
   if (!state.providerLink || !/^https?:\/\//i.test(state.providerLink)) return;
   window.open(state.providerLink, "reroute-recovery", "noopener,noreferrer");
-  $("awaitTitle").textContent = "Waiting for provider outcome";
-  $("awaitCopy").textContent = "Sentinel will count recovery only after authoritative provider evidence arrives.";
+  $("awaitTitle").textContent = "Waiting for provider evidence";
+  $("awaitCopy").textContent = "Sentinel will count recovery only after authoritative provider evidence arrives for this incident.";
 }
 
 function startOutcomePolling() {
   stopOutcomePolling();
   const check = async () => {
     try {
-      const dashboard = await getDashboard();
-      const recovered = Number(dashboard?.executive?.test_mode_value || 0);
+      const control = await getControl();
+      state.control = control;
+      const recovered = Number(control?.actual_recovered_amount_paise || 0);
       $("actualRecovered").textContent = money(recovered);
-      if (recovered > state.baselineRecovered) {
-        providerVerified(recovered - state.baselineRecovered);
+      if (control?.control_state === "recovered" && recovered > 0 && control?.actual_recovered_claim_tag) {
+        providerVerified(control);
         return;
       }
+      if (control?.awaiting_provider_evidence) {
+        $("awaitAmount").textContent = "₹0";
+      }
     } catch (_) {
-      // Keep waiting; provider outcome polling is intentionally best-effort.
+      // Keep the exact-incident poll best-effort while the user explores.
     }
     state.polling = window.setTimeout(check, 2200);
   };
@@ -352,38 +405,101 @@ function stopOutcomePolling() {
   state.polling = null;
 }
 
-function providerVerified(delta) {
+function providerVerified(control) {
   stopOutcomePolling();
-  const amount = delta > 0 ? delta : 249900;
+  const amount = Number(control?.actual_recovered_amount_paise || 0);
+  if (!(amount > 0) || control?.control_state !== "recovered") return;
   $("recoveredAmount").textContent = money(amount);
-  $("actualRecovered").textContent = money(state.baselineRecovered + amount);
-  $("recovered").classList.add("show");
-  addEvent("Provider outcome verified", `${money(amount)} recovered in Razorpay Test Mode.`);
+  $("actualRecovered").textContent = money(amount);
+  $("razorpayState").textContent = "RAZORPAY TEST MODE · VERIFIED";
+  addEvent("Provider outcome verified", `${money(amount)} recovered in Razorpay Test Mode for this incident.`);
+  if (state.freeExplore) {
+    $("freeBanner").textContent = `Provider outcome verified · ${money(amount)} recovered`;
+    $("freeBanner").classList.add("show");
+    refreshFreeViews();
+  } else {
+    $("recovered").classList.add("show");
+  }
 }
 
 function switchView(name) {
-  const mapping = { overview: "overviewView", payments: "paymentsView", incidents: "incidentsView", history: "historyView", settings: "settingsView" };
+  const mapping = {
+    overview: "overviewView",
+    payments: "paymentsView",
+    incidents: "incidentsView",
+    history: "historyView",
+    audit: "auditView",
+    evaluation: "evaluationView",
+    settings: "settingsView",
+  };
   Object.values(mapping).forEach((id) => $(id).classList.add("hidden"));
   $(mapping[name] || mapping.overview).classList.remove("hidden");
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
   if (state.freeExplore) refreshFreeViews();
 }
 
+function auditTitle(eventType) {
+  const known = {
+    "incident.detected": "Incident detected",
+    "incident.analysis.created": "AI advisory created",
+    "incident.recommendation.ready": "Recommendation created",
+    "incident.approval.granted": "Approved by business owner",
+    "incident.execution.completed": "Recovery action executed",
+    "incident.execution.failed": "Recovery action failed",
+    "incident.recovered": "Provider-backed outcome recorded",
+  };
+  if (known[eventType]) return known[eventType];
+  return String(eventType || "Audit event")
+    .replaceAll(".", " ")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function auditDetail(item) {
+  const payload = item?.payload || {};
+  const parts = [];
+  if (payload.action) parts.push(actionLabel(payload.action));
+  if (payload.actor_id) parts.push("Business owner authority");
+  if (payload.awaiting_provider_evidence) parts.push("Waiting for provider evidence");
+  if (Array.isArray(payload.reasons) && payload.reasons.length) parts.push(payload.reasons.join(" · "));
+  if (item?.created_at) {
+    const time = new Date(item.created_at);
+    if (!Number.isNaN(time.valueOf())) parts.push(time.toLocaleString("en-IN"));
+  }
+  return parts.join(" · ") || "Persisted incident audit evidence";
+}
+
 async function refreshFreeViews() {
+  if (!state.incidentId) return;
   try {
-    const [dashboard, incidents] = await Promise.all([getDashboard(), listIncidents()]);
-    const rows = [];
-    for (const timeline of dashboard?.timeline || []) {
-      for (const event of timeline.events || []) {
-        if (event.kind === "raw event" && event.data) rows.push(event.data);
-      }
-    }
-    $("paymentsList").innerHTML = rows.slice(-12).reverse().map((row) => `<div class="list-card"><div><strong>${escapeHTML(money(row.amount))} · ${escapeHTML((row.method || "payment").toUpperCase())}</strong><span>${escapeHTML(row.provider || "merchant evidence")}</span></div><span class="badge ${row.status === "captured" ? "ok" : "block"}">${escapeHTML(row.status || "unknown")}</span></div>`).join("") || `<div class="support" style="margin-top:18px">No persisted payment rows yet.</div>`;
-    $("incidentsList").innerHTML = (incidents || []).map((incident) => `<div class="list-card"><div><strong>${escapeHTML((incident.method || "payment").toUpperCase())} payment degradation</strong><span>${escapeHTML(formatRisk(incident.estimated_amount_at_risk))} estimated at risk</span></div><span class="badge warn">${escapeHTML(incident.state || "open")}</span></div>`).join("") || `<div class="support" style="margin-top:18px">No active incidents.</div>`;
-    const recovered = Number(dashboard?.executive?.test_mode_value || 0);
-    $("historyList").innerHTML = recovered > 0 ? `<div class="list-card"><div><strong>${escapeHTML(money(recovered))} recovered</strong><span>Authoritative provider-backed Test Mode Outcome</span></div><span class="badge ok">PROVIDER VERIFIED</span></div>` : `<div class="support" style="margin-top:18px">No provider-verified recovery outcome yet.</div>`;
+    const [detail, control, evaluation] = await Promise.all([
+      getIncident(),
+      getControl(),
+      api("/evaluations/reproducible"),
+    ]);
+    assertIncidentBinding(detail);
+    state.control = control;
+
+    const linked = Array.isArray(detail?.linked_event_ids) ? detail.linked_event_ids.length : 0;
+    $("paymentsList").innerHTML = `<div class="list-card"><div><strong>${escapeHTML(String(linked))} linked payment events</strong><span>SIMULATED DEMO DATA · exact sandbox run</span></div><span class="badge sim">SIMULATED</span></div>`;
+    $("incidentsList").innerHTML = `<div class="list-card"><div><strong>${escapeHTML(String(detail?.method || "payment").toUpperCase())} payment degradation</strong><span>${escapeHTML(formatRisk(detail?.estimated_amount_at_risk || 0))} estimated at risk</span></div><span class="badge warn">${escapeHTML(detail?.state || "open")}</span></div>`;
+
+    const recovered = Number(control?.actual_recovered_amount_paise || 0);
+    $("historyList").innerHTML = recovered > 0 && control?.control_state === "recovered"
+      ? `<div class="list-card"><div><strong>${escapeHTML(money(recovered))} recovered</strong><span>Authoritative Razorpay Test Mode Outcome for this incident</span></div><span class="badge ok">PROVIDER VERIFIED</span></div>`
+      : `<div class="list-card"><div><strong>₹0 actual recovered</strong><span>Waiting for authoritative provider evidence for this incident.</span></div><span class="badge test">RAZORPAY TEST MODE</span></div>`;
+
+    const audit = Array.isArray(detail?.audit) ? detail.audit : [];
+    $("auditList").innerHTML = audit.length
+      ? audit.map((item) => `<div class="list-card"><div><strong>${escapeHTML(auditTitle(item.event_type))}</strong><span>${escapeHTML(auditDetail(item))}</span></div></div>`).join("")
+      : `<div class="support" style="margin-top:18px">No persisted incident audit events yet.</div>`;
+
+    const adaptive = evaluation?.policies?.adaptive || {};
+    const fixed = evaluation?.policies?.fixed || {};
+    const seedCount = Number(adaptive?.seed_count || evaluation?.seeds?.length || 0);
+    $("evaluationList").innerHTML = `<div class="list-card"><div><strong>Adaptive Sentinel · ${escapeHTML(money(adaptive?.recovered_amount || 0))}</strong><span>${escapeHTML(String(seedCount))} reproducible seeds · Policy violations ${escapeHTML(String(adaptive?.safety_violations ?? "—"))}</span></div><span class="badge sim">SIMULATED</span></div><div class="list-card"><div><strong>Fixed retry · ${escapeHTML(money(fixed?.recovered_amount || 0))}</strong><span>${escapeHTML(String(seedCount))} reproducible seeds · Policy violations ${escapeHTML(String(fixed?.safety_violations ?? "—"))}</span></div><span class="badge sim">SIMULATED</span></div>`;
   } catch (_) {
-    // Free exploration remains usable even if a refresh request fails.
+    // The guided incident remains usable even if a secondary exploration read fails.
   }
 }
 
@@ -391,6 +507,10 @@ function unlockExploration() {
   $("recovered").classList.remove("show");
   $("awaiting").classList.remove("show");
   state.freeExplore = true;
+  const recovered = Number(state.control?.actual_recovered_amount_paise || 0);
+  $("freeBanner").textContent = recovered > 0
+    ? `Provider outcome verified · ${money(recovered)} recovered`
+    : "Provider evidence pending · free exploration unlocked";
   $("freeBanner").classList.add("show");
   switchView("overview");
   refreshFreeViews();
@@ -404,12 +524,15 @@ function resetSandbox() {
   $("incidentFocus").classList.remove("show");
   $("dim").classList.remove("show");
   $("openRecovery").classList.add("hidden");
-  $("generateAnalysis").textContent = "Generate analysis";
-  $("generateAnalysis").disabled = false;
-  $("approveAction").disabled = false;
-  $("aiCopy").textContent = "Generate an advisory hypothesis from the bounded incident evidence.";
+  $("approveAction").disabled = true;
+  $("aiCopy").textContent = "Sentinel analyzes bounded evidence before review.";
   $("aiMeta").classList.add("hidden");
+  $("policyAllowed").innerHTML = `<div class="policy-box"><div class="copy">Waiting for Policy result.</div></div>`;
+  $("policyBlocked").innerHTML = `<div class="policy-box blocked"><div class="copy">Waiting for blocked-action reasons.</div></div>`;
+  $("recommendationAction").textContent = "Waiting for backend recommendation";
+  $("recommendationReason").textContent = "Ranking occurs only among Policy-permitted actions.";
   $("freeBanner").classList.remove("show");
+  $("freeBanner").textContent = "Provider evidence pending · free exploration unlocked";
   state.freeExplore = false;
   switchView("overview");
   seedHealthyUI();
@@ -418,15 +541,6 @@ function resetSandbox() {
 $("startSandbox").addEventListener("click", openSandbox);
 $("exitSandbox").addEventListener("click", closeSandbox);
 $("guideAction").addEventListener("click", async () => {
-  if (!state.purchaseOpened) {
-    window.open("/storefront", "reroute-storefront", "noopener,noreferrer");
-    state.purchaseOpened = true;
-    $("guideTitle").textContent = "Make the test purchase";
-    $("guideCopy").textContent = "Use Razorpay Test Mode in the storefront. When you return, continue so Sentinel can evaluate the merchant payment window.";
-    $("guideAction").textContent = "Continue after test purchase";
-    addEvent("Customer storefront opened", "Waiting for the Test Mode purchase before incident evaluation.");
-    return;
-  }
   try {
     await startMerchantIncident();
   } catch (error) {
@@ -437,10 +551,10 @@ $("guideAction").addEventListener("click", async () => {
 });
 $("reviewIncident").addEventListener("click", openReview);
 $("keepMonitoring").addEventListener("click", () => { $("incidentFocus").classList.remove("show"); $("dim").classList.remove("show"); });
-$("generateAnalysis").addEventListener("click", generateAnalysis);
 $("approveAction").addEventListener("click", approveAndExecute);
 $("doNotAct").addEventListener("click", () => $("reviewPanel").classList.remove("show"));
 $("openRecovery").addEventListener("click", openRecoveryLink);
+$("continueExploring").addEventListener("click", unlockExploration);
 $("exploreConsole").addEventListener("click", unlockExploration);
 $("replaySandbox").addEventListener("click", resetSandbox);
 document.querySelectorAll(".nav-item[data-view]").forEach((item) => item.addEventListener("click", () => switchView(item.dataset.view)));

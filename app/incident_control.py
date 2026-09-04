@@ -338,7 +338,11 @@ def _assert_current_context(
     case_id = recommendation.get("recommended_case_id")
     action = recommendation.get("recommended_action")
     expected_hash = recommendation.get("context_hash")
-    if not isinstance(case_id, str) or not isinstance(action, str) or not isinstance(expected_hash, str):
+    if (
+        not isinstance(case_id, str)
+        or not isinstance(action, str)
+        or not isinstance(expected_hash, str)
+    ):
         raise PermissionError(["no_actionable_recommendation"])
     case = session.get(RecoveryCase, case_id)
     if case is None:

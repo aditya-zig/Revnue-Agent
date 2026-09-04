@@ -121,7 +121,9 @@ async def test_mock_pay_reply_records_intent_but_not_recovered_money(database_ur
 
 
 
-def test_unverified_razorpay_test_capture_cannot_create_recovered_outcome(database_url: str) -> None:
+def test_unverified_razorpay_test_capture_cannot_create_recovered_outcome(
+    database_url: str,
+) -> None:
     app = create_app(database_url=database_url, policy_now=lambda: NOW)
     with app.state.session_factory() as session:
         session.add(Customer(customer_id="cust_control", consent=True))

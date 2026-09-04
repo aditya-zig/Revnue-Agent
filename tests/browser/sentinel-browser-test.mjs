@@ -136,6 +136,9 @@ if (ctaCount !== 1) throw new Error(`Expected one Try it for yourself CTA, found
 if (!(await bodyIncludes("Catch payment incidents before they become lost revenue."))) {
   throw new Error("Guided landing headline is missing");
 }
+if (!(await bodyIncludes("SIMULATED PRODUCT STORY"))) {
+  throw new Error("Decorative landing animation is not labeled as a simulated product story");
+}
 await screenshot("landing-1920x1080.png");
 
 await viewport(1280, 900);
@@ -152,23 +155,16 @@ await waitFor("document.querySelector('#sandbox').classList.contains('active')",
 if (!(await bodyIncludes("Payments are healthy")) || !(await bodyIncludes("Actual recovered"))) {
   throw new Error("Healthy merchant sandbox is missing payment-health copy");
 }
+if (!(await bodyIncludes("SIMULATED DEMO DATA"))) {
+  throw new Error("Sandbox replay provenance label is missing");
+}
 await screenshot("sandbox-healthy-1920x1080.png");
 
-await click("#guideAction", "Open test storefront");
-await waitFor("document.querySelector('#guideAction').textContent.includes('Continue after test purchase')", "test purchase continuation");
-await click("#guideAction", "Continue after test purchase");
-await waitFor("document.querySelector('#incidentFocus').classList.contains('show')", "incident interruption", 18000);
-if (!(await bodyIncludes("UPI payment degradation detected")) || !(await bodyIncludes("ESTIMATED AT RISK"))) {
-  throw new Error("Incident interruption is missing risk framing");
+await click("#guideAction", "Start simulated replay");
+await waitFor("document.querySelector('#incidentFocus').classList.contains('show')", "incident interruption after real investigation", 30000);
+if (!(await bodyIncludes("ESTIMATED AT RISK"))) {
+  throw new Error("Incident interruption is missing estimated-risk framing");
 }
-await screenshot("sandbox-incident-1920x1080.png");
-
-await click("#reviewIncident", "Review incident");
-await waitFor("document.querySelector('#reviewPanel').classList.contains('show')", "incident review");
-if (!(await bodyIncludes("AI ANALYSIS — ADVISORY"))) throw new Error("AI analysis is not visibly advisory");
-if (!(await bodyIncludes("Policy decides what the model is allowed to rank."))) throw new Error("Policy-first explanation is missing");
-if (!(await bodyIncludes("Blocked actions never reach the recommendation model."))) throw new Error("Blocked-action boundary is missing");
-if (!(await bodyIncludes("Send alternate payment link"))) throw new Error("Recommended recovery action is missing");
 const baselineRate = Number(await evaluate("document.querySelector('#factBaseline').textContent.replace('%', '')"));
 const currentRate = Number(await evaluate("document.querySelector('#factCurrent').textContent.replace('%', '')"));
 const affectedPayments = Number(await evaluate("document.querySelector('#factAffected').textContent"));
@@ -178,22 +174,21 @@ if (!(baselineRate > currentRate)) {
 if (!(affectedPayments > 0)) {
   throw new Error(`Incident must have affected payments; saw ${affectedPayments}`);
 }
-await screenshot("sandbox-review-1920x1080.png");
+await screenshot("sandbox-incident-1920x1080.png");
 
-await click("#generateAnalysis", "Generate analysis");
-await waitFor(
-  "document.querySelector('#generateAnalysis').textContent.includes('Analysis generated') || !document.querySelector('#aiMeta').classList.contains('hidden')",
-  "advisory analysis response",
-  20000,
-);
-if (await bodyIncludes("Advisory analysis could not be generated")) {
-  const errorText = await evaluate("document.querySelector('#aiMeta').textContent");
-  throw new Error(`Incident analysis failed in browser journey: ${errorText}`);
-}
-if (!(await evaluate("document.querySelector('#generateAnalysis').textContent.includes('Analysis generated')"))) {
-  throw new Error("Incident analysis did not reach generated state");
-}
-await screenshot("sandbox-analysis-1920x1080.png");
+await click("#reviewIncident", "Review incident");
+await waitFor("document.querySelector('#reviewPanel').classList.contains('show')", "incident review");
+if (!(await bodyIncludes("AI ANALYSIS — ADVISORY"))) throw new Error("AI analysis is not visibly advisory");
+if (!(await bodyIncludes("The browser does not invent permitted actions."))) throw new Error("Policy authority explanation is missing");
+const hasManualAnalysis = await evaluate("document.querySelector('#generateAnalysis') !== null");
+if (hasManualAnalysis) throw new Error("Normal guided flow still exposes a manual Generate analysis button");
+const policyText = await evaluate("document.querySelector('#policyAllowed').innerText + ' ' + document.querySelector('#policyBlocked').innerText");
+if (policyText.includes("Waiting for")) throw new Error("Policy UI was not populated from the incident control response");
+const recommendedAction = await evaluate("document.querySelector('#recommendationAction').textContent.trim()");
+if (!recommendedAction || recommendedAction.includes("Waiting")) throw new Error("Backend recommendation was not rendered");
+const aiMetaVisible = await evaluate("!document.querySelector('#aiMeta').classList.contains('hidden')");
+if (!aiMetaVisible) throw new Error("Background investigation did not finish before review");
+await screenshot("sandbox-review-1920x1080.png");
 
 await click("#approveAction", "Approve recommended action");
 await waitFor("document.querySelector('#awaiting').classList.contains('show')", "approval waiting state", 15000);
@@ -201,13 +196,33 @@ await waitFor("document.querySelector('#awaitTitle').textContent.includes('Payme
 const awaitingAmount = await evaluate("document.querySelector('#awaitAmount').textContent.trim()");
 if (awaitingAmount !== "₹0") throw new Error(`Approval must not count as recovery; saw ${awaitingAmount}`);
 if (!(await bodyIncludes("Approval is not recovery."))) throw new Error("Approval/recovery boundary is missing");
-const recoveredVisible = await evaluate("document.querySelector('#recovered').classList.contains('show')");
+let recoveredVisible = await evaluate("document.querySelector('#recovered').classList.contains('show')");
 if (recoveredVisible) throw new Error("Recovered state appeared before provider outcome evidence");
 await screenshot("sandbox-awaiting-provider-1920x1080.png");
 
+await click("#continueExploring", "Continue exploring");
+await waitFor("document.querySelector('#freeBanner').classList.contains('show')", "free exploration while provider is pending");
+if (!(await bodyIncludes("Provider evidence pending"))) {
+  throw new Error("Pending provider state was lost when exploration unlocked");
+}
+
+await click('.nav-item[data-view="audit"]', "Audit");
+await waitFor("document.querySelector('#auditList').children.length > 0", "persisted incident audit");
+await screenshot("sandbox-audit-1920x1080.png");
+
+await click('.nav-item[data-view="evaluation"]', "Evaluation");
+await waitFor("document.querySelector('#evaluationList').innerText.includes('Adaptive Sentinel')", "backend evaluation");
+if (!(await bodyIncludes("SIMULATED EVALUATION")) || !(await bodyIncludes("Fixed retry"))) {
+  throw new Error("Evaluation is missing simulated provenance or backend policy comparison");
+}
+await screenshot("sandbox-evaluation-1920x1080.png");
+
+recoveredVisible = await evaluate("document.querySelector('#recovered').classList.contains('show')");
+if (recoveredVisible) throw new Error("Exploration path promoted the incident to recovered without provider evidence");
+
 await viewport(1280, 900);
 await sleep(250);
-await screenshot("sandbox-awaiting-provider-1280x900.png");
+await screenshot("sandbox-evaluation-1280x900.png");
 
 await navigate(`${baseUrl}/storefront`);
 await viewport(1280, 900);
@@ -221,14 +236,20 @@ await viewport(390, 844, true);
 await sleep(250);
 await screenshot("storefront-mobile-390x844.png");
 
+await navigate(`${baseUrl}/judge`);
+const judgePath = await evaluate("window.location.pathname");
+if (judgePath !== "/") throw new Error(`/judge must redirect to /, landed on ${judgePath}`);
+
 console.log(JSON.stringify({
   ok: true,
   ctaCount,
   baselineRate,
   currentRate,
   affectedPayments,
+  recommendedAction,
   awaitingAmount,
   recoveredVisible,
+  judgePath,
   screenshots: [
     "landing-1920x1080.png",
     "landing-1280x900.png",
@@ -236,9 +257,10 @@ console.log(JSON.stringify({
     "sandbox-healthy-1920x1080.png",
     "sandbox-incident-1920x1080.png",
     "sandbox-review-1920x1080.png",
-    "sandbox-analysis-1920x1080.png",
     "sandbox-awaiting-provider-1920x1080.png",
-    "sandbox-awaiting-provider-1280x900.png",
+    "sandbox-audit-1920x1080.png",
+    "sandbox-evaluation-1920x1080.png",
+    "sandbox-evaluation-1280x900.png",
     "storefront-1280x900.png",
     "storefront-mobile-390x844.png",
   ],

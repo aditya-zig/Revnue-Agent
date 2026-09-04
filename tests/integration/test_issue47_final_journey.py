@@ -599,14 +599,6 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
             "/api/v1/cases/case_order_live_1000/actions",
             json={"action": "payment_link", "idempotency_key": "issue47-bypass"},
         )
-        unauthorized = await client.post(
-            "/api/v1/cases/case_order_live_1000/decisions",
-            json={
-                "idempotency_key": "issue47-decision",
-                "selected_action": "payment_link",
-                "approved": True,
-            },
-        )
         approved = await client.post(
             "/api/v1/cases/case_order_live_1000/decisions",
             json={
@@ -614,7 +606,15 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
                 "selected_action": "payment_link",
                 "approved": True,
             },
-            headers={"X-Reroute-Role": "business_owner"},
+        )
+        approved_with_browser_header = await client.post(
+            "/api/v1/cases/case_order_live_1000/decisions",
+            json={
+                "idempotency_key": "issue47-decision",
+                "selected_action": "payment_link",
+                "approved": True,
+            },
+            headers={"X-Reroute-Role": "operations_worker"},
         )
         approved_duplicate = await client.post(
             "/api/v1/cases/case_order_live_1000/decisions",
@@ -623,7 +623,6 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
                 "selected_action": "payment_link",
                 "approved": True,
             },
-            headers={"X-Reroute-Role": "business_owner"},
         )
         outcome_before_capture = await client.get(
             "/api/v1/cases/case_order_live_1000/outcome"
@@ -672,14 +671,15 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
     assert proposal.json()["action"] is None
     assert bypass.status_code == 409
     assert bypass.json() == {"detail": ["approval_required"]}
-    assert unauthorized.status_code == 403
-    # Approval of an existing proposal is an idempotent update of that decision.
+    # Authority is server-owned. Browser role headers neither grant nor revoke it.
     assert approved.status_code == 200
     assert approved.json()["action"] == {
         "action": "payment_link",
         "provider_reference": "plink_test_issue47_recovery",
         "status": "completed",
     }
+    assert approved_with_browser_header.status_code == 200
+    assert approved_with_browser_header.json() == approved.json()
     assert approved_duplicate.status_code == 200
     assert approved_duplicate.json() == approved.json()
     assert outcome_before_capture.json() == {
@@ -762,6 +762,7 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
         "amount": DUMBBELL_AMOUNT,
         "occurred_at": "2026-08-24T00:01:00+00:00",
         "source": "razorpay_test",
+        "authenticity_verified": True,
     }
 
     with app.state.session_factory() as session:
@@ -885,7 +886,7 @@ async def test_issue47_standalone_success_is_not_a_recovery_outcome(app):
 
 
 @pytest.mark.asyncio
-async def test_issue47_hard_decline_policy_recheck_blocks_a_legacy_approved_retry(app):
+async def test_issue47_hard_decline_rejects_unbound_legacy_approval_before_execution(app):
     with app.state.session_factory() as session:
         session.add(Customer(customer_id="cust_hard_1000", consent=True))
         session.commit()
@@ -938,11 +939,11 @@ async def test_issue47_hard_decline_policy_recheck_blocks_a_legacy_approved_retr
     assert "retry" not in policy.json()["allowed_actions"]
     assert "retry" not in {item["action"] for item in ranked.json()["actions"]}
     assert action.status_code == 409
-    assert action.json() == {"detail": ["hard_decline"]}
+    assert action.json() == {"detail": ["approval_required"]}
     assert app.state.provider_calls == []
     blocked = audit.json()[-1]
     assert blocked["event_type"] == "action.blocked"
-    assert blocked["payload"]["reasons"] == ["hard_decline"]
+    assert blocked["payload"]["reasons"] == ["approval_required"]
 
 
 @pytest.mark.asyncio
