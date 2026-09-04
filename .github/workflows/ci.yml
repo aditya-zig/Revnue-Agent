@@ -64,11 +64,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Tests
-        run: uv run pytest -q
-
       - name: Ruff
+        if: always()
         run: uv run ruff check .
 
       - name: mypy
+        if: always()
         run: uv run mypy
+
+      - name: Tests
+        if: always()
+        run: uv run pytest -q
