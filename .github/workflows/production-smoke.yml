@@ -93,14 +93,15 @@ jobs:
           check_route "/" html
           check_route "/judge" html
           check_route "/storefront" html
-          check_route "/static/css/dashboard.css" css
-          check_route "/static/css/dashboard-approved.css" css
+          check_route "/static/css/sentinel.css" css
           check_route "/api/v1/dashboard" json
           check_route "/api/v1/policy-settings" json
 
           curl --silent --show-error --location "$base_url/" -o /tmp/dashboard.html
-          grep -q 'dashboard-approved.css' /tmp/dashboard.html
-          grep -q 'Simulate 999 Payments' /tmp/dashboard.html
+          grep -q '/static/css/sentinel.css' /tmp/dashboard.html
+          grep -q 'ReRoute Sentinel' /tmp/dashboard.html
+          grep -q 'Policy &amp; Safety' /tmp/dashboard.html
+          grep -q 'Judge mode' /tmp/dashboard.html
 
       - name: Verify hosted 999-payment simulation
         shell: bash
