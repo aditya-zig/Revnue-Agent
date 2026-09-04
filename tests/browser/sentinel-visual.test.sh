@@ -42,6 +42,44 @@ wait_for_url() {
   return 1
 }
 
+wait_for_browser() {
+  local url=$1
+  local log_file=$2
+  echo "polling DevTools URL: $url"
+  for _ in {1..200}; do
+    if curl --silent --fail "$url" >/dev/null; then
+      echo "Chromium DevTools ready"
+      return 0
+    fi
+    if ! kill -0 "$browser_pid" 2>/dev/null; then
+      set +e
+      wait "$browser_pid"
+      local status=$?
+      set -e
+      echo "browser exited before DevTools became ready (status=$status)" >&2
+      echo "browser process alive: no" >&2
+      echo "browser pid: $browser_pid" >&2
+      echo "selected browser: $chrome_bin" >&2
+      echo "browser version: $browser_version" >&2
+      echo "----- Chromium startup log -----" >&2
+      cat "$log_file" >&2 || true
+      echo "----- end Chromium startup log -----" >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  echo "Chromium DevTools failed to become ready at $url" >&2
+  echo "browser process alive: $(kill -0 "$browser_pid" 2>/dev/null && echo yes || echo no)" >&2
+  echo "browser pid: $browser_pid" >&2
+  echo "selected browser: $chrome_bin" >&2
+  echo "browser version: $browser_version" >&2
+  ps -o pid,ppid,stat,etime,cmd -p "$browser_pid" >&2 || true
+  echo "----- Chromium startup log -----" >&2
+  cat "$log_file" >&2 || true
+  echo "----- end Chromium startup log -----" >&2
+  return 1
+}
+
 uv run python - "$db" <<'PY'
 import sys
 from pathlib import Path
@@ -123,23 +161,30 @@ curl --silent --show-error --fail "http://127.0.0.1:$port/api/v1/incidents/$acti
 cat "$scratch/incident.json"
 
 chrome_bin=""
-for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
-  if command -v "$candidate" >/dev/null 2>&1; then
-    chrome_bin=$(command -v "$candidate")
-    break
+for candidate in google-chrome-stable google-chrome chromium chromium-browser; do
+  candidate_path=$(command -v "$candidate" 2>/dev/null || true)
+  if [[ -n "$candidate_path" ]]; then
+    echo "browser candidate: $candidate -> $candidate_path"
+    if [[ -z "$chrome_bin" ]]; then
+      chrome_bin=$candidate_path
+    fi
   fi
 done
 if [[ -z "$chrome_bin" ]]; then
   echo "No Chromium-compatible browser is installed" >&2
   exit 1
 fi
-echo "using browser: $chrome_bin"
+browser_version=$($chrome_bin --version 2>&1 || true)
+echo "selected browser: $chrome_bin"
+echo "browser version: $browser_version"
 
-"$chrome_bin" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
-  --remote-allow-origins=* --remote-debugging-port="$chrome_port" \
-  --user-data-dir="$scratch/chrome" about:blank >"$scratch/chrome.log" 2>&1 &
+"$chrome_bin" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+  --remote-allow-origins=* --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port="$chrome_port" --user-data-dir="$scratch/chrome" \
+  --no-first-run --no-default-browser-check about:blank >"$scratch/chrome.log" 2>&1 &
 browser_pid=$!
-wait_for_url "http://127.0.0.1:$chrome_port/json/version" "$scratch/chrome.log" "Chromium DevTools"
+echo "browser pid: $browser_pid"
+wait_for_browser "http://127.0.0.1:$chrome_port/json/version" "$scratch/chrome.log"
 
 echo "starting browser journey"
 SENTINEL_BASE_URL="http://127.0.0.1:$port" \
