@@ -30,15 +30,6 @@ jobs:
       - name: Sync
         run: uv sync --dev
 
-      - name: Tests
-        run: uv run pytest -q
-
-      - name: Ruff
-        run: uv run ruff check .
-
-      - name: mypy
-        run: uv run mypy
-
       - name: JavaScript syntax
         run: |
           node --check app/static/js/api.js
@@ -48,3 +39,20 @@ jobs:
           node --check app/static/js/recovery-workflow.js
           node --check app/static/js/sentinel-api.js
           node --check app/static/js/sentinel.js
+
+      - name: Sentinel frontend contract
+        run: |
+          uv run pytest -q \
+            tests/static/test_sentinel_frontend_contract.py \
+            tests/integration/test_dashboard.py \
+            tests/integration/test_dashboard_provenance_contract.py \
+            tests/integration/test_storefront_checkout.py
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: mypy
+        run: uv run mypy
