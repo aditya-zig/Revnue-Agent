@@ -23,6 +23,13 @@ def _policy_configuration(session, request: Request):
     return get_policy_configuration(session, request.app.state)
 
 
+def _require_business_owner(request: Request) -> str:
+    actor_id = getattr(request.app.state, "sentinel_owner_actor_id", None)
+    if not isinstance(actor_id, str) or not actor_id:
+        raise HTTPException(status_code=403, detail="business owner role required")
+    return actor_id
+
+
 @router.get("/cases")
 def list_cases(request: Request) -> list[dict]:
     with request.app.state.session_factory() as session:
@@ -148,8 +155,7 @@ def investigate_case(case_id: str, request: Request) -> dict:
 
 @router.post("/cases/{case_id}/resume", status_code=200)
 def resume_case(case_id: str, resume: ResumeRequest, request: Request) -> dict[str, str]:
-    if request.headers.get("X-Reroute-Role", "operations_worker") != "business_owner":
-        raise HTTPException(status_code=403, detail="business owner role required")
+    _require_business_owner(request)
     with request.app.state.session_factory() as session:
         prior_resume = session.scalars(
             select(AuditEvent).where(AuditEvent.event_type == "case.eligible")
@@ -290,11 +296,8 @@ def create_action(
 def create_decision(
     case_id: str, decision: DecisionRequest, request: Request, response: Response
 ) -> DecisionResponse:
-    if (
-        decision.approved
-        and request.headers.get("X-Reroute-Role", "operations_worker") != "business_owner"
-    ):
-        raise HTTPException(status_code=403, detail="business owner role required")
+    if decision.approved:
+        _require_business_owner(request)
     with request.app.state.session_factory() as session:
         case = session.get(RecoveryCase, case_id)
         if case is None:

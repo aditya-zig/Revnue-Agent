@@ -3,22 +3,42 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ReRoute Dumbbell Store</title>
+    <title>ReRoute Sentinel · Test Storefront</title>
     <link rel="stylesheet" href="/static/css/storefront.css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script src="/static/js/storefront.js" defer></script>
   </head>
   <body>
     <main class="storefront" aria-labelledby="store-title">
-      <section class="product-card">
-        <p class="eyebrow">ReRoute Test Mode shop</p>
-        <div class="product-art" aria-hidden="true">🏋️</div>
-        <h1 id="store-title">5 kg Dumbbell</h1>
-        <p class="description">A compact cast-iron dumbbell for strength training at home.</p>
-        <p class="price">₹2,499</p>
-        <p class="test-note">Test Mode only · no real money moves</p>
-        <button id="buy-now" type="button">Buy Now</button>
-        <p id="checkout-status" class="status" role="status" aria-live="polite"></p>
+      <header class="store-top">
+        <a href="/" class="back-link" aria-label="Back to ReRoute Sentinel">← Back to ReRoute Sentinel</a>
+        <span class="store-mode">Razorpay · TEST MODE</span>
+      </header>
+      <section class="store-shell">
+        <div class="product-art" aria-label="5 kg cast iron dumbbell illustration">
+          <svg viewBox="0 0 650 520" role="img" aria-hidden="true">
+            <defs>
+              <linearGradient id="metal" x1="0" x2="1"><stop offset="0" stop-color="#1f2329"/><stop offset=".5" stop-color="#4b5057"/><stop offset="1" stop-color="#171a1f"/></linearGradient>
+              <linearGradient id="handle" x1="0" x2="1"><stop offset="0" stop-color="#8e939a"/><stop offset=".5" stop-color="#d2d5d9"/><stop offset="1" stop-color="#777d84"/></linearGradient>
+            </defs>
+            <g transform="translate(325 260) rotate(-16) translate(-325 -260)">
+              <rect x="210" y="222" width="230" height="76" rx="28" fill="url(#handle)"/>
+              <rect x="238" y="228" width="174" height="64" rx="24" fill="#535960" opacity=".35"/>
+              <g fill="url(#metal)" stroke="#0d0f12" stroke-width="5"><rect x="110" y="135" width="115" height="250" rx="34"/><rect x="75" y="165" width="70" height="190" rx="26"/><rect x="425" y="135" width="115" height="250" rx="34"/><rect x="505" y="165" width="70" height="190" rx="26"/></g>
+              <text x="144" y="270" fill="#d9dde2" font-family="Inter,sans-serif" font-size="30" font-weight="700">5KG</text><text x="454" y="270" fill="#d9dde2" font-family="Inter,sans-serif" font-size="30" font-weight="700">5KG</text>
+            </g>
+          </svg>
+        </div>
+        <div class="product-info">
+          <div class="label">ReRoute Demo Store</div>
+          <h1 id="store-title">5 kg Dumbbell <span class="product-material">· Cast Iron</span></h1>
+          <div class="price">₹2,499</div>
+          <p class="description">A compact, solid cast-iron dumbbell for home strength training. Textured chrome handle, durable finish, and balanced plates for controlled lifts.</p>
+          <div class="product-points"><div>✓ 5 kg fixed weight</div><div>✓ Cast-iron plates</div><div>✓ Textured chrome grip</div></div>
+          <button id="buy-now" type="button">Buy Now · ₹2,499</button>
+          <p class="test-note">Official checkout is Razorpay Test Mode. Closing the checkout alone is not treated as a failed payment.</p>
+          <p id="checkout-status" class="status" role="status" aria-live="polite"></p>
+        </div>
       </section>
     </main>
   </body>

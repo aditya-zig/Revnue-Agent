@@ -13,6 +13,10 @@ from app.main import create_app
 NOW = datetime(2026, 8, 24, 10, tzinfo=UTC)
 
 
+def _decision_id(idempotency_key: str) -> str:
+    return f"decision_{hashlib.sha256(idempotency_key.encode()).hexdigest()}"
+
+
 @pytest.fixture
 def app(database_url):
     return create_app(
@@ -114,7 +118,7 @@ async def test_exception_audit_records_match_published_evidence(app):
                     attempts=0,
                 ),
                 Decision(
-                    decision_id="approval_case_opt_out",
+                    decision_id=_decision_id("opt-out"),
                     case_id="case_opt_out",
                     policy_version="v1",
                     model_version="v1",
@@ -124,7 +128,7 @@ async def test_exception_audit_records_match_published_evidence(app):
                     reason_json={"approval": {"required": True, "granted": True}},
                 ),
                 Decision(
-                    decision_id="approval_case_hard_decline",
+                    decision_id=_decision_id("hard-decline"),
                     case_id="case_hard_decline",
                     policy_version="v1",
                     model_version="v1",
@@ -134,7 +138,7 @@ async def test_exception_audit_records_match_published_evidence(app):
                     reason_json={"approval": {"required": True, "granted": True}},
                 ),
                 Decision(
-                    decision_id="approval_case_provider",
+                    decision_id=_decision_id("provider-failure"),
                     case_id="case_provider",
                     policy_version="v1",
                     model_version="v1",
@@ -144,7 +148,7 @@ async def test_exception_audit_records_match_published_evidence(app):
                     reason_json={"approval": {"required": True, "granted": True}},
                 ),
                 Decision(
-                    decision_id="approval_case_late",
+                    decision_id=_decision_id("late-retry"),
                     case_id="case_late",
                     policy_version="v1",
                     model_version="v1",

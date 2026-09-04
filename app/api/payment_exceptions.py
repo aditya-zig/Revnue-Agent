@@ -12,7 +12,11 @@ TERMINAL_CASE_STATES = {"recovered", "stopped", "escalated"}
 
 
 def _role(request: Request) -> str:
-    return request.headers.get("X-Reroute-Role", "operations_worker")
+    return (
+        "business_owner"
+        if getattr(request.app.state, "sentinel_owner_actor_id", None)
+        else "operations_worker"
+    )
 
 
 @router.get("/exceptions")

@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime
 
 import httpx
@@ -265,9 +266,12 @@ async def test_analysis_does_not_change_policy_or_action_execution(app):
 
         with app.state.session_factory() as session:
             session.get(RecoveryCase, "case_pay_1").state = "eligible"
+            execution_key = "analysis-action"
             session.add(
                 Decision(
-                    decision_id="analysis_action_approval",
+                    decision_id=(
+                        f"decision_{hashlib.sha256(execution_key.encode()).hexdigest()}"
+                    ),
                     case_id="case_pay_1",
                     policy_version="v1",
                     model_version="v1",
@@ -281,7 +285,7 @@ async def test_analysis_does_not_change_policy_or_action_execution(app):
         policy = await client.get("/api/v1/cases/case_pay_1/policy")
         action = await client.post(
             "/api/v1/cases/case_pay_1/actions",
-            json={"action": "contact", "idempotency_key": "analysis-action"},
+            json={"action": "contact", "idempotency_key": execution_key},
         )
 
     assert policy.status_code == 200

@@ -30,6 +30,39 @@ jobs:
       - name: Sync
         run: uv sync --dev
 
+      - name: JavaScript syntax
+        run: |
+          node --check app/static/js/api.js
+          node --check app/static/js/app.js
+          node --check app/static/js/dashboard-view.js
+          node --check app/static/js/dashboard-format.js
+          node --check app/static/js/recovery-workflow.js
+          node --check app/static/js/sentinel-api.js
+          node --check app/static/js/sentinel.js
+          node --check tests/browser/sentinel-browser-test.mjs
+
+      - name: Sentinel frontend contract
+        run: |
+          uv run pytest -q \
+            tests/static/test_sentinel_frontend_contract.py \
+            tests/integration/test_dashboard.py \
+            tests/integration/test_dashboard_provenance_contract.py \
+            tests/integration/test_storefront_checkout.py
+
+      - name: Rendered Sentinel browser journey
+        env:
+          SENTINEL_SCREENSHOT_DIR: ${{ runner.temp }}/sentinel-screenshots
+        run: bash tests/browser/sentinel-visual.test.sh
+
+      - name: Upload Sentinel screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-browser-screenshots
+          path: ${{ runner.temp }}/sentinel-screenshots
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Tests
         run: uv run pytest -q
 
@@ -38,11 +71,3 @@ jobs:
 
       - name: mypy
         run: uv run mypy
-
-      - name: JavaScript syntax
-        run: |
-          node --check app/static/js/api.js
-          node --check app/static/js/app.js
-          node --check app/static/js/dashboard-view.js
-          node --check app/static/js/dashboard-format.js
-          node --check app/static/js/recovery-workflow.js

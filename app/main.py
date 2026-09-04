@@ -24,10 +24,24 @@ REQUIRED_TABLES = {
     "payment_events",
     "recovery_cases",
 }
+REQUIRED_SENTINEL_TABLES = {
+    "payment_incidents",
+    "incident_payment_events",
+    "incident_recovery_cases",
+    "incident_audit_events",
+    "merchant_replay_controls",
+}
+REQUIRED_PAYMENT_EVENT_COLUMNS = {
+    "merchant_order_reference",
+    "provider_order_id",
+    "source_kind",
+    "authenticity_verified",
+}
 ROUTER_MODULES = (
     ("webhooks", "app.api.webhooks"),
     ("cases", "app.api.cases"),
     ("incidents", "app.api.incidents"),
+    ("incident_control", "app.api.incident_control"),
     ("data", "app.api.data"),
     ("evaluations", "app.api.evaluations"),
     ("leak_findings", "app.api.leak_findings"),
@@ -201,7 +215,7 @@ def _classify_database_configuration_error(error: Exception, database_url: str |
 
 
 def _initialize_deployment_schema(app: FastAPI) -> None:
-    if app.state.database_source not in {"vercel_sqlite_fallback", "reroute_database_url"}:
+    if app.state.database_source != "vercel_sqlite_fallback":
         return
     with app.state.session_factory() as session:
         Base.metadata.create_all(session.get_bind())
@@ -251,11 +265,19 @@ def _database_readiness(app: FastAPI) -> str:
         with app.state.session_factory() as session:
             session.execute(text("SELECT 1"))
             bind = session.get_bind()
-            table_names = set(inspect(bind).get_table_names())
+            database_inspector = inspect(bind)
+            table_names = set(database_inspector.get_table_names())
+            if not REQUIRED_TABLES.issubset(table_names):
+                return "schema_missing"
+            if not REQUIRED_SENTINEL_TABLES.issubset(table_names):
+                return "schema_incompatible"
+            payment_event_columns = {
+                column["name"] for column in database_inspector.get_columns("payment_events")
+            }
     except Exception:
         return "unreachable"
-    if not REQUIRED_TABLES.issubset(table_names):
-        return "schema_missing"
+    if not REQUIRED_PAYMENT_EVENT_COLUMNS.issubset(payment_event_columns):
+        return "schema_incompatible"
     return "ready"
 
 
@@ -273,6 +295,8 @@ def create_app(
     kill_switch: bool | None = None,
     finding_analysis_provider: FindingAnalysisProvider | None = None,
     openrouter_api_key: str | None = None,
+    incident_analysis_provider: object | None = None,
+    sentinel_owner_actor_id: str | None = "demo_business_owner",
 ) -> FastAPI:
     app = FastAPI(title="ReRoute Intelligence")
 
@@ -336,6 +360,8 @@ def create_app(
     app.state.contact_limit = 3
     app.state.mock_identity = "ReRoute demo"
     app.state.kill_switch = kill_switch if kill_switch is not None else settings.kill_switch
+    app.state.incident_analysis_provider = incident_analysis_provider
+    app.state.sentinel_owner_actor_id = sentinel_owner_actor_id
 
     razorpay_creator = _build_razorpay_creator_from_settings(
         settings, razorpay_key_id, razorpay_key_secret

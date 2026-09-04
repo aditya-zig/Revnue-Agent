@@ -45,19 +45,23 @@ def _provider_diagnostic(error: Exception) -> str:
 
 
 def _decision_with_approval(
-    session: Session, case_id: str, action: str, granted: bool
+    session: Session,
+    case_id: str,
+    action: str,
+    idempotency_key: str,
+    *,
+    granted: bool,
 ) -> Decision | None:
-    decisions = session.scalars(
-        select(Decision).where(
-            Decision.case_id == case_id,
-            Decision.selected_action == action,
-        )
-    ).all()
-    for decision in decisions:
-        approval = decision.reason_json.get("approval")
-        if isinstance(approval, dict) and approval.get("granted") is granted:
-            return decision
-    return None
+    decision_id = f"decision_{hashlib.sha256(idempotency_key.encode()).hexdigest()}"
+    decision = session.get(Decision, decision_id)
+    if decision is None:
+        return None
+    if decision.case_id != case_id or decision.selected_action != action:
+        return None
+    approval = decision.reason_json.get("approval")
+    if not isinstance(approval, dict) or approval.get("granted") is not granted:
+        return None
+    return decision
 
 
 def execute_action(
@@ -91,8 +95,12 @@ def execute_action(
     if case.state != CaseState.ELIGIBLE:
         raise PermissionError(["invalid_state"])
 
-    pending_approval = _decision_with_approval(session, case.case_id, action, granted=False)
-    approved_decision = _decision_with_approval(session, case.case_id, action, granted=True)
+    pending_approval = _decision_with_approval(
+        session, case.case_id, action, idempotency_key, granted=False
+    )
+    approved_decision = _decision_with_approval(
+        session, case.case_id, action, idempotency_key, granted=True
+    )
     if pending_approval is not None or approved_decision is None:
         session.add(
             AuditEvent(
