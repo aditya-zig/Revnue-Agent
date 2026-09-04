@@ -19,13 +19,13 @@ async def test_dashboard_frontend_preserves_claim_provenance_copy(app):
     assert page.status_code == 200
     assert frontend.status_code == 200
 
-    # KPI claim tags visible in the server-rendered shell.
+    # KPI claim tags remain present in the server-rendered compatibility seam.
     assert "Estimated Recoverable" in page.text
     assert ">ESTIMATED<" in page.text
     assert "Actual Recovered" in page.text
     assert ">TEST MODE<" in page.text
 
-    # Evaluation values must remain explicitly synthetic in the rendered UI code.
+    # Evaluation values must remain explicitly synthetic in the legacy rendered UI code.
     assert 'tag("SIMULATED")' in frontend.text
     assert "Simulation only" in frontend.text
     assert "These values do not measure merchant recovery or provider outcomes." in frontend.text
@@ -34,6 +34,8 @@ async def test_dashboard_frontend_preserves_claim_provenance_copy(app):
     assert "Recorded Outcome amount in Test Mode" in frontend.text
     assert "Single top persisted LeakFinding" in frontend.text
 
-    # Headline must remain evidence-disciplined and avoid unqualified revenue claims.
-    assert "Investigate recoverable failures with evidence" in page.text
+    # The guided landing and incident copy must keep exposure and recovery claims disciplined.
+    assert "Catch payment incidents before they become lost revenue." in page.text
+    assert "estimated exposure, not recovered revenue" in page.text
+    assert "Approval is not recovery." in page.text
     assert "Recover revenue with evidence" not in page.text
