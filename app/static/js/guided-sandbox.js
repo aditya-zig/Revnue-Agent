@@ -202,7 +202,7 @@ async function startMerchantIncident() {
     state.baselineRecovered = 0;
   }
   try {
-    await api("/replay/run?scenario=primary", { method: "POST" });
+    await api("/replay/start", { method: "POST" });
   } catch (error) {
     if (error.status !== 409) throw error;
   }
