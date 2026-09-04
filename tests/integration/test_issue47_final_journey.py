@@ -762,6 +762,7 @@ async def test_issue47_recovery_requires_policy_and_approval_then_records_one_te
         "amount": DUMBBELL_AMOUNT,
         "occurred_at": "2026-08-24T00:01:00+00:00",
         "source": "razorpay_test",
+        "authenticity_verified": True,
     }
 
     with app.state.session_factory() as session:

@@ -666,6 +666,7 @@ async def test_test_mode_trace_requires_human_resume_and_records_2499(database_u
         "amount": 249900,
         "occurred_at": "2024-08-24T06:31:40+00:00",
         "source": "razorpay_test",
+        "authenticity_verified": True,
     }
     assert dashboard.json()["executive"]["test_mode_value"] == 249900
     event_types = [event["event_type"] for event in audit.json()]

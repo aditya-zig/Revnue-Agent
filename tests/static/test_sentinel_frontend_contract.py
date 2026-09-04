@@ -1,7 +1,6 @@
 import html as html_module
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD = ROOT / "app/templates/dashboard.html"
 STOREFRONT = ROOT / "app/templates/storefront.html"
