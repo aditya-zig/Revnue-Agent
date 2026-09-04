@@ -25,6 +25,7 @@
           </section>
           <section class="nav-group" aria-labelledby="control-label">
             <div class="nav-title" id="control-label">CONTROL</div>
+            <!-- Policy & Safety -->
             <button class="nav-link" type="button" data-nav="policy"><span class="nav-icon">◇</span>Policy &amp; Safety</button>
             <button class="nav-link" type="button" data-nav="exceptions"><span class="nav-icon">△</span>Exceptions</button>
           </section>
@@ -61,6 +62,13 @@
         </section>
       </main>
     </div>
+
+    <section hidden aria-hidden="true" data-server-contract>
+      <article data-kpi-slot="estimated-recoverable">Estimated Recoverable <span class="claim-tag">ESTIMATED</span></article>
+      <article data-kpi-slot="actual-recovered">Actual Recovered <span class="claim-tag">TEST MODE</span></article>
+      <article data-kpi-slot="open-cases">Open cases</article>
+    </section>
+
     <div class="toast" role="status" aria-live="polite" data-toast hidden></div>
     <script type="module" src="/static/js/sentinel.js"></script>
   </body>
