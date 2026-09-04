@@ -7,7 +7,6 @@ from app.db.tables import (
     ActionEvent,
     AuditEvent,
     Customer,
-    Outcome,
     PolicyChangeAudit,
     PolicyConfiguration,
     RecoveryCase,
@@ -20,7 +19,11 @@ TERMINAL_STATES = {"recovered", "stopped", "escalated"}
 
 
 def _role(request: Request) -> str:
-    return request.headers.get("X-Reroute-Role", "operations_worker")
+    return (
+        "business_owner"
+        if getattr(request.app.state, "sentinel_owner_actor_id", None)
+        else "operations_worker"
+    )
 
 
 @router.get("/policy-settings")
@@ -91,25 +94,16 @@ def reply_to_mock_message(
             )
         )
         if payload.reply == "pay":
-            case.state = "recovered"
-            outcome = session.scalar(select(Outcome).where(Outcome.case_id == case.case_id))
-            if outcome is None:
-                session.add(
-                    Outcome(
-                        case_id=case.case_id,
-                        recovered=True,
-                        recovered_amount=case.amount_at_risk,
-                        contact_cost=0,
-                        discount_cost=0,
-                        resolved_at=action.replied_at,
-                        source="mock",
-                    )
-                )
             session.add(
                 AuditEvent(
                     case_id=case.case_id,
-                    event_type="case.recovered",
-                    payload={"source": "mock"},
+                    event_type="mock.customer_intent_to_pay",
+                    payload={
+                        "action_id": action.action_id,
+                        "provider_reference": provider_reference,
+                        "actual_recovered_amount_paise": 0,
+                        "awaiting_provider_evidence": True,
+                    },
                 )
             )
         elif payload.reply in {"promise", "help"}:
