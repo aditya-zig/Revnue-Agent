@@ -7,6 +7,7 @@ STOREFRONT = ROOT / "app/templates/storefront.html"
 SENTINEL_JS = ROOT / "app/static/js/sentinel.js"
 SENTINEL_API = ROOT / "app/static/js/sentinel-api.js"
 SENTINEL_CSS = ROOT / "app/static/css/sentinel.css"
+GUIDED_SANDBOX_JS = ROOT / "app/static/js/guided-sandbox.js"
 
 
 def test_dashboard_uses_real_sentinel_shell() -> None:
@@ -69,3 +70,32 @@ def test_storefront_has_top_left_back_link_and_real_checkout_script() -> None:
     assert 'href="/"' in html
     assert "checkout.razorpay.com/v1/checkout.js" in html
     assert "/static/js/storefront.js" in html
+
+
+def test_landing_has_one_primary_try_it_yourself_entry() -> None:
+    html = DASHBOARD.read_text(encoding="utf-8")
+    assert html.count("Try it for yourself →") == 1
+    assert "/static/js/guided-sandbox.js" in html
+    assert "Catch payment incidents before they become lost revenue." in html
+
+
+def test_guided_sandbox_keeps_provider_backed_state_authority() -> None:
+    assert GUIDED_SANDBOX_JS.exists(), "guided sandbox module must be shipped"
+    javascript = GUIDED_SANDBOX_JS.read_text(encoding="utf-8")
+
+    for endpoint_fragment in (
+        "/storefront",
+        "/replay/run",
+        "/incidents/",
+        "/investigate",
+        "/approve",
+        "/execute",
+        "/dashboard",
+    ):
+        assert endpoint_fragment in javascript
+
+    assert "test_mode_value" in javascript
+    assert "providerVerified" in javascript
+    assert "Approval is not recovery." in javascript
+    assert "state.approved" not in javascript
+    assert "approved=true" not in javascript
