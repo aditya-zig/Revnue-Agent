@@ -22,6 +22,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
+wait_for_url() {
+  local url=$1
+  local log_file=$2
+  local label=$3
+  for _ in {1..120}; do
+    if curl --silent --fail "$url" >/dev/null; then
+      echo "$label ready"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "$label failed to become ready at $url" >&2
+  if [[ -f "$log_file" ]]; then
+    echo "----- $label log -----" >&2
+    cat "$log_file" >&2 || true
+    echo "----- end $label log -----" >&2
+  fi
+  return 1
+}
+
 uv run python - "$db" <<'PY'
 import sys
 from pathlib import Path
@@ -32,6 +52,8 @@ config = Config("alembic.ini")
 config.set_main_option("sqlalchemy.url", f"sqlite:///{Path(sys.argv[1])}")
 command.upgrade(config, "head")
 PY
+
+echo "database migrated"
 
 cat >"$scratch/visual_app.py" <<'PY'
 import os
@@ -64,21 +86,23 @@ app = create_app(
 PY
 
 PYTHONPATH="$root:$scratch" REROUTE_DATABASE_URL="sqlite:///$db" \
-  uv run uvicorn visual_app:app --app-dir "$scratch" --host 127.0.0.1 --port "$port" --log-level warning \
+  uv run uvicorn visual_app:app --app-dir "$scratch" --host 127.0.0.1 --port "$port" --log-level info \
   >"$scratch/server.log" 2>&1 &
 server_pid=$!
-for _ in {1..80}; do
-  if curl --silent --fail "http://127.0.0.1:$port/health" >/dev/null; then
-    break
-  fi
-  sleep 0.1
-done
-curl --silent --fail "http://127.0.0.1:$port/health" >/dev/null
+wait_for_url "http://127.0.0.1:$port/health" "$scratch/server.log" "Sentinel test server"
 
-curl --silent --fail -X POST "http://127.0.0.1:$port/api/v1/replay/run?scenario=primary" >/dev/null
-incident_count=$(curl --silent --fail "http://127.0.0.1:$port/api/v1/incidents" | uv run python -c 'import json,sys; print(len(json.load(sys.stdin)))')
+echo "running merchant replay"
+if ! curl --silent --show-error --fail -X POST "http://127.0.0.1:$port/api/v1/replay/run?scenario=primary" >"$scratch/replay.json"; then
+  echo "merchant replay request failed" >&2
+  cat "$scratch/server.log" >&2 || true
+  exit 1
+fi
+cat "$scratch/replay.json"
+incident_count=$(curl --silent --show-error --fail "http://127.0.0.1:$port/api/v1/incidents" | uv run python -c 'import json,sys; print(len(json.load(sys.stdin)))')
+echo "incident count: $incident_count"
 if [[ "$incident_count" -lt 1 ]]; then
   echo "merchant replay did not produce an incident" >&2
+  cat "$scratch/server.log" >&2 || true
   exit 1
 fi
 
@@ -93,19 +117,15 @@ if [[ -z "$chrome_bin" ]]; then
   echo "No Chromium-compatible browser is installed" >&2
   exit 1
 fi
+echo "using browser: $chrome_bin"
 
 "$chrome_bin" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
   --remote-allow-origins=* --remote-debugging-port="$chrome_port" \
   --user-data-dir="$scratch/chrome" about:blank >"$scratch/chrome.log" 2>&1 &
 browser_pid=$!
-for _ in {1..80}; do
-  if curl --silent --fail "http://127.0.0.1:$chrome_port/json/version" >/dev/null; then
-    break
-  fi
-  sleep 0.1
-done
-curl --silent --fail "http://127.0.0.1:$chrome_port/json/version" >/dev/null
+wait_for_url "http://127.0.0.1:$chrome_port/json/version" "$scratch/chrome.log" "Chromium DevTools"
 
+echo "starting browser journey"
 SENTINEL_BASE_URL="http://127.0.0.1:$port" \
 SENTINEL_CHROME_PORT="$chrome_port" \
 SENTINEL_SCREENSHOT_DIR="$screenshots" \
