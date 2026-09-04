@@ -19,7 +19,7 @@ ReRoute Sentinel watches merchant payment traffic in the background, detects abn
 
 ## 10-second product intro
 
-<video src="https://github.com/aditya-zig/Revnue-Agent/raw/refs/heads/main/assets/reroute-sentinel-intro.mp4" controls autoplay muted loop playsinline width="100%"></video>
+<img src="https://github.com/aditya-zig/Revnue-Agent/raw/refs/heads/main/assets/reroute-sentinel-intro.gif" alt="ReRoute Sentinel 10-second product intro" width="100%">
 
 
 </div>
