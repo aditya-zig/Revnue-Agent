@@ -45,4 +45,6 @@ jobs:
                   tests/integration/test_recovery_actions.py \
                   tests/static/test_sentinel_frontend_contract.py
           git commit -m "test: align authenticated provider evidence expectations"
+          git fetch origin fix/truthful-session-scoped-sandbox
+          git rebase origin/fix/truthful-session-scoped-sandbox
           git push origin HEAD:fix/truthful-session-scoped-sandbox
