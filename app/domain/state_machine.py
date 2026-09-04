@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.tables import ActionEvent, AuditEvent, Outcome, PaymentEvent, RecoveryCase
-from app.domain.enums import CaseState, PaymentEventType
+from app.domain.enums import CaseState, EvidenceSource, PaymentEventType
 from app.domain.models import NormalizedPaymentEvent
 
 TRANSITIONS = {
@@ -149,7 +149,8 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
         if case.state == CaseState.STOPPED:
             return case.case_id
         if case.state != CaseState.RECOVERED:
-            # Provider capture is authoritative and can arrive before the next planned transition.
+            # A matching capture can resolve the operational case, but recovered
+            # revenue is recorded only below when provider authenticity is proven.
             recovered_payload: dict[str, object] = {"payment_id": event.payment_id}
             if event.obligation_reference is not None:
                 recovered_payload["obligation_reference"] = event.obligation_reference
@@ -174,20 +175,25 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
                     payload={"action": action.tool, "idempotency_key": action.idempotency_key},
                 )
             )
-        if has_matching_failure and event.provider == "razorpay_test":
+        if (
+            has_matching_failure
+            and event.provider == EvidenceSource.RAZORPAY_TEST.value
+            and event.source_kind == EvidenceSource.RAZORPAY_TEST
+            and event.authenticity_verified
+        ):
             outcome = session.scalar(select(Outcome).where(Outcome.case_id == case.case_id))
             if outcome is None:
-                session.add(
-                    Outcome(
-                        case_id=case.case_id,
-                        recovered=True,
-                        recovered_amount=event.amount,
-                        contact_cost=0,
-                        discount_cost=0,
-                        resolved_at=event.occurred_at,
-                        source="razorpay_test",
-                    )
+                outcome = Outcome(
+                    case_id=case.case_id,
+                    recovered=True,
+                    recovered_amount=event.amount,
+                    contact_cost=0,
+                    discount_cost=0,
+                    resolved_at=event.occurred_at,
+                    source=EvidenceSource.RAZORPAY_TEST.value,
                 )
+                session.add(outcome)
+                session.flush()
                 session.add(
                     AuditEvent(
                         case_id=case.case_id,
@@ -199,9 +205,19 @@ def apply_event(session: Session, event: NormalizedPaymentEvent) -> str | None:
                             "obligation_reference": event.obligation_reference,
                             "amount": event.amount,
                             "occurred_at": event.occurred_at.isoformat(),
-                            "source": "razorpay_test",
+                            "source": EvidenceSource.RAZORPAY_TEST.value,
+                            "authenticity_verified": True,
                         },
                     )
                 )
+            elif (
+                not outcome.recovered
+                or outcome.recovered_amount != event.amount
+                or outcome.source != EvidenceSource.RAZORPAY_TEST.value
+            ):
+                raise ValueError("conflicting provider outcome for recovery case")
+            from app.incidents.outcomes import link_verified_provider_outcome_to_incidents
+
+            link_verified_provider_outcome_to_incidents(session, case, outcome, event)
         return case.case_id
     return case.case_id if case else None
