@@ -1,0 +1,28 @@
+name: Truthful sandbox cleanup
+
+on:
+  push:
+    branches:
+      - fix/truthful-session-scoped-sandbox
+
+permissions:
+  contents: write
+
+jobs:
+  apply-cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/truthful-session-scoped-sandbox
+      - name: Apply asserted cleanup patch
+        run: python scripts/apply_truthful_sandbox_cleanup.py
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/incident_analysis.py app/incident_control.py tests/integration/test_sentinel_control_plane_hardening.py tests/integration/test_issue47_final_journey.py tests/integration/test_recovery_actions.py
+          git diff --cached --check
+          git commit -m "test: align hardened authority and verification contracts"
+          git push origin HEAD:fix/truthful-session-scoped-sandbox
