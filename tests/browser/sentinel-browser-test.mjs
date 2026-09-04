@@ -91,7 +91,7 @@ async function navigate(url) {
     if (ready) break;
     await sleep(100);
   }
-  await sleep(1200);
+  await sleep(900);
 }
 
 async function waitFor(expression, label, timeoutMs = 12000) {
@@ -106,7 +106,7 @@ async function waitFor(expression, label, timeoutMs = 12000) {
 async function click(selector, label = selector) {
   const clicked = await evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) return false; element.click(); return true; })()`);
   if (!clicked) throw new Error(`Unable to click ${label}`);
-  await sleep(400);
+  await sleep(350);
 }
 
 async function screenshot(name) {
@@ -123,50 +123,67 @@ async function bodyIncludes(text) {
 
 await viewport(1920, 1080);
 await navigate(`${baseUrl}/`);
-await waitFor("document.querySelector('[data-sentinel-shell]') !== null", "Sentinel shell");
-await waitFor("!document.body.innerText.includes('Loading ReRoute Sentinel')", "dashboard data");
-if (!(await bodyIncludes("ReRoute Sentinel")) || !(await bodyIncludes("Actual recovered"))) {
-  throw new Error("Home view is missing Sentinel or recovered-outcome copy");
+await waitFor("document.querySelector('#startSandbox') !== null", "guided landing CTA");
+const ctaCount = await evaluate(`Array.from(document.querySelectorAll('button')).filter((button) => button.textContent.trim() === 'Try it for yourself →').length`);
+if (ctaCount !== 1) throw new Error(`Expected one Try it for yourself CTA, found ${ctaCount}`);
+if (!(await bodyIncludes("Catch payment incidents before they become lost revenue."))) {
+  throw new Error("Guided landing headline is missing");
 }
-await screenshot("home-1920x1080.png");
+await screenshot("landing-1920x1080.png");
 
 await viewport(1280, 900);
-await sleep(300);
-await screenshot("home-1280x900.png");
+await sleep(250);
+await screenshot("landing-1280x900.png");
 
 await viewport(390, 844, true);
-await sleep(300);
-await screenshot("home-mobile-390x844.png");
+await sleep(250);
+await screenshot("landing-mobile-390x844.png");
 
 await viewport(1920, 1080);
-await click('[data-nav="incidents"]', "Incidents navigation");
-await waitFor("document.body.innerText.includes('Incidents')", "Incidents view");
-await click("[data-review-incident]", "Review incident");
-await waitFor("document.body.innerText.includes('Verified facts')", "incident detail");
-if (!(await bodyIncludes("AI ANALYSIS — ADVISORY"))) throw new Error("AI analysis is not visibly separated");
-await screenshot("incident-before-control-1920x1080.png");
+await click("#startSandbox", "Try it for yourself");
+await waitFor("document.querySelector('#sandbox').classList.contains('active')", "sandbox transition");
+if (!(await bodyIncludes("Payments are healthy")) || !(await bodyIncludes("Actual recovered"))) {
+  throw new Error("Healthy merchant sandbox is missing payment-health copy");
+}
+await screenshot("sandbox-healthy-1920x1080.png");
 
-if (await evaluate("document.querySelector('[data-action=investigate-incident]') !== null")) {
-  await click("[data-action=investigate-incident]", "Investigate incident");
-  await waitFor("document.body.innerText.includes('Human approval required')", "recommendation awaiting approval", 20000);
+await click("#guideAction", "Open test storefront");
+await waitFor("document.querySelector('#guideAction').textContent.includes('Continue after test purchase')", "test purchase continuation");
+await click("#guideAction", "Continue after test purchase");
+await waitFor("document.querySelector('#incidentFocus').classList.contains('show')", "incident interruption", 18000);
+if (!(await bodyIncludes("UPI payment degradation detected")) || !(await bodyIncludes("ESTIMATED AT RISK"))) {
+  throw new Error("Incident interruption is missing risk framing");
 }
-if (await evaluate("document.querySelector('[data-action=approve-incident]') !== null")) {
-  await click("[data-action=approve-incident]", "Approve recommendation");
-  await waitFor("document.body.innerText.includes('Approved by business owner')", "approved state");
+await screenshot("sandbox-incident-1920x1080.png");
+
+await click("#reviewIncident", "Review incident");
+await waitFor("document.querySelector('#reviewPanel').classList.contains('show')", "incident review");
+if (!(await bodyIncludes("AI ANALYSIS — ADVISORY"))) throw new Error("AI analysis is not visibly advisory");
+if (!(await bodyIncludes("Policy decides what the model is allowed to rank."))) throw new Error("Policy-first explanation is missing");
+if (!(await bodyIncludes("Blocked actions never reach the recommendation model."))) throw new Error("Blocked-action boundary is missing");
+if (!(await bodyIncludes("Send alternate payment link"))) throw new Error("Recommended recovery action is missing");
+await screenshot("sandbox-review-1920x1080.png");
+
+await click("#generateAnalysis", "Generate analysis");
+await waitFor("document.querySelector('#generateAnalysis').textContent.includes('Analysis generated')", "advisory analysis", 20000);
+if (await bodyIncludes("Advisory analysis could not be generated")) {
+  throw new Error("Incident analysis failed in browser journey");
 }
-if (await evaluate("document.querySelector('[data-action=execute-incident]') !== null")) {
-  await click("[data-action=execute-incident]", "Execute recommendation");
-  await waitFor("document.body.innerText.includes('Awaiting provider Outcome')", "awaiting provider outcome", 12000);
-}
-const actualRecoveredText = await evaluate(`(() => { const text = document.body.innerText; const match = text.match(/Actual recovered[^₹]*₹[^\n]*/i); return match ? match[0] : text; })()`);
-if (!(await bodyIncludes("Removed before AI ranking"))) {
-  throw new Error("Policy-blocked action is not labelled as removed before AI ranking");
-}
-await screenshot("incident-after-control-1920x1080.png");
+await screenshot("sandbox-analysis-1920x1080.png");
+
+await click("#approveAction", "Approve recommended action");
+await waitFor("document.querySelector('#awaiting').classList.contains('show')", "approval waiting state", 15000);
+await waitFor("document.querySelector('#awaitTitle').textContent.includes('Payment link created') || document.querySelector('#awaitTitle').textContent.includes('Recovery action created')", "recovery execution", 15000);
+const awaitingAmount = await evaluate("document.querySelector('#awaitAmount').textContent.trim()");
+if (awaitingAmount !== "₹0") throw new Error(`Approval must not count as recovery; saw ${awaitingAmount}`);
+if (!(await bodyIncludes("Approval is not recovery."))) throw new Error("Approval/recovery boundary is missing");
+const recoveredVisible = await evaluate("document.querySelector('#recovered').classList.contains('show')");
+if (recoveredVisible) throw new Error("Recovered state appeared before provider outcome evidence");
+await screenshot("sandbox-awaiting-provider-1920x1080.png");
 
 await viewport(1280, 900);
-await sleep(300);
-await screenshot("incident-after-control-1280x900.png");
+await sleep(250);
+await screenshot("sandbox-awaiting-provider-1280x900.png");
 
 await navigate(`${baseUrl}/storefront`);
 await viewport(1280, 900);
@@ -177,19 +194,24 @@ if (!(await bodyIncludes("Razorpay · TEST MODE")) || !(await bodyIncludes("Buy 
 await screenshot("storefront-1280x900.png");
 
 await viewport(390, 844, true);
-await sleep(300);
+await sleep(250);
 await screenshot("storefront-mobile-390x844.png");
 
 console.log(JSON.stringify({
   ok: true,
-  actualRecoveredText,
+  ctaCount,
+  awaitingAmount,
+  recoveredVisible,
   screenshots: [
-    "home-1920x1080.png",
-    "home-1280x900.png",
-    "home-mobile-390x844.png",
-    "incident-before-control-1920x1080.png",
-    "incident-after-control-1920x1080.png",
-    "incident-after-control-1280x900.png",
+    "landing-1920x1080.png",
+    "landing-1280x900.png",
+    "landing-mobile-390x844.png",
+    "sandbox-healthy-1920x1080.png",
+    "sandbox-incident-1920x1080.png",
+    "sandbox-review-1920x1080.png",
+    "sandbox-analysis-1920x1080.png",
+    "sandbox-awaiting-provider-1920x1080.png",
+    "sandbox-awaiting-provider-1280x900.png",
     "storefront-1280x900.png",
     "storefront-mobile-390x844.png",
   ],
