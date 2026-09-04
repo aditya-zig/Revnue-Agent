@@ -17,7 +17,6 @@ ReRoute Sentinel watches merchant payment traffic in the background, detects abn
 
 **[Try the live app](https://revnue-agent.vercel.app/) · [Judge sandbox](https://revnue-agent.vercel.app/judge) · [How it works](#how-it-works) · [Why AI](#why-ai-is-used) · [Competition](#competitive-landscape) · [Quickstart](#quickstart)**
 
-## 10-second product intro
 
 <img src="https://github.com/aditya-zig/Revnue-Agent/raw/refs/heads/main/assets/reroute-sentinel-intro.gif" alt="ReRoute Sentinel 10-second product intro" width="100%">
 
