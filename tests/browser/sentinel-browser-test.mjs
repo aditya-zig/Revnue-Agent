@@ -162,12 +162,29 @@ if (!(await bodyIncludes("AI ANALYSIS — ADVISORY"))) throw new Error("AI analy
 if (!(await bodyIncludes("Policy decides what the model is allowed to rank."))) throw new Error("Policy-first explanation is missing");
 if (!(await bodyIncludes("Blocked actions never reach the recommendation model."))) throw new Error("Blocked-action boundary is missing");
 if (!(await bodyIncludes("Send alternate payment link"))) throw new Error("Recommended recovery action is missing");
+const baselineRate = Number(await evaluate("document.querySelector('#factBaseline').textContent.replace('%', '')"));
+const currentRate = Number(await evaluate("document.querySelector('#factCurrent').textContent.replace('%', '')"));
+const affectedPayments = Number(await evaluate("document.querySelector('#factAffected').textContent"));
+if (!(baselineRate > currentRate)) {
+  throw new Error(`Incident must show degradation; baseline ${baselineRate}% is not above current ${currentRate}%`);
+}
+if (!(affectedPayments > 0)) {
+  throw new Error(`Incident must have affected payments; saw ${affectedPayments}`);
+}
 await screenshot("sandbox-review-1920x1080.png");
 
 await click("#generateAnalysis", "Generate analysis");
-await waitFor("document.querySelector('#generateAnalysis').textContent.includes('Analysis generated')", "advisory analysis", 20000);
+await waitFor(
+  "document.querySelector('#generateAnalysis').textContent.includes('Analysis generated') || !document.querySelector('#aiMeta').classList.contains('hidden')",
+  "advisory analysis response",
+  20000,
+);
 if (await bodyIncludes("Advisory analysis could not be generated")) {
-  throw new Error("Incident analysis failed in browser journey");
+  const errorText = await evaluate("document.querySelector('#aiMeta').textContent");
+  throw new Error(`Incident analysis failed in browser journey: ${errorText}`);
+}
+if (!(await evaluate("document.querySelector('#generateAnalysis').textContent.includes('Analysis generated')"))) {
+  throw new Error("Incident analysis did not reach generated state");
 }
 await screenshot("sandbox-analysis-1920x1080.png");
 
@@ -200,6 +217,9 @@ await screenshot("storefront-mobile-390x844.png");
 console.log(JSON.stringify({
   ok: true,
   ctaCount,
+  baselineRate,
+  currentRate,
+  affectedPayments,
   awaitingAmount,
   recoveredVisible,
   screenshots: [
