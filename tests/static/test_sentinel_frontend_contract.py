@@ -86,7 +86,7 @@ def test_guided_sandbox_keeps_provider_backed_state_authority() -> None:
 
     for endpoint_fragment in (
         "/storefront",
-        "/replay/run",
+        "/replay/start",
         "/incidents/",
         "/investigate",
         "/approve",
@@ -95,6 +95,7 @@ def test_guided_sandbox_keeps_provider_backed_state_authority() -> None:
     ):
         assert endpoint_fragment in javascript
 
+    assert "/replay/run?scenario=primary" not in javascript
     assert "test_mode_value" in javascript
     assert "providerVerified" in javascript
     assert "Approval is not recovery." in javascript
